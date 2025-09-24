@@ -1279,15 +1279,23 @@ def create_user_session(user_id: int, session_token: str, expires_at: str) -> in
             )
             result = cursor.fetchone()
             session_id = result[0] if result else None
+            print(f"DEBUG: PostgreSQL session creation - result: {result}, session_id: {session_id}")
+            print(f"DEBUG: PostgreSQL session creation - result type: {type(result)}")
+            if result:
+                print(f"DEBUG: PostgreSQL session creation - result[0]: {result[0]}, type: {type(result[0])}")
         else:
             cursor = conn.execute(
                 'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (?,?,?,?)',
                 (user_id, session_token, expires_at, now)
             )
             session_id = cursor.lastrowid
+            print(f"DEBUG: SQLite session creation - session_id: {session_id}")
             
         conn.commit()
-        return int(session_id)
+        return int(session_id) if session_id else 0
+    except Exception as e:
+        print(f"DEBUG: create_user_session error: {str(e)}")
+        return 0
     finally:
         conn.close()
 

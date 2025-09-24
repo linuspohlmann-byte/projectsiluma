@@ -35,20 +35,24 @@ def generate_session_token() -> str:
 
 def create_session(user_id: int) -> str:
     """Create a new session for a user"""
-    # Clean up expired sessions first
-    cleanup_expired_sessions()
-    
-    # Generate session token and expiration
-    session_token = generate_session_token()
-    expires_at = (datetime.now(UTC) + timedelta(hours=SESSION_DURATION_HOURS)).isoformat()
-    
-    # Create session in database
-    session_id = create_user_session(user_id, session_token, expires_at)
-    
-    if not session_id:
-        raise Exception("Failed to create session in database")
-    
-    return session_token
+    try:
+        # Clean up expired sessions first
+        cleanup_expired_sessions()
+        
+        # Generate session token and expiration
+        session_token = generate_session_token()
+        expires_at = (datetime.now(UTC) + timedelta(hours=SESSION_DURATION_HOURS)).isoformat()
+        
+        # Create session in database
+        session_id = create_user_session(user_id, session_token, expires_at)
+        
+        if not session_id:
+            raise Exception("Failed to create session in database - session_id is None or 0")
+        
+        return session_token
+    except Exception as e:
+        print(f"DEBUG: create_session error: {str(e)} (type: {type(e)})")
+        raise Exception(f"Session creation failed: {str(e)}")
 
 def validate_session(session_token: str) -> Optional[Dict[str, Any]]:
     """Validate a session token and return user data if valid"""
