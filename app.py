@@ -4525,7 +4525,7 @@ def api_setup_database():
             cur = conn.cursor()
             
             # Check if users table exists
-            cur.execute("""
+            cur = execute_query(conn, """
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
                     WHERE table_schema = 'public' 
@@ -4538,7 +4538,7 @@ def api_setup_database():
                 print("Creating PostgreSQL tables...")
                 
                 # Users table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS users (
                         id SERIAL PRIMARY KEY,
                         username VARCHAR(255) UNIQUE NOT NULL,
@@ -4553,7 +4553,7 @@ def api_setup_database():
                 """)
                 
                 # User sessions table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS user_sessions (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER NOT NULL,
@@ -4565,7 +4565,7 @@ def api_setup_database():
                 """)
                 
                 # User progress table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS user_progress (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER NOT NULL,
@@ -4583,7 +4583,7 @@ def api_setup_database():
                 """)
                 
                 # User word familiarity table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS user_word_familiarity (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER NOT NULL,
@@ -4600,7 +4600,7 @@ def api_setup_database():
                 """)
                 
                 # Words table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS words (
                         id SERIAL PRIMARY KEY,
                         word VARCHAR(255) NOT NULL,
@@ -4633,7 +4633,7 @@ def api_setup_database():
                 """)
                 
                 # Level runs table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS level_runs (
                         id SERIAL PRIMARY KEY,
                         level INTEGER,
@@ -4646,7 +4646,7 @@ def api_setup_database():
                 """)
                 
                 # Practice runs table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS practice_runs (
                         id SERIAL PRIMARY KEY,
                         level INTEGER,
@@ -4658,7 +4658,7 @@ def api_setup_database():
                 """)
                 
                 # Localization table
-                cur.execute("""
+                execute_query(conn, """
                     CREATE TABLE IF NOT EXISTS localization (
                         id SERIAL PRIMARY KEY,
                         reference_key VARCHAR(255) UNIQUE NOT NULL,
@@ -4757,10 +4757,9 @@ def api_create_postgresql_tables():
         
         # Create PostgreSQL tables manually
         conn = get_db()
-        cur = conn.cursor()
         
         # Users table
-        cur.execute("""
+        cur = execute_query(conn, """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(255) UNIQUE NOT NULL,
@@ -4775,7 +4774,7 @@ def api_create_postgresql_tables():
         """)
         
         # User sessions table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS user_sessions (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -4787,7 +4786,7 @@ def api_create_postgresql_tables():
         """)
         
         # User progress table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS user_progress (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -4805,7 +4804,7 @@ def api_create_postgresql_tables():
         """)
         
         # User word familiarity table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS user_word_familiarity (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -4822,7 +4821,7 @@ def api_create_postgresql_tables():
         """)
         
         # Words table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS words (
                 id SERIAL PRIMARY KEY,
                 word VARCHAR(255) NOT NULL,
@@ -4855,7 +4854,7 @@ def api_create_postgresql_tables():
         """)
         
         # Level runs table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS level_runs (
                 id SERIAL PRIMARY KEY,
                 level INTEGER,
@@ -4868,7 +4867,7 @@ def api_create_postgresql_tables():
         """)
         
         # Practice runs table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS practice_runs (
                 id SERIAL PRIMARY KEY,
                 level INTEGER,
@@ -4880,7 +4879,7 @@ def api_create_postgresql_tables():
         """)
         
         # Localization table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS localization (
                 id SERIAL PRIMARY KEY,
                 reference_key VARCHAR(255) UNIQUE NOT NULL,
@@ -4923,7 +4922,7 @@ def api_database_info():
         
         if config['type'] == 'postgresql':
             # Get table list
-            cur.execute("""
+            cur = execute_query(conn, """
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = 'public' 
@@ -4932,11 +4931,11 @@ def api_database_info():
             tables = [row[0] for row in cur.fetchall()]
             
             # Get user count
-            cur.execute("SELECT COUNT(*) FROM users")
+            cur = execute_query(conn, "SELECT COUNT(*) FROM users")
             user_count = cur.fetchone()[0]
             
             # Get session count
-            cur.execute("SELECT COUNT(*) FROM user_sessions")
+            cur = execute_query(conn, "SELECT COUNT(*) FROM user_sessions")
             session_count = cur.fetchone()[0]
             
             conn.close()
@@ -4952,10 +4951,10 @@ def api_database_info():
             
         else:
             # SQLite info
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            cur = execute_query(conn, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             tables = [row[0] for row in cur.fetchall()]
             
-            cur.execute("SELECT COUNT(*) FROM users")
+            cur = execute_query(conn, "SELECT COUNT(*) FROM users")
             user_count = cur.fetchone()[0]
             
             conn.close()
