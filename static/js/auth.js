@@ -126,7 +126,13 @@ class AuthManager {
     showAuthSection() {
         document.getElementById('login-section').style.display = 'none';
         document.getElementById('auth-section').style.display = 'flex';
-        document.getElementById('user-name').textContent = this.currentUser?.username || 'User';
+        
+        // Update username display with current user data
+        const userNameElement = document.getElementById('user-name');
+        if (userNameElement) {
+            userNameElement.textContent = this.currentUser?.username || 'User';
+            console.log('👤 Username displayed:', this.currentUser?.username || 'User');
+        }
     }
 
     async handleLogin() {
@@ -159,6 +165,9 @@ class AuthManager {
                 this.hideModals();
                 this.showAuthSection();
                 this.clearErrors();
+                
+                // Load full user data to get complete user information
+                await this.loadCurrentUser();
                 
                 // Refresh level states to show user-specific data
                 if (window.refreshLevelStates) {
@@ -221,6 +230,9 @@ class AuthManager {
                 this.hideModals();
                 this.showAuthSection();
                 this.clearErrors();
+                
+                // Load full user data to get complete user information
+                await this.loadCurrentUser();
                 
                 // Show onboarding for new users
                 if (window.onboardingManager) {
@@ -306,6 +318,36 @@ class AuthManager {
     // Get current user ID
     getCurrentUserId() {
         return this.currentUser?.id;
+    }
+
+    // Load current user data from server
+    async loadCurrentUser() {
+        if (!this.sessionToken) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/auth/me', {
+                headers: this.getAuthHeaders()
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.user) {
+                    this.currentUser = data.user;
+                    // Update the username display immediately
+                    const userNameElement = document.getElementById('user-name');
+                    if (userNameElement) {
+                        userNameElement.textContent = this.currentUser.username;
+                    }
+                    console.log('✅ User data loaded:', this.currentUser.username);
+                }
+            } else {
+                console.warn('⚠️ Failed to load user data');
+            }
+        } catch (error) {
+            console.error('❌ Error loading user data:', error);
+        }
     }
 }
 
