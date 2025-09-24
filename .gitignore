@@ -32,6 +32,9 @@ media/
 *.mp4
 *.avi
 
+# Exception: Allow static sound files
+!static/sounds/*.wav
+
 # Database files
 *.db
 *.sqlite
