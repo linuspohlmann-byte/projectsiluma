@@ -4918,11 +4918,11 @@ def api_database_info():
         config = get_database_config()
         
         conn = get_db()
-        cur = conn.cursor()
         
         if config['type'] == 'postgresql':
             # Get table list
-            cur = execute_query(conn, """
+            cur = conn.cursor()
+            cur.execute("""
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = 'public' 
@@ -4931,11 +4931,11 @@ def api_database_info():
             tables = [row[0] for row in cur.fetchall()]
             
             # Get user count
-            cur = execute_query(conn, "SELECT COUNT(*) FROM users")
+            cur.execute("SELECT COUNT(*) FROM users")
             user_count = cur.fetchone()[0]
             
             # Get session count
-            cur = execute_query(conn, "SELECT COUNT(*) FROM user_sessions")
+            cur.execute("SELECT COUNT(*) FROM user_sessions")
             session_count = cur.fetchone()[0]
             
             conn.close()
@@ -4951,10 +4951,11 @@ def api_database_info():
             
         else:
             # SQLite info
-            cur = execute_query(conn, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             tables = [row[0] for row in cur.fetchall()]
             
-            cur = execute_query(conn, "SELECT COUNT(*) FROM users")
+            cur.execute("SELECT COUNT(*) FROM users")
             user_count = cur.fetchone()[0]
             
             conn.close()
