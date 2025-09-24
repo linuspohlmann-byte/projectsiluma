@@ -4519,6 +4519,158 @@ def api_setup_database():
             
             conn.commit()
             conn.close()
+        elif config['type'] == 'postgresql':
+            # For PostgreSQL, ensure tables exist
+            conn = get_db()
+            cur = conn.cursor()
+            
+            # Check if users table exists
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'users'
+                );
+            """)
+            users_table_exists = cur.fetchone()[0]
+            
+            if not users_table_exists:
+                print("Creating PostgreSQL tables...")
+                
+                # Users table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        username VARCHAR(255) UNIQUE NOT NULL,
+                        email VARCHAR(255) UNIQUE NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_login TIMESTAMP,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        settings TEXT,
+                        native_language VARCHAR(10) DEFAULT 'en'
+                    );
+                """)
+                
+                # User sessions table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_sessions (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        session_token VARCHAR(255) UNIQUE NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        expires_at TIMESTAMP NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                    );
+                """)
+                
+                # User progress table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_progress (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        language VARCHAR(10) NOT NULL,
+                        native_language VARCHAR(10) NOT NULL,
+                        level INTEGER NOT NULL,
+                        status VARCHAR(50) DEFAULT 'not_started',
+                        score REAL,
+                        completed_at TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        UNIQUE(user_id, language, native_language, level)
+                    );
+                """)
+                
+                # User word familiarity table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        word_id INTEGER NOT NULL,
+                        familiarity INTEGER DEFAULT 0,
+                        seen_count INTEGER DEFAULT 0,
+                        correct_count INTEGER DEFAULT 0,
+                        last_seen TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        UNIQUE(user_id, word_id)
+                    );
+                """)
+                
+                # Words table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS words (
+                        id SERIAL PRIMARY KEY,
+                        word VARCHAR(255) NOT NULL,
+                        language VARCHAR(10),
+                        native_language VARCHAR(10),
+                        translation TEXT,
+                        example TEXT,
+                        info TEXT,
+                        seen_count INTEGER DEFAULT 0,
+                        correct_count INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        familiarity INTEGER DEFAULT 0,
+                        lemma VARCHAR(255), 
+                        pos VARCHAR(50), 
+                        ipa VARCHAR(255), 
+                        audio_url TEXT,
+                        gender VARCHAR(10), 
+                        plural VARCHAR(255), 
+                        conj TEXT, 
+                        comp TEXT, 
+                        synonyms TEXT,
+                        collocations TEXT, 
+                        example_native TEXT, 
+                        cefr VARCHAR(10), 
+                        freq_rank INTEGER,
+                        tags TEXT, 
+                        note TEXT
+                    );
+                """)
+                
+                # Level runs table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS level_runs (
+                        id SERIAL PRIMARY KEY,
+                        level INTEGER,
+                        items TEXT,
+                        user_translations TEXT,
+                        score REAL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        topic VARCHAR(100)
+                    );
+                """)
+                
+                # Practice runs table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS practice_runs (
+                        id SERIAL PRIMARY KEY,
+                        level INTEGER,
+                        words TEXT,
+                        todo TEXT,
+                        seen_count INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                
+                # Localization table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS localization (
+                        id SERIAL PRIMARY KEY,
+                        reference_key VARCHAR(255) UNIQUE NOT NULL,
+                        description TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                
+                print("PostgreSQL tables created successfully!")
+            
+            conn.close()
         
         # Create test user if it doesn't exist
         from server.services.auth import register_user
