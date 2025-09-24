@@ -43,7 +43,10 @@ def create_session(user_id: int) -> str:
     expires_at = (datetime.now(UTC) + timedelta(hours=SESSION_DURATION_HOURS)).isoformat()
     
     # Create session in database
-    create_user_session(user_id, session_token, expires_at)
+    session_id = create_user_session(user_id, session_token, expires_at)
+    
+    if not session_id:
+        raise Exception("Failed to create session in database")
     
     return session_token
 

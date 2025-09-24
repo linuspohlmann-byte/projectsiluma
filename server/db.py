@@ -1277,7 +1277,8 @@ def create_user_session(user_id: int, session_token: str, expires_at: str) -> in
                 'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
                 (user_id, session_token, expires_at, now)
             )
-            session_id = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            session_id = result[0] if result else None
         else:
             cursor = conn.execute(
                 'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (?,?,?,?)',
