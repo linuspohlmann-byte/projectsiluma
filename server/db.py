@@ -737,11 +737,14 @@ def upsert_localization_entry(payload: dict) -> None:
 
 def get_all_localization_entries():
     """Get all localization entries"""
+    import os
     config = get_database_config()
     conn = get_db_connection()
     try:
         if config['type'] == 'postgresql':
-            cur = execute_query(conn, 'SELECT * FROM localization ORDER BY reference_key')
+            # PostgreSQL
+            cur = conn.cursor()
+            cur.execute('SELECT * FROM localization ORDER BY reference_key')
             rows = cur.fetchall()
             return rows
         else:
