@@ -19,7 +19,7 @@ from server.services.auth import (
     register_user, login_user, get_current_user, logout_user, require_auth
 )
 from server.middleware import inject_user_context, get_user_context, require_auth
-from server.services.user_data import (
+from server.services.user_data_fixed import (
     update_user_level_progress, get_user_level_progress, 
     load_user_settings, save_user_settings, load_user_stats, save_user_stats,
     migrate_user_data_structure
@@ -4294,46 +4294,21 @@ def api_delete_localization_entry(entry_id):
 def api_get_available_languages():
     """Get all available languages with their native names in CSV order"""
     try:
-        # Simple hardcoded list for now to get the app working
-        languages = [
-            {'code': 'en', 'native_name': 'English', 'english_name': 'English'},
-            {'code': 'de', 'native_name': 'Deutsch', 'english_name': 'German'},
-            {'code': 'fr', 'native_name': 'Français', 'english_name': 'French'},
-            {'code': 'es', 'native_name': 'Español', 'english_name': 'Spanish'},
-            {'code': 'it', 'native_name': 'Italiano', 'english_name': 'Italian'},
-            {'code': 'pt', 'native_name': 'Português', 'english_name': 'Portuguese'},
-            {'code': 'ru', 'native_name': 'Русский', 'english_name': 'Russian'},
-            {'code': 'ja', 'native_name': '日本語', 'english_name': 'Japanese'},
-            {'code': 'ko', 'native_name': '한국어', 'english_name': 'Korean'},
-            {'code': 'zh', 'native_name': '中文', 'english_name': 'Chinese'},
-            {'code': 'ar', 'native_name': 'العربية', 'english_name': 'Arabic'},
-            {'code': 'hi', 'native_name': 'हिन्दी', 'english_name': 'Hindi'},
-            {'code': 'tr', 'native_name': 'Türkçe', 'english_name': 'Turkish'},
-            {'code': 'pl', 'native_name': 'Polski', 'english_name': 'Polish'},
-            {'code': 'nl', 'native_name': 'Nederlands', 'english_name': 'Dutch'},
-            {'code': 'sv', 'native_name': 'Svenska', 'english_name': 'Swedish'},
-            {'code': 'da', 'native_name': 'Dansk', 'english_name': 'Danish'},
-            {'code': 'no', 'native_name': 'Norsk', 'english_name': 'Norwegian'},
-            {'code': 'fi', 'native_name': 'Suomi', 'english_name': 'Finnish'},
-            {'code': 'is', 'native_name': 'Íslenska', 'english_name': 'Icelandic'},
-            {'code': 'ka', 'native_name': 'ქართული', 'english_name': 'Georgian'},
-            {'code': 'sr', 'native_name': 'Српски', 'english_name': 'Serbian'},
-            {'code': 'sw', 'native_name': 'Kiswahili', 'english_name': 'Swahili'},
-            {'code': 'fa', 'native_name': 'فارسی', 'english_name': 'Persian'},
-            {'code': 'th', 'native_name': 'ไทย', 'english_name': 'Thai'},
-            {'code': 'vi', 'native_name': 'Tiếng Việt', 'english_name': 'Vietnamese'},
-            {'code': 'id', 'native_name': 'Bahasa Indonesia', 'english_name': 'Indonesian'},
-            {'code': 'mr', 'native_name': 'मराठी', 'english_name': 'Marathi'},
-            {'code': 'gu', 'native_name': 'ગુજરાતી', 'english_name': 'Gujarati'},
-            {'code': 'ta', 'native_name': 'தமிழ்', 'english_name': 'Tamil'},
-            {'code': 'te', 'native_name': 'తెలుగు', 'english_name': 'Telugu'},
-            {'code': 'bn', 'native_name': 'বাংলা', 'english_name': 'Bengali'},
-            {'code': 'ur', 'native_name': 'اردو', 'english_name': 'Urdu'},
-            {'code': 'ro', 'native_name': 'Română', 'english_name': 'Romanian'},
-            {'code': 'hu', 'native_name': 'Magyar', 'english_name': 'Hungarian'},
-            {'code': 'uk', 'native_name': 'Українська', 'english_name': 'Ukrainian'}
-        ]
+        import csv
         
+        # Read the CSV file to get the correct column order
+        languages = []
+        with open('localization_complete.csv', 'r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                if row.get('show_course') == 'Yes':
+                    languages.append({
+                        'code': row.get('code', ''),
+                        'native_name': row.get('native_name', ''),
+                        'english_name': row.get('english_name', '')
+                    })
+        
+        # Return the languages list
         return jsonify({'languages': languages})
         
     except Exception as e:
@@ -4345,47 +4320,89 @@ def api_get_available_languages():
 def api_get_available_courses():
     """Get all available courses (languages with show_course=Yes) with names in the specified native language"""
     try:
-        # Simple hardcoded list for now to get the app working
-        courses = [
-            {'code': 'en', 'name': 'English', 'native_name': 'English', 'english_name': 'English'},
-            {'code': 'de', 'name': 'Deutsch', 'native_name': 'Deutsch', 'english_name': 'German'},
-            {'code': 'fr', 'name': 'Français', 'native_name': 'Français', 'english_name': 'French'},
-            {'code': 'es', 'name': 'Español', 'native_name': 'Español', 'english_name': 'Spanish'},
-            {'code': 'it', 'name': 'Italiano', 'native_name': 'Italiano', 'english_name': 'Italian'},
-            {'code': 'pt', 'name': 'Português', 'native_name': 'Português', 'english_name': 'Portuguese'},
-            {'code': 'ru', 'name': 'Русский', 'native_name': 'Русский', 'english_name': 'Russian'},
-            {'code': 'ja', 'name': '日本語', 'native_name': '日本語', 'english_name': 'Japanese'},
-            {'code': 'ko', 'name': '한국어', 'native_name': '한국어', 'english_name': 'Korean'},
-            {'code': 'zh', 'name': '中文', 'native_name': '中文', 'english_name': 'Chinese'},
-            {'code': 'ar', 'name': 'العربية', 'native_name': 'العربية', 'english_name': 'Arabic'},
-            {'code': 'hi', 'name': 'हिन्दी', 'native_name': 'हिन्दी', 'english_name': 'Hindi'},
-            {'code': 'tr', 'name': 'Türkçe', 'native_name': 'Türkçe', 'english_name': 'Turkish'},
-            {'code': 'pl', 'name': 'Polski', 'native_name': 'Polski', 'english_name': 'Polish'},
-            {'code': 'nl', 'name': 'Nederlands', 'native_name': 'Nederlands', 'english_name': 'Dutch'},
-            {'code': 'sv', 'name': 'Svenska', 'native_name': 'Svenska', 'english_name': 'Swedish'},
-            {'code': 'da', 'name': 'Dansk', 'native_name': 'Dansk', 'english_name': 'Danish'},
-            {'code': 'no', 'name': 'Norsk', 'native_name': 'Norsk', 'english_name': 'Norwegian'},
-            {'code': 'fi', 'name': 'Suomi', 'native_name': 'Suomi', 'english_name': 'Finnish'},
-            {'code': 'is', 'name': 'Íslenska', 'native_name': 'Íslenska', 'english_name': 'Icelandic'},
-            {'code': 'ka', 'name': 'ქართული', 'native_name': 'ქართული', 'english_name': 'Georgian'},
-            {'code': 'sr', 'name': 'Српски', 'native_name': 'Српски', 'english_name': 'Serbian'},
-            {'code': 'sw', 'name': 'Kiswahili', 'native_name': 'Kiswahili', 'english_name': 'Swahili'},
-            {'code': 'fa', 'name': 'فارسی', 'native_name': 'فارسی', 'english_name': 'Persian'},
-            {'code': 'th', 'name': 'ไทย', 'native_name': 'ไทย', 'english_name': 'Thai'},
-            {'code': 'vi', 'name': 'Tiếng Việt', 'native_name': 'Tiếng Việt', 'english_name': 'Vietnamese'},
-            {'code': 'id', 'name': 'Bahasa Indonesia', 'native_name': 'Bahasa Indonesia', 'english_name': 'Indonesian'},
-            {'code': 'mr', 'name': 'मराठी', 'native_name': 'मराठी', 'english_name': 'Marathi'},
-            {'code': 'gu', 'name': 'ગુજરાતી', 'native_name': 'ગુજરાતી', 'english_name': 'Gujarati'},
-            {'code': 'ta', 'name': 'தமிழ்', 'native_name': 'தமிழ்', 'english_name': 'Tamil'},
-            {'code': 'te', 'name': 'తెలుగు', 'native_name': 'తెలుగు', 'english_name': 'Telugu'},
-            {'code': 'bn', 'name': 'বাংলা', 'native_name': 'বাংলা', 'english_name': 'Bengali'},
-            {'code': 'ur', 'name': 'اردو', 'native_name': 'اردو', 'english_name': 'Urdu'},
-            {'code': 'ro', 'name': 'Română', 'native_name': 'Română', 'english_name': 'Romanian'},
-            {'code': 'hu', 'name': 'Magyar', 'native_name': 'Magyar', 'english_name': 'Hungarian'},
-            {'code': 'uk', 'name': 'Українська', 'native_name': 'Українська', 'english_name': 'Ukrainian'}
-        ]
+        import csv
         
-        return jsonify({'success': True, 'languages': courses})
+        # Get native language from query parameter, default to 'en'
+        native_lang = request.args.get('native_lang', 'en')
+        
+        # Read the CSV file to get the correct column order
+        courses = []
+        with open('localization_complete.csv', 'r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                if row.get('show_course') == 'Yes':
+                    courses.append({
+                        'code': row.get('code', ''),
+                        'native_name': row.get('native_name', ''),
+                        'english_name': row.get('english_name', '')
+                    })
+        
+        return jsonify({'courses': courses})
+        
+        # Get language columns (excluding KEY, DESCRIPTION)
+        language_columns = [col for col in df.columns if col not in ['KEY', 'DESCRIPTION']]
+        
+        # Get language names entries from CSV
+        language_entries = df[df['KEY'].str.startswith('language_names.')]
+        
+        # Get show_course entry to check which languages should be shown as courses
+        show_course_entry = df[df['KEY'] == 'show_course']
+        show_course_values = {}
+        if not show_course_entry.empty:
+            for col in language_columns:
+                show_course_values[col] = show_course_entry.iloc[0][col]
+        
+        languages = []
+        
+        # Process languages in CSV column order (which is now ordered by population)
+        for lang_code in language_columns:
+            # Check if this language should be shown as a course (show_course = "Yes")
+            should_show = show_course_values.get(lang_code, 'No') == 'Yes'
+            
+            if should_show:
+                # Get the display name from CSV-based localization in the native language
+                # Try to get the language name from the language_names entry
+                lang_entry = language_entries[language_entries['KEY'] == f'language_names.{lang_code}']
+                
+                display_name = None
+                if not lang_entry.empty and native_lang in language_columns:
+                    # Get the name in the native language from the corresponding column
+                    native_name = lang_entry.iloc[0][native_lang]
+                    if pd.notna(native_name) and str(native_name).strip() and str(native_name) != '#VALUE!':
+                        display_name = str(native_name).strip()
+                
+                # Fallback to English if native language not available
+                if not display_name and 'en' in language_columns and not lang_entry.empty:
+                    english_name = lang_entry.iloc[0]['en']
+                    if pd.notna(english_name) and str(english_name).strip() and str(english_name) != '#VALUE!':
+                        display_name = str(english_name).strip()
+                
+                # Final fallback to language code
+                if not display_name:
+                    display_name = lang_code.upper()
+                
+                # Get English name if available
+                english_name = None
+                if 'en' in language_columns and not lang_entry.empty:
+                    english_name = lang_entry.iloc[0]['en']
+                    if pd.notna(english_name) and str(english_name).strip() and str(english_name) != '#VALUE!':
+                        english_name = str(english_name).strip()
+                    else:
+                        english_name = lang_code.upper()
+                else:
+                    english_name = lang_code.upper()
+                
+                languages.append({
+                    'code': lang_code,
+                    'name': display_name,
+                    'english_name': english_name
+                })
+        
+        return jsonify({
+            'success': True,
+            'languages': languages,
+            'native_lang': native_lang
+        })
         
     except Exception as e:
         print(f"Error getting available courses: {e}")

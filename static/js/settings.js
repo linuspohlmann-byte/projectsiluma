@@ -210,7 +210,7 @@ class SettingsManager {
                     data.languages.forEach(lang => {
                         const option = document.createElement('option');
                         option.value = lang.code;
-                        option.textContent = lang.name;
+                        option.textContent = lang.native_name || lang.name;
                         nativeLangSelect.appendChild(option);
                     });
                 }

@@ -133,10 +133,10 @@ function ensureTargetLangOptions(){
                 langData.languages.forEach(lang => {
                   const o = document.createElement('option');
                   o.value = lang.code;
-                  o.textContent = `${lang.name} (${lang.code.toUpperCase()})`;
-                  o.setAttribute('aria-label', lang.name);
+                  o.textContent = `${lang.native_name || lang.name} (${lang.code.toUpperCase()})`;
+                  o.setAttribute('aria-label', lang.native_name || lang.name);
                   sel.appendChild(o);
-                  console.log(`🌍 Added course ${lang.code}: ${lang.name} (native_lang: ${currentNativeLang})`);
+                  console.log(`🌍 Added course ${lang.code}: ${lang.native_name || lang.name} (native_lang: ${currentNativeLang})`);
                 });
                 
                                             // No "Add Language" option needed - only fully translated languages are available
@@ -226,8 +226,8 @@ async function ensureNativeLangOptions(){
       for (const lang of result.languages) {
         const opt = document.createElement('option');
         opt.value = lang.code;
-        opt.textContent = `${lang.name} (${lang.code.toUpperCase()})`;
-        opt.setAttribute('aria-label', lang.name);
+        opt.textContent = `${lang.native_name || lang.name} (${lang.code.toUpperCase()})`;
+        opt.setAttribute('aria-label', lang.native_name || lang.name);
         sel.appendChild(opt);
       }
       
