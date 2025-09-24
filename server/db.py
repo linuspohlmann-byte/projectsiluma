@@ -1275,19 +1275,29 @@ def create_user_session(user_id: int, session_token: str, expires_at: str) -> in
             # Use direct PostgreSQL connection for better control
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(
-                'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
-                (user_id, session_token, expires_at, now)
-            )
-            result = cursor.fetchone()
-            session_id = result[0] if result else None
-            print(f"DEBUG: PostgreSQL session creation - result: {result}, session_id: {session_id}")
-            print(f"DEBUG: PostgreSQL session creation - result type: {type(result)}")
-            if result:
-                print(f"DEBUG: PostgreSQL session creation - result[0]: {result[0]}, type: {type(result[0])}")
-            conn.commit()
-            cursor.close()
-            conn.close()
+            try:
+                cursor.execute(
+                    'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
+                    (user_id, session_token, expires_at, now)
+                )
+                result = cursor.fetchone()
+                session_id = result[0] if result else None
+                print(f"DEBUG: PostgreSQL session creation - result: {result}, session_id: {session_id}")
+                print(f"DEBUG: PostgreSQL session creation - result type: {type(result)}")
+                if result:
+                    print(f"DEBUG: PostgreSQL session creation - result[0]: {result[0]}, type: {type(result[0])}")
+                
+                # Commit the transaction
+                conn.commit()
+                print(f"DEBUG: PostgreSQL commit successful")
+                
+            except Exception as e:
+                print(f"DEBUG: PostgreSQL session creation error: {str(e)}")
+                conn.rollback()
+                raise e
+            finally:
+                cursor.close()
+                conn.close()
         else:
             # Use ConnectionWrapper for SQLite
             conn = get_db()

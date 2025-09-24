@@ -62,7 +62,7 @@ def get_db_connection():
                 password=parsed.password,
                 cursor_factory=RealDictCursor  # This makes rows behave like dicts
             )
-            conn.autocommit = True
+            conn.autocommit = False  # Use explicit transactions for better control
             return conn
         except Exception as e:
             print(f"ERROR: Failed to connect to PostgreSQL: {e}")
