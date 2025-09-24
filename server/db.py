@@ -1264,16 +1264,18 @@ def update_user_last_login(user_id: int):
 
 def create_user_session(user_id: int, session_token: str, expires_at: str) -> int:
     """Create a new user session"""
-    from server.db_config import get_database_config
+    from server.db_config import get_database_config, get_db_connection
     
     config = get_database_config()
-    conn = get_db()
     
     try:
         now = datetime.now(UTC).isoformat()
         
         if config['type'] == 'postgresql':
-            cursor = conn.execute(
+            # Use direct PostgreSQL connection for better control
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
                 'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
                 (user_id, session_token, expires_at, now)
             )
@@ -1283,21 +1285,25 @@ def create_user_session(user_id: int, session_token: str, expires_at: str) -> in
             print(f"DEBUG: PostgreSQL session creation - result type: {type(result)}")
             if result:
                 print(f"DEBUG: PostgreSQL session creation - result[0]: {result[0]}, type: {type(result[0])}")
+            conn.commit()
+            cursor.close()
+            conn.close()
         else:
+            # Use ConnectionWrapper for SQLite
+            conn = get_db()
             cursor = conn.execute(
                 'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (?,?,?,?)',
                 (user_id, session_token, expires_at, now)
             )
             session_id = cursor.lastrowid
             print(f"DEBUG: SQLite session creation - session_id: {session_id}")
+            conn.commit()
+            conn.close()
             
-        conn.commit()
         return int(session_id) if session_id else 0
     except Exception as e:
         print(f"DEBUG: create_user_session error: {str(e)}")
         return 0
-    finally:
-        conn.close()
 
 def get_user_by_session(session_token: str):
     """Get user by session token"""
