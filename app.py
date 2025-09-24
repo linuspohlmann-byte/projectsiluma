@@ -4910,3 +4910,63 @@ def api_create_postgresql_tables():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/database-info', methods=['GET'])
+def api_database_info():
+    """Get database information and table list"""
+    try:
+        from server.db_config import get_database_config
+        config = get_database_config()
+        
+        conn = get_db()
+        cur = conn.cursor()
+        
+        if config['type'] == 'postgresql':
+            # Get table list
+            cur.execute("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                ORDER BY table_name;
+            """)
+            tables = [row[0] for row in cur.fetchall()]
+            
+            # Get user count
+            cur.execute("SELECT COUNT(*) FROM users")
+            user_count = cur.fetchone()[0]
+            
+            # Get session count
+            cur.execute("SELECT COUNT(*) FROM user_sessions")
+            session_count = cur.fetchone()[0]
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'database_type': 'postgresql',
+                'tables': tables,
+                'user_count': user_count,
+                'session_count': session_count,
+                'message': f'Found {len(tables)} tables in PostgreSQL database'
+            })
+            
+        else:
+            # SQLite info
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            tables = [row[0] for row in cur.fetchall()]
+            
+            cur.execute("SELECT COUNT(*) FROM users")
+            user_count = cur.fetchone()[0]
+            
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'database_type': 'sqlite',
+                'tables': tables,
+                'user_count': user_count,
+                'message': f'Found {len(tables)} tables in SQLite database'
+            })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
