@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-WSGI entry point for Strato hosting
-This file is required for Python hosting on Strato
+WSGI entry point for Railway hosting
 """
 
 import os
@@ -19,12 +18,13 @@ try:
     # Import the Flask app
     from app import app
     
-    # This is the WSGI application that Strato will use
+    # This is the WSGI application that Railway will use
     application = app
     
     # For local testing
     if __name__ == "__main__":
-        app.run(debug=False, host='0.0.0.0', port=5000)
+        port = int(os.environ.get('PORT', 5000))
+        app.run(debug=False, host='0.0.0.0', port=port)
         
 except Exception as e:
     # Log the error for debugging
