@@ -1134,7 +1134,14 @@ def create_user(username: str, email: str, password_hash: str) -> int:
                 (username, email, password_hash, now)
             )
             result = cursor.fetchone()
-            user_id = result[0] if result else None
+            # Handle both tuple and dict-like results (RealDictCursor)
+            if result:
+                if hasattr(result, 'keys'):  # RealDictCursor returns dict-like object
+                    user_id = result['id']
+                else:  # Regular cursor returns tuple
+                    user_id = result[0]
+            else:
+                user_id = None
         else:
             # SQLite has updated_at column
             cursor = conn.execute(
@@ -1276,16 +1283,42 @@ def create_user_session(user_id: int, session_token: str, expires_at: str) -> in
             conn = get_db_connection()
             cursor = conn.cursor()
             try:
+                # First, let's check if the table exists and has the right structure
+                cursor.execute("""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'user_sessions' 
+                    ORDER BY ordinal_position
+                """)
+                columns = cursor.fetchall()
+                print(f"DEBUG: user_sessions table columns: {columns}")
+                
                 cursor.execute(
                     'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
                     (user_id, session_token, expires_at, now)
                 )
                 result = cursor.fetchone()
-                session_id = result[0] if result else None
-                print(f"DEBUG: PostgreSQL session creation - result: {result}, session_id: {session_id}")
+                print(f"DEBUG: PostgreSQL session creation - raw result: {result}")
                 print(f"DEBUG: PostgreSQL session creation - result type: {type(result)}")
-                if result:
-                    print(f"DEBUG: PostgreSQL session creation - result[0]: {result[0]}, type: {type(result[0])}")
+                
+                if result is None:
+                    print("ERROR: PostgreSQL session creation - result is None!")
+                    raise Exception("INSERT statement returned no result")
+                
+                # Handle both tuple and dict-like results (RealDictCursor)
+                if hasattr(result, 'keys'):  # RealDictCursor returns dict-like object
+                    session_id = result['id']
+                    print(f"DEBUG: PostgreSQL session creation - session_id from dict: {session_id}, type: {type(session_id)}")
+                else:  # Regular cursor returns tuple
+                    if len(result) == 0:
+                        print("ERROR: PostgreSQL session creation - result is empty!")
+                        raise Exception("INSERT statement returned empty result")
+                    session_id = result[0]
+                    print(f"DEBUG: PostgreSQL session creation - session_id from tuple: {session_id}, type: {type(session_id)}")
+                
+                if session_id is None:
+                    print("ERROR: PostgreSQL session creation - session_id is None!")
+                    raise Exception("INSERT statement returned None for id")
                 
                 # Commit the transaction
                 conn.commit()
