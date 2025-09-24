@@ -304,8 +304,7 @@ DB_PATH  = os.path.join(APP_ROOT, 'polo.db')
 
 def get_db():
     """Get database connection - supports both SQLite and PostgreSQL"""
-    conn = get_db_connection()
-    return ConnectionWrapper(conn)
+    return get_db_connection()
 
 def execute_sql(conn, query, params=None):
     """Execute SQL query with appropriate parameter style"""
