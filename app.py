@@ -4589,3 +4589,172 @@ def api_migrate_to_postgresql():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/create-postgresql-tables', methods=['POST'])
+def api_create_postgresql_tables():
+    """Create PostgreSQL tables manually"""
+    try:
+        from server.db_config import get_database_config
+        config = get_database_config()
+        
+        if config['type'] != 'postgresql':
+            return jsonify({
+                'success': False, 
+                'error': 'DATABASE_URL not set or not PostgreSQL'
+            }), 400
+        
+        # Create PostgreSQL tables manually
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Users table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                settings TEXT,
+                native_language VARCHAR(10) DEFAULT 'en'
+            );
+        """)
+        
+        # User sessions table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                session_token VARCHAR(255) UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            );
+        """)
+        
+        # User progress table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_progress (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                language VARCHAR(10) NOT NULL,
+                native_language VARCHAR(10) NOT NULL,
+                level INTEGER NOT NULL,
+                status VARCHAR(50) DEFAULT 'not_started',
+                score REAL,
+                completed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                UNIQUE(user_id, language, native_language, level)
+            );
+        """)
+        
+        # User word familiarity table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_word_familiarity (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                word_id INTEGER NOT NULL,
+                familiarity INTEGER DEFAULT 0,
+                seen_count INTEGER DEFAULT 0,
+                correct_count INTEGER DEFAULT 0,
+                last_seen TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                UNIQUE(user_id, word_id)
+            );
+        """)
+        
+        # Words table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS words (
+                id SERIAL PRIMARY KEY,
+                word VARCHAR(255) NOT NULL,
+                language VARCHAR(10),
+                native_language VARCHAR(10),
+                translation TEXT,
+                example TEXT,
+                info TEXT,
+                seen_count INTEGER DEFAULT 0,
+                correct_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                familiarity INTEGER DEFAULT 0,
+                lemma VARCHAR(255), 
+                pos VARCHAR(50), 
+                ipa VARCHAR(255), 
+                audio_url TEXT,
+                gender VARCHAR(10), 
+                plural VARCHAR(255), 
+                conj TEXT, 
+                comp TEXT, 
+                synonyms TEXT,
+                collocations TEXT, 
+                example_native TEXT, 
+                cefr VARCHAR(10), 
+                freq_rank INTEGER,
+                tags TEXT, 
+                note TEXT
+            );
+        """)
+        
+        # Level runs table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS level_runs (
+                id SERIAL PRIMARY KEY,
+                level INTEGER,
+                items TEXT,
+                user_translations TEXT,
+                score REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                topic VARCHAR(100)
+            );
+        """)
+        
+        # Practice runs table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS practice_runs (
+                id SERIAL PRIMARY KEY,
+                level INTEGER,
+                words TEXT,
+                todo TEXT,
+                seen_count INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Localization table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS localization (
+                id SERIAL PRIMARY KEY,
+                reference_key VARCHAR(255) UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        conn.close()
+        
+        # Create test user
+        from server.services.auth import register_user
+        from server.db import get_user_by_username
+        
+        existing_user = get_user_by_username('testuser')
+        if not existing_user:
+            result = register_user('testuser', 'test@example.com', 'password123')
+            if not result['success']:
+                return jsonify({'success': False, 'error': 'Failed to create test user'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': 'PostgreSQL tables created successfully',
+            'database_type': 'postgresql'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
