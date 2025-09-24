@@ -19,10 +19,10 @@ from server.services.auth import (
     register_user, login_user, get_current_user, logout_user, require_auth
 )
 from server.middleware import inject_user_context, get_user_context, require_auth
-from server.services.user_data_fixed import (
+from server.services.user_data import (
     update_user_level_progress, get_user_level_progress, 
     load_user_settings, save_user_settings, load_user_stats, save_user_stats,
-    migrate_user_data_structure
+    sync_user_data_from_db, check_and_migrate_user_data
 )
 from server.services.custom_levels import (
     create_custom_level_group, generate_custom_levels, get_custom_level_groups,
@@ -411,7 +411,7 @@ def api_user_migrate():
         language = request.json.get('language', 'en') if request.is_json else 'en'
         user_id = user['id']
         
-        success = migrate_user_data_structure(user_id)
+        success = check_and_migrate_user_data(user_id, language)
         if success:
             return jsonify({'success': True, 'message': f'Migration completed for language {language}'})
         else:
@@ -3489,7 +3489,7 @@ def api_sync_user_data():
             return jsonify({'success': False, 'error': 'authentication required'}), 401
         
         # Sync user data
-        migrate_user_data_structure(user_id)
+        sync_user_data_from_db(user_id)
         
         return jsonify({'success': True, 'message': 'User data synchronized successfully'})
         
@@ -3762,7 +3762,7 @@ def api_levels_summary_fs():
     if user_id:
         try:
             # Check and migrate global data to user data if needed
-            migrate_user_data_structure(user_id)
+            check_and_migrate_user_data(user_id, lang)
             
             from server.db import get_user_progress, get_user_familiarity_counts
             from server.db_multi_user import get_user_native_language
@@ -4232,7 +4232,7 @@ def api_import_excel():
         # Save uploaded file temporarily
         import tempfile
         import os
-        import csv
+        import pandas as pd
         
         # Create temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
@@ -4294,47 +4294,112 @@ def api_delete_localization_entry(entry_id):
 def api_get_available_languages():
     """Get all available languages with their native names in CSV order"""
     try:
-        # Simple hardcoded list for now to get the app working
-        languages = [
-            {'code': 'en', 'native_name': 'English', 'english_name': 'English'},
-            {'code': 'de', 'native_name': 'Deutsch', 'english_name': 'German'},
-            {'code': 'fr', 'native_name': 'Français', 'english_name': 'French'},
-            {'code': 'es', 'native_name': 'Español', 'english_name': 'Spanish'},
-            {'code': 'it', 'native_name': 'Italiano', 'english_name': 'Italian'},
-            {'code': 'pt', 'native_name': 'Português', 'english_name': 'Portuguese'},
-            {'code': 'ru', 'native_name': 'Русский', 'english_name': 'Russian'},
-            {'code': 'ja', 'native_name': '日本語', 'english_name': 'Japanese'},
-            {'code': 'ko', 'native_name': '한국어', 'english_name': 'Korean'},
-            {'code': 'zh', 'native_name': '中文', 'english_name': 'Chinese'},
-            {'code': 'ar', 'native_name': 'العربية', 'english_name': 'Arabic'},
-            {'code': 'hi', 'native_name': 'हिन्दी', 'english_name': 'Hindi'},
-            {'code': 'tr', 'native_name': 'Türkçe', 'english_name': 'Turkish'},
-            {'code': 'pl', 'native_name': 'Polski', 'english_name': 'Polish'},
-            {'code': 'nl', 'native_name': 'Nederlands', 'english_name': 'Dutch'},
-            {'code': 'sv', 'native_name': 'Svenska', 'english_name': 'Swedish'},
-            {'code': 'da', 'native_name': 'Dansk', 'english_name': 'Danish'},
-            {'code': 'no', 'native_name': 'Norsk', 'english_name': 'Norwegian'},
-            {'code': 'fi', 'native_name': 'Suomi', 'english_name': 'Finnish'},
-            {'code': 'is', 'native_name': 'Íslenska', 'english_name': 'Icelandic'},
-            {'code': 'ka', 'native_name': 'ქართული', 'english_name': 'Georgian'},
-            {'code': 'sr', 'native_name': 'Српски', 'english_name': 'Serbian'},
-            {'code': 'sw', 'native_name': 'Kiswahili', 'english_name': 'Swahili'},
-            {'code': 'fa', 'native_name': 'فارسی', 'english_name': 'Persian'},
-            {'code': 'th', 'native_name': 'ไทย', 'english_name': 'Thai'},
-            {'code': 'vi', 'native_name': 'Tiếng Việt', 'english_name': 'Vietnamese'},
-            {'code': 'id', 'native_name': 'Bahasa Indonesia', 'english_name': 'Indonesian'},
-            {'code': 'mr', 'native_name': 'मराठी', 'english_name': 'Marathi'},
-            {'code': 'gu', 'native_name': 'ગુજરાતી', 'english_name': 'Gujarati'},
-            {'code': 'ta', 'native_name': 'தமிழ்', 'english_name': 'Tamil'},
-            {'code': 'te', 'native_name': 'తెలుగు', 'english_name': 'Telugu'},
-            {'code': 'bn', 'native_name': 'বাংলা', 'english_name': 'Bengali'},
-            {'code': 'ur', 'native_name': 'اردو', 'english_name': 'Urdu'},
-            {'code': 'ro', 'native_name': 'Română', 'english_name': 'Romanian'},
-            {'code': 'hu', 'native_name': 'Magyar', 'english_name': 'Hungarian'},
-            {'code': 'uk', 'native_name': 'Українська', 'english_name': 'Ukrainian'}
-        ]
+        import pandas as pd
         
-        return jsonify({'languages': languages})
+        # Read the CSV file to get the correct column order
+        df = pd.read_csv('localization_complete.csv', on_bad_lines='skip')
+        
+        # Get language columns (excluding KEY, DESCRIPTION)
+        language_columns = [col for col in df.columns if col not in ['KEY', 'DESCRIPTION']]
+        
+        # Get language names entries from CSV
+        language_entries = df[df['KEY'].str.startswith('language_names.')]
+        
+        # Get non-language entries (actual UI translations)
+        non_lang_entries = df[~df['KEY'].str.startswith('language_names.')]
+        
+        # Get show_language entry to check which languages should be shown
+        show_language_entry = df[df['KEY'] == 'show_language']
+        show_language_values = {}
+        if not show_language_entry.empty:
+            for col in language_columns:
+                show_language_values[col] = show_language_entry.iloc[0][col]
+        
+        # Complete ISO 639-1 language mapping (database column -> ISO code)
+        lang_mapping = {
+            'afar': 'aa', 'abkhazian': 'ab', 'avestan': 'ae', 'afrikaans': 'af', 'akan': 'ak',
+            'amharic': 'am', 'aragonese': 'an', 'arabic': 'ar', 'assamese': 'as', 'avar': 'av',
+            'aymara': 'ay', 'azerbaijani': 'az', 'bashkir': 'ba', 'belarusian': 'be', 'bulgarian': 'bg',
+            'bihari': 'bh', 'bislama': 'bi', 'bambara': 'bm', 'bengali': 'bn', 'tibetan': 'bo',
+            'breton': 'br', 'bosnian': 'bs', 'catalan': 'ca', 'chechen': 'ce', 'chamorro': 'ch',
+            'corsican': 'co', 'cree': 'cr', 'czech': 'cs', 'old_church_slavonic': 'cu', 'chuvash': 'cv',
+            'welsh': 'cy', 'danish': 'da', 'german': 'de', 'dhivehi': 'dv', 'dzongkha': 'dz',
+            'ewe': 'ee', 'greek': 'el', 'english': 'en', 'esperanto': 'eo', 'spanish': 'es',
+            'estonian': 'et', 'basque': 'eu', 'persian': 'fa', 'fulfulde': 'ff', 'finnish': 'fi',
+            'fijian': 'fj', 'faroese': 'fo', 'french': 'fr', 'western_frisian': 'fy', 'irish': 'ga',
+            'scottish_gaelic': 'gd', 'galician': 'gl', 'guarani': 'gn', 'gujarati': 'gu', 'manx': 'gv',
+            'hausa': 'ha', 'hebrew': 'he', 'hindi': 'hi', 'hiri_motu': 'ho', 'croatian': 'hr',
+            'haitian_creole': 'ht', 'hungarian': 'hu', 'armenian': 'hy', 'herero': 'hz', 'interlingua': 'ia',
+            'indonesian': 'id', 'interlingue': 'ie', 'igbo': 'ig', 'nuosu': 'ii', 'inupiaq': 'ik',
+            'ido': 'io', 'icelandic': 'is', 'italian': 'it', 'inuktitut': 'iu', 'japanese': 'ja',
+            'javanese': 'jv', 'georgian': 'ka', 'kongo': 'kg', 'kikuyu': 'ki', 'kwanyama': 'kj',
+            'kazakh': 'kk', 'kalaallisut': 'kl', 'khmer': 'km', 'kannada': 'kn', 'korean': 'ko',
+            'kanuri': 'kr', 'kashmiri': 'ks', 'kurdish': 'ku', 'komi': 'kv', 'cornish': 'kw',
+            'kyrgyz': 'ky', 'latin': 'la', 'luxembourgish': 'lb', 'ganda': 'lg', 'limburgish': 'li',
+            'lingala': 'ln', 'lao': 'lo', 'lithuanian': 'lt', 'luba_katanga': 'lu', 'latvian': 'lv',
+            'malagasy': 'mg', 'marshallese': 'mh', 'maori': 'mi', 'macedonian': 'mk', 'malayalam': 'ml',
+            'mongolian': 'mn', 'marathi': 'mr', 'malay': 'ms', 'maltese': 'mt', 'burmese': 'my',
+            'nauru': 'na', 'norwegian_bokmal': 'nb', 'northern_ndebele': 'nd', 'nepali': 'ne', 'ndonga': 'ng',
+            'dutch': 'nl', 'norwegian_nynorsk': 'nn', 'norwegian': 'no', 'southern_ndebele': 'nr', 'navajo': 'nv',
+            'chichewa': 'ny', 'occitan': 'oc', 'ojibwa': 'oj', 'oromo': 'om', 'oriya': 'or', 'ossetian': 'os',
+            'punjabi': 'pa', 'pali': 'pi', 'polish': 'pl', 'pashto': 'ps', 'portuguese': 'pt',
+            'quechua': 'qu', 'romansh': 'rm', 'kirundi': 'rn', 'romanian': 'ro', 'russian': 'ru',
+            'kinyarwanda': 'rw', 'sanskrit': 'sa', 'sardinian': 'sc', 'sindhi': 'sd', 'northern_sami': 'se',
+            'sango': 'sg', 'sinhala': 'si', 'slovak': 'sk', 'slovene': 'sl', 'samoan': 'sm',
+            'shona': 'sn', 'somali': 'so', 'albanian': 'sq', 'serbian': 'sr', 'swati': 'ss',
+            'southern_sotho': 'st', 'sundanese': 'su', 'swedish': 'sv', 'swahili': 'sw', 'tamil': 'ta',
+            'telugu': 'te', 'tajik': 'tg', 'thai': 'th', 'tigrinya': 'ti', 'turkmen': 'tk',
+            'tagalog': 'tl', 'tswana': 'tn', 'tonga': 'to', 'turkish': 'tr', 'tsonga': 'ts',
+            'tatar': 'tt', 'twi': 'tw', 'tahitian': 'ty', 'uighur': 'ug', 'ukrainian': 'uk',
+            'urdu': 'ur', 'uzbek': 'uz', 'venda': 've', 'vietnamese': 'vi', 'volapuk': 'vo',
+            'walloon': 'wa', 'wolof': 'wo', 'xhosa': 'xh', 'yiddish': 'yi', 'yoruba': 'yo',
+            'zhuang': 'za', 'chinese': 'zh', 'zulu': 'zu'
+        }
+        
+        languages = []
+        
+        # Process languages in CSV column order (which is now ordered by population)
+        for lang_code in language_columns:
+            # Check if this language should be shown (show_language = "Yes")
+            should_show = show_language_values.get(lang_code, 'No') == 'Yes'
+            
+            if should_show:
+                # Get the display name from CSV-based localization
+                # Try to get the language name from the language_names entry
+                lang_entry = language_entries[language_entries['KEY'] == f'language_names.{lang_code}']
+                
+                display_name = None
+                if not lang_entry.empty:
+                    # Get the native name from the corresponding column
+                    native_name = lang_entry.iloc[0][lang_code]
+                    if pd.notna(native_name) and str(native_name).strip() and str(native_name) != '#VALUE!':
+                        display_name = str(native_name).strip()
+                
+                # Fallback to language code if no display name found
+                if not display_name:
+                    display_name = lang_code.upper()
+                
+                # Get English name if available
+                english_name = None
+                if 'en' in language_columns and not lang_entry.empty:
+                    english_name = lang_entry.iloc[0]['en']
+                    if pd.notna(english_name) and str(english_name).strip() and str(english_name) != '#VALUE!':
+                        english_name = str(english_name).strip()
+                    else:
+                        english_name = lang_code.upper()
+                else:
+                    english_name = lang_code.upper()
+                
+                languages.append({
+                    'code': lang_code,
+                    'name': display_name,
+                    'english_name': english_name
+                })
+        
+        return jsonify({
+            'success': True,
+            'languages': languages
+        })
         
     except Exception as e:
         print(f"Error getting available languages: {e}")
@@ -4345,7 +4410,10 @@ def api_get_available_languages():
 def api_get_available_courses():
     """Get all available courses (languages with show_course=Yes) with names in the specified native language"""
     try:
-        # Simple hardcoded list for now to get the app working
+        # Get native language from query parameter, default to 'en'
+        native_lang = request.args.get('native_lang', 'en')
+        
+        # Simple hardcoded list for now to get the app working without pandas dependency
         courses = [
             {'code': 'en', 'name': 'English', 'english_name': 'English'},
             {'code': 'de', 'name': 'Deutsch', 'english_name': 'German'},
@@ -4385,7 +4453,11 @@ def api_get_available_courses():
             {'code': 'uk', 'name': 'Українська', 'english_name': 'Ukrainian'}
         ]
         
-        return jsonify({'success': True, 'languages': courses})
+        return jsonify({
+            'success': True,
+            'languages': courses,
+            'native_lang': native_lang
+        })
         
     except Exception as e:
         print(f"Error getting available courses: {e}")
@@ -4439,7 +4511,7 @@ def periodic_sync():
         
         for user in users:
             try:
-                migrate_user_data_structure(user['id'])
+                sync_user_data_from_db(user['id'])
             except Exception as e:
                 print(f"Error syncing user {user['id']}: {e}")
                 
