@@ -1037,7 +1037,12 @@ def get_user_by_username(username: str):
             )
             row = cur.fetchone()
             cur.close()
-            return row
+            
+            # Convert PostgreSQL tuple to dict-like object
+            if row:
+                columns = ['id', 'username', 'email', 'password_hash', 'created_at', 'last_login', 'is_active', 'settings']
+                return dict(zip(columns, row))
+            return None
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -1065,7 +1070,12 @@ def get_user_by_email(email: str):
             )
             row = cur.fetchone()
             cur.close()
-            return row
+            
+            # Convert PostgreSQL tuple to dict-like object
+            if row:
+                columns = ['id', 'username', 'email', 'password_hash', 'created_at', 'last_login', 'is_active', 'settings']
+                return dict(zip(columns, row))
+            return None
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -1093,7 +1103,12 @@ def get_user_by_id(user_id: int):
             )
             row = cur.fetchone()
             cur.close()
-            return row
+            
+            # Convert PostgreSQL tuple to dict-like object
+            if row:
+                columns = ['id', 'username', 'email', 'password_hash', 'created_at', 'last_login', 'is_active', 'settings']
+                return dict(zip(columns, row))
+            return None
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -1165,7 +1180,12 @@ def get_user_by_session(session_token: str):
             ''', (session_token, datetime.now(UTC).isoformat()))
             row = cur.fetchone()
             cur.close()
-            return row
+            
+            # Convert PostgreSQL tuple to dict-like object
+            if row:
+                columns = ['id', 'username', 'email', 'password_hash', 'created_at', 'last_login', 'is_active', 'settings']
+                return dict(zip(columns, row))
+            return None
         else:
             # SQLite has updated_at column
             row = conn.execute('''
