@@ -1334,9 +1334,19 @@ def delete_user_session(session_token: str):
 
 def cleanup_expired_sessions():
     """Clean up expired sessions"""
-    conn = get_db(); cur = conn.cursor()
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
+    conn = get_db()
+    
     try:
-        cur.execute('DELETE FROM user_sessions WHERE expires_at <= ?', (datetime.now(UTC).isoformat(),))
+        now = datetime.now(UTC).isoformat()
+        
+        if config['type'] == 'postgresql':
+            cursor = conn.execute('DELETE FROM user_sessions WHERE expires_at <= %s', (now,))
+        else:
+            cursor = conn.execute('DELETE FROM user_sessions WHERE expires_at <= ?', (now,))
+            
         conn.commit()
     finally:
         conn.close()
