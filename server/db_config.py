@@ -50,7 +50,8 @@ def get_db_connection():
                 port=parsed.port,
                 database=parsed.path[1:],  # Remove leading slash
                 user=parsed.username,
-                password=parsed.password
+                password=parsed.password,
+                cursor_factory=RealDictCursor  # This makes rows behave like dicts
             )
             conn.autocommit = True
             return conn
