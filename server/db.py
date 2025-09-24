@@ -262,13 +262,42 @@ import os, sqlite3, json
 from datetime import datetime, UTC
 from .db_config import get_db_connection, execute_query, get_database_config
 
+# Wrapper to maintain compatibility with old conn.execute() calls
+class ConnectionWrapper:
+    def __init__(self, conn):
+        self.conn = conn
+        self.config = get_database_config()
+    
+    def execute(self, query, params=None):
+        """Wrapper for conn.execute() to maintain compatibility"""
+        if self.config['type'] == 'postgresql':
+            # For PostgreSQL, use execute_query
+            cur = execute_query(self.conn, query, params)
+            return cur
+        else:
+            # For SQLite, use original conn.execute
+            return self.conn.execute(query, params)
+    
+    def commit(self):
+        return self.conn.commit()
+    
+    def close(self):
+        return self.conn.close()
+    
+    def cursor(self):
+        return self.conn.cursor()
+    
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
 # Legacy support - will be removed after migration
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH  = os.path.join(APP_ROOT, 'polo.db')
 
 def get_db():
     """Get database connection - supports both SQLite and PostgreSQL"""
-    return get_db_connection()
+    conn = get_db_connection()
+    return ConnectionWrapper(conn)
 
 def execute_sql(conn, query, params=None):
     """Execute SQL query with appropriate parameter style"""
@@ -703,9 +732,8 @@ def get_all_localization_entries():
     """Get all localization entries"""
     conn = get_db()
     try:
-        rows = conn.execute(
-            'SELECT * FROM localization ORDER BY reference_key'
-        ).fetchall()
+        cur = execute_query(conn, 'SELECT * FROM localization ORDER BY reference_key')
+        rows = cur.fetchall()
         return rows
     finally:
         conn.close()
