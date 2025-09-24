@@ -1063,15 +1063,33 @@ def create_user_session(user_id: int, session_token: str, expires_at: str) -> in
 
 def get_user_by_session(session_token: str):
     """Get user by session token"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
+    
     try:
-        row = conn.execute('''
-            SELECT u.id, u.username, u.email, u.password_hash, u.created_at, u.updated_at, u.last_login, u.is_active, u.settings
-            FROM users u
-            JOIN user_sessions s ON u.id = s.user_id
-            WHERE s.session_token = ? AND s.expires_at > ? AND u.is_active = 1
-        ''', (session_token, datetime.now(UTC).isoformat())).fetchone()
-        return row
+        if config['type'] == 'postgresql':
+            # PostgreSQL doesn't have updated_at column in users table
+            cur = conn.cursor()
+            cur.execute('''
+                SELECT u.id, u.username, u.email, u.password_hash, u.created_at, u.last_login, u.is_active, u.settings
+                FROM users u
+                JOIN user_sessions s ON u.id = s.user_id
+                WHERE s.session_token = %s AND s.expires_at > %s AND u.is_active = TRUE
+            ''', (session_token, datetime.now(UTC).isoformat()))
+            row = cur.fetchone()
+            cur.close()
+            return row
+        else:
+            # SQLite has updated_at column
+            row = conn.execute('''
+                SELECT u.id, u.username, u.email, u.password_hash, u.created_at, u.updated_at, u.last_login, u.is_active, u.settings
+                FROM users u
+                JOIN user_sessions s ON u.id = s.user_id
+                WHERE s.session_token = ? AND s.expires_at > ? AND u.is_active = 1
+            ''', (session_token, datetime.now(UTC).isoformat())).fetchone()
+            return row
     finally:
         conn.close()
 
