@@ -1133,7 +1133,8 @@ def create_user(username: str, email: str, password_hash: str) -> int:
                 'INSERT INTO users (username, email, password_hash, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
                 (username, email, password_hash, now)
             )
-            user_id = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            user_id = result[0] if result else None
         else:
             # SQLite has updated_at column
             cursor = conn.execute(

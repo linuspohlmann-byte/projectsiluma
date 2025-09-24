@@ -126,17 +126,37 @@ def login_user(username_or_email: str, password: str) -> Dict[str, Any]:
     if not user:
         return {'success': False, 'error': 'Invalid username/email or password'}
     
-    # Verify password
-    if not verify_password(password, user['password_hash']):
+    # Get password hash - handle both dict and Row objects
+    if isinstance(user, dict):
+        password_hash = user.get('password_hash')
+    elif hasattr(user, 'keys'):  # SQLite Row object
+        password_hash = user['password_hash']
+    else:
+        password_hash = getattr(user, 'password_hash', None)
+    
+    if not password_hash:
+        return {'success': False, 'error': 'User data corrupted - no password hash'}
+    
+    if not verify_password(password, password_hash):
         return {'success': False, 'error': 'Invalid username/email or password'}
     
     try:
-        # Create session
-        session_token = create_session(user['id'])
+        # Create session - handle both dict and Row objects
+        if isinstance(user, dict):
+            user_id = user.get('id')
+        elif hasattr(user, 'keys'):  # SQLite Row object
+            user_id = user['id']
+        else:
+            user_id = getattr(user, 'id', None)
+            
+        if not user_id:
+            return {'success': False, 'error': 'User data corrupted - no user ID'}
+            
+        session_token = create_session(user_id)
         
         return {
             'success': True,
-            'user_id': user['id'],
+            'user_id': user_id,
             'session_token': session_token,
             'message': 'Login successful'
         }
