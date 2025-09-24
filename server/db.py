@@ -260,170 +260,294 @@ def pick_words_by_run(run_id: int, limit: int = 10) -> list[str]:
     return out
 import os, sqlite3, json
 from datetime import datetime, UTC
+from .db_config import get_db_connection, execute_query, get_database_config
 
+# Legacy support - will be removed after migration
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH  = os.path.join(APP_ROOT, 'polo.db')
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get database connection - supports both SQLite and PostgreSQL"""
+    return get_db_connection()
+
+def execute_sql(conn, query, params=None):
+    """Execute SQL query with appropriate parameter style"""
+    return execute_query(conn, query, params)
 
 def init_db():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS words (
-      id INTEGER PRIMARY KEY,
-      word TEXT NOT NULL,
-      language TEXT,
-      native_language TEXT,
-      translation TEXT,
-      example TEXT,
-      info TEXT,
-      seen_count INTEGER DEFAULT 0,
-      correct_count INTEGER DEFAULT 0,
-      created_at TEXT,
-      updated_at TEXT,
-      familiarity INTEGER DEFAULT 0,
-      lemma TEXT, pos TEXT, ipa TEXT, audio_url TEXT,
-      gender TEXT, plural TEXT, conj TEXT, comp TEXT, synonyms TEXT,
-      collocations TEXT, example_native TEXT, cefr TEXT, freq_rank INTEGER,
-      tags TEXT, note TEXT
-    );
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS level_runs (
-      id INTEGER PRIMARY KEY,
-      level INTEGER,
-      items TEXT,
-      user_translations TEXT,
-      score REAL,
-      created_at TEXT,
-      topic TEXT
-    );
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS practice_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      level INTEGER,
-      words TEXT,
-      todo  TEXT,
-      seen_count INTEGER,
-      created_at TEXT
-    );
-    """)
+    """Initialize database tables - supports both SQLite and PostgreSQL"""
+    config = get_database_config()
+    conn = get_db()
     
-    # Create localization table
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS localization (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      reference_key TEXT UNIQUE NOT NULL,
-      description TEXT,
-      german TEXT,
-      english TEXT,
-      french TEXT,
-      italian TEXT,
-      spanish TEXT,
-      portuguese TEXT,
-      russian TEXT,
-      turkish TEXT,
-      georgian TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    """)
+    if config['type'] == 'postgresql':
+        # PostgreSQL table creation
+        cur = conn.cursor()
+        
+        # Users table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                settings TEXT,
+                native_language VARCHAR(10) DEFAULT 'en'
+            );
+        """)
+        
+        # User sessions table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                session_token VARCHAR(255) UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            );
+        """)
+        
+        # User progress table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_progress (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                language VARCHAR(10) NOT NULL,
+                native_language VARCHAR(10) NOT NULL,
+                level INTEGER NOT NULL,
+                status VARCHAR(50) DEFAULT 'not_started',
+                score REAL,
+                completed_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                UNIQUE(user_id, language, native_language, level)
+            );
+        """)
+        
+        # User word familiarity table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_word_familiarity (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                word_id INTEGER NOT NULL,
+                familiarity INTEGER DEFAULT 0,
+                seen_count INTEGER DEFAULT 0,
+                correct_count INTEGER DEFAULT 0,
+                last_seen TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                UNIQUE(user_id, word_id)
+            );
+        """)
+        
+        # Words table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS words (
+                id SERIAL PRIMARY KEY,
+                word VARCHAR(255) NOT NULL,
+                language VARCHAR(10),
+                native_language VARCHAR(10),
+                translation TEXT,
+                example TEXT,
+                info TEXT,
+                seen_count INTEGER DEFAULT 0,
+                correct_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                familiarity INTEGER DEFAULT 0,
+                lemma VARCHAR(255), 
+                pos VARCHAR(50), 
+                ipa VARCHAR(255), 
+                audio_url TEXT,
+                gender VARCHAR(10), 
+                plural VARCHAR(255), 
+                conj TEXT, 
+                comp TEXT, 
+                synonyms TEXT,
+                collocations TEXT, 
+                example_native TEXT, 
+                cefr VARCHAR(10), 
+                freq_rank INTEGER,
+                tags TEXT, 
+                note TEXT
+            );
+        """)
+        
+        # Level runs table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS level_runs (
+                id SERIAL PRIMARY KEY,
+                level INTEGER,
+                items TEXT,
+                user_translations TEXT,
+                score REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                topic VARCHAR(100)
+            );
+        """)
+        
+        # Practice runs table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS practice_runs (
+                id SERIAL PRIMARY KEY,
+                level INTEGER,
+                words TEXT,
+                todo TEXT,
+                seen_count INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Localization table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS localization (
+                id SERIAL PRIMARY KEY,
+                reference_key VARCHAR(255) UNIQUE NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+    else:
+        # SQLite table creation (legacy)
+        cur = conn.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS words (
+          id INTEGER PRIMARY KEY,
+          word TEXT NOT NULL,
+          language TEXT,
+          native_language TEXT,
+          translation TEXT,
+          example TEXT,
+          info TEXT,
+          seen_count INTEGER DEFAULT 0,
+          correct_count INTEGER DEFAULT 0,
+          created_at TEXT,
+          updated_at TEXT,
+          familiarity INTEGER DEFAULT 0,
+          lemma TEXT, pos TEXT, ipa TEXT, audio_url TEXT,
+          gender TEXT, plural TEXT, conj TEXT, comp TEXT, synonyms TEXT,
+          collocations TEXT, example_native TEXT, cefr TEXT, freq_rank INTEGER,
+          tags TEXT, note TEXT
+        );
+        """)
+        
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS level_runs (
+          id INTEGER PRIMARY KEY,
+          level INTEGER,
+          items TEXT,
+          user_translations TEXT,
+          score REAL,
+          created_at TEXT,
+          topic TEXT
+        );
+        """)
+        
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS practice_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          level INTEGER,
+          words TEXT,
+          todo TEXT,
+          seen_count INTEGER,
+          created_at TEXT
+        );
+        """)
+        
+        # Create localization table
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS localization (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          reference_key TEXT UNIQUE NOT NULL,
+          description TEXT,
+          german TEXT,
+          english TEXT,
+          french TEXT,
+          italian TEXT,
+          spanish TEXT,
+          portuguese TEXT,
+          russian TEXT,
+          turkish TEXT,
+          georgian TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        """)
+        
+        # Create custom level tables
+        create_custom_level_groups_table()
+        create_custom_levels_table()
+        
+        # User system tables
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT UNIQUE NOT NULL,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_login TEXT,
+          is_active BOOLEAN DEFAULT 1,
+          settings TEXT,
+          native_language TEXT DEFAULT 'en'
+        );
+        """)
+        
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_progress (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          language TEXT NOT NULL,
+          native_language TEXT NOT NULL,
+          level INTEGER NOT NULL,
+          status TEXT DEFAULT 'not_started',
+          score REAL,
+          completed_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          UNIQUE(user_id, language, native_language, level)
+        );
+        """)
+        
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_word_familiarity (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          word_id INTEGER NOT NULL,
+          familiarity INTEGER DEFAULT 0,
+          seen_count INTEGER DEFAULT 0,
+          correct_count INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
+          UNIQUE(user_id, word_id)
+        );
+        """)
+        
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          session_token TEXT UNIQUE NOT NULL,
+          created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        );
+        """)
+        
+        conn.commit()
     
-    # Create custom level tables
-    create_custom_level_groups_table()
-    create_custom_levels_table()
-    
-    # User system tables
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      last_login TEXT,
-      is_active BOOLEAN DEFAULT 1,
-      settings TEXT
-    );
-    """)
-    
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS user_progress (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      language TEXT NOT NULL,
-      native_language TEXT NOT NULL,
-      level INTEGER NOT NULL,
-      status TEXT DEFAULT 'not_started',
-      score REAL,
-      completed_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-      UNIQUE(user_id, language, native_language, level)
-    );
-    """)
-    
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS user_word_familiarity (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      word_id INTEGER NOT NULL,
-      familiarity INTEGER DEFAULT 0,
-      seen_count INTEGER DEFAULT 0,
-      correct_count INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-      FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE,
-      UNIQUE(user_id, word_id)
-    );
-    """)
-    
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS user_level_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      run_id INTEGER,
-      level INTEGER NOT NULL,
-      language TEXT NOT NULL,
-      items TEXT,
-      user_translations TEXT,
-      score REAL,
-      topic TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    );
-    """)
-    
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS user_sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      session_token TEXT UNIQUE NOT NULL,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-    );
-    """)
-    
-    # Create indexes for better performance
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_words_word_lang ON words(word, language)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_users_username ON users(username)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_user_progress_user_lang ON user_progress(user_id, language)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_user_word_familiarity_user ON user_word_familiarity(user_id)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_user_level_runs_user ON user_level_runs(user_id)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_user_sessions_token ON user_sessions(session_token)')
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_user_sessions_user ON user_sessions(user_id)')
-    
-    conn.commit(); conn.close()
+    conn.close()
 # --- Words CRUD helpers ---
 
 def list_words_rows():
