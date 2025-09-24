@@ -8,11 +8,28 @@ def get_database_config():
     """Get database configuration based on environment"""
     # Check if we're in production (Railway)
     if os.getenv('DATABASE_URL'):
-        # Production: Use PostgreSQL
-        return {
-            'type': 'postgresql',
-            'url': os.getenv('DATABASE_URL')
-        }
+        # Production: Try PostgreSQL first, fallback to SQLite if it fails
+        try:
+            # Test PostgreSQL connection
+            parsed = urlparse(os.getenv('DATABASE_URL'))
+            test_conn = psycopg2.connect(
+                host=parsed.hostname,
+                port=parsed.port,
+                database=parsed.path[1:],
+                user=parsed.username,
+                password=parsed.password
+            )
+            test_conn.close()
+            return {
+                'type': 'postgresql',
+                'url': os.getenv('DATABASE_URL')
+            }
+        except Exception as e:
+            print(f"WARNING: PostgreSQL connection failed, falling back to SQLite: {e}")
+            return {
+                'type': 'sqlite',
+                'path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'polo.db')
+            }
     else:
         # Development: Use SQLite
         return {
