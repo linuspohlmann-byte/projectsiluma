@@ -509,6 +509,15 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 reference_key VARCHAR(255) UNIQUE NOT NULL,
                 description TEXT,
+                german TEXT,
+                english TEXT,
+                french TEXT,
+                italian TEXT,
+                spanish TEXT,
+                portuguese TEXT,
+                russian TEXT,
+                turkish TEXT,
+                georgian TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
