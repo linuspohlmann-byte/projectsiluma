@@ -267,35 +267,46 @@ class ConnectionWrapper:
     def __init__(self, conn):
         self.conn = conn
         self.config = get_database_config()
+        self._current_cursor = None
     
     def execute(self, query, params=None):
         """Wrapper for conn.execute() to maintain compatibility"""
         if self.config['type'] == 'postgresql':
             # For PostgreSQL, use execute_query
-            cur = execute_query(self.conn, query, params)
-            return cur
+            self._current_cursor = execute_query(self.conn, query, params)
+            return self
         else:
             # For SQLite, use original conn.execute
-            return self.conn.execute(query, params)
+            self._current_cursor = self.conn.execute(query, params)
+            return self
     
     def fetchall(self):
-        """Dummy method for compatibility"""
+        """Fetch all results from the current cursor"""
+        if self._current_cursor:
+            return self._current_cursor.fetchall()
         return []
     
     def fetchone(self):
-        """Dummy method for compatibility"""
+        """Fetch one result from the current cursor"""
+        if self._current_cursor:
+            return self._current_cursor.fetchone()
         return None
     
     def commit(self):
-        return self.conn.commit()
+        if hasattr(self.conn, 'commit'):
+            return self.conn.commit()
+        return None
     
     def close(self):
+        if self._current_cursor:
+            self._current_cursor.close()
         return self.conn.close()
     
     def cursor(self):
         return self.conn.cursor()
     
     def __getattr__(self, name):
+        """Delegate any other attributes to the underlying connection"""
         return getattr(self.conn, name)
 
 # Legacy support - will be removed after migration
@@ -304,7 +315,8 @@ DB_PATH  = os.path.join(APP_ROOT, 'polo.db')
 
 def get_db():
     """Get database connection - supports both SQLite and PostgreSQL"""
-    return get_db_connection()
+    conn = get_db_connection()
+    return ConnectionWrapper(conn)
 
 def execute_sql(conn, query, params=None):
     """Execute SQL query with appropriate parameter style"""
