@@ -1,0 +1,422 @@
+// Tooltip module: encapsulated state + public API
+// Provides: setupTooltipSaveClose(), observeTooltipClose(), openTooltip(), closeTooltip(), playOrGenAudio(), ttSave()
+// Also exposes openTooltip/playOrGenAudio/closeTooltip on window for legacy inline callers in index.html
+
+import { api } from '../api.js';
+
+// Local helpers
+const $ = (sel) => document.querySelector(sel);
+
+// Helper for language badges (target/native)
+function _langBadgeText(kind){
+  // kind: 'target' | 'native'
+  return kind==='native' ? 'Muttersprache' : 'Zielsprache';
+}
+
+// Tooltip state
+const TT = { el: null, word: '', anchor: null };
+
+// --- Save current tooltip fields ------------------------------------------------
+export async function ttSave(){
+  const wordEl = document.getElementById('tt-title');
+  const word = (wordEl?.textContent||'').trim();
+  if(!word) return;
+  const language = (document.getElementById('target-lang')?.value||'').trim();
+  const native_language = (localStorage.getItem('siluma_native')||'').trim();
+  const translation = (document.getElementById('tt-translation')?.value||'').trim();
+  const familiarity = parseInt(document.getElementById('tt-fam')?.value||'0',10)||0;
+  const ipa = (document.getElementById('tt-ipa')?.value||'').trim();
+  const example_native = (document.getElementById('tt-example-native')?.value||'').trim();
+  const pos = (document.getElementById('tt-pos')?.value||'').trim();
+  const synRaw = (document.getElementById('tt-syn')?.value||'').trim();
+  const synonyms = synRaw ? synRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  const gender = (document.getElementById('tt-gender')?.value||'none');
+  const payload = { word, language, native_language, translation, example_native, ipa, pos, gender, synonyms, familiarity };
+  try{
+    // Add native language header for unauthenticated users
+    const headers = { 'Content-Type': 'application/json' };
+    const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
+    headers['X-Native-Language'] = nativeLanguage;
+    
+    await fetch('/api/word/upsert', {
+      method:'POST', headers,
+      body: JSON.stringify(payload)
+    });
+    
+    // Invalidate words cache to ensure fresh data is loaded
+    try{
+      if (typeof window.invalidateWordsCache === 'function') {
+        window.invalidateWordsCache(payload.language);
+      }
+    }catch(_){}
+  }catch(_){ /* ignore network errors on close */ }
+}
+
+// --- Close tooltip -------------------------------------------------------------
+export async function closeTooltip(doSave=true){
+  const tip = TT.el || document.getElementById('tooltip');
+  if(!tip) return;
+  if(doSave){ await ttSave(); }
+  tip.style.display = 'none';
+  TT.word=''; TT.anchor=null;
+  document.removeEventListener('click', onDocClick, {capture:false});
+}
+
+// --- Open tooltip anchored to a word ------------------------------------------
+export async function openTooltip(anchor, word){
+  TT.word = word; TT.anchor = anchor;
+  TT.el = document.getElementById('tooltip');
+  const tip = TT.el;
+  if(!tip) return;
+  
+  // Extract sentence context from the lesson if available
+  TT.sentenceContext = null;
+  if (window.RUN && window.RUN.items && window.RUN.items.length > 0) {
+    // Find the current sentence that contains this word
+    const currentItem = window.RUN.items[window.RUN.idx || 0];
+    if (currentItem && currentItem.text_target) {
+      TT.sentenceContext = currentItem.text_target;
+    }
+  }
+  const gSelInit = document.getElementById('tt-gender');
+  if(gSelInit){
+    const lang0 = window.RUN?.target || document.getElementById('target-lang')?.value || 'en';
+    gSelInit.innerHTML = genderOptionsForLanguage(lang0).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+    // Set dynamic badges for field language (no hardcoded names)
+    const bIpa = document.getElementById('tt-badge-ipa');
+    if(bIpa) bIpa.textContent = _langBadgeText('target');
+    const bSyn = document.getElementById('tt-badge-syn');
+    if(bSyn) bSyn.textContent = _langBadgeText('target');
+    const bExN = document.getElementById('tt-badge-example-native');
+    if(bExN) bExN.textContent = _langBadgeText('native');
+  }
+
+  // Show and position
+  tip.style.display = 'block';
+  positionTooltip(anchor);
+  // Stop propagation for internal clicks
+  tip.addEventListener('click', (ev)=> ev.stopPropagation(), { once:false });
+  // Defer outside-click listener so it does not fire for the same click
+  setTimeout(()=>{
+  if(!document._ttOutsideBound){
+    document.addEventListener('click', onDocClick, { capture:false });
+    document._ttOutsideBound = true;
+  }
+}, 0);
+
+  // Title
+  const w = String(word||'').trim();
+  const titleEl = document.getElementById('tt-title');
+  if(titleEl) titleEl.textContent = w || 'Wort';
+
+  // Placeholders
+  const tIn = $('#tt-translation'), exIn = $('#tt-example'), exN = $('#tt-example-native');
+  if(tIn) tIn.placeholder = 'lade…';
+  if(exIn) exIn.placeholder = 'lade…';
+  if(exN) exN.placeholder = 'lade…';
+
+  const fill = (js)=>{
+    if(!js) return;
+    if(tIn) tIn.value = js.translation || tIn.value || '';
+    if(exIn) exIn.value = js.example || exIn.value || '';
+    if(exN) exN.value = js.example_native || exN.value || '';
+    const fam = $('#tt-fam'); if(fam) fam.value = String(js.familiarity ?? fam.value ?? 0);
+    const lem = $('#tt-lemma'); if(lem) lem.value = js.lemma || lem.value || '';
+    const pos = $('#tt-pos'); if(pos) pos.value = (js.pos||'').toUpperCase();
+    const ipa = $('#tt-ipa'); if(ipa) ipa.value = js.ipa || ipa.value || '';
+    const a = $('#tt-audio-el');
+    if(a){
+      if((js.audio_url||'').trim()){ a.src = js.audio_url; a.style.display='block'; }
+      else { a.removeAttribute('src'); a.style.display='none'; }
+    }
+    const syn = $('#tt-syn'); if(syn) syn.value = Array.isArray(js.synonyms) ? js.synonyms.join(', ') : (syn.value||'');
+    const col = $('#tt-col'); if(col) col.value = Array.isArray(js.collocations) ? js.collocations.join(', ') : (col.value||'');
+    const gSel = $('#tt-gender'); if(gSel){
+      const allowed = new Set(['masc','fem','neut','common','none']);
+      const v = String(js.gender||'none').toLowerCase();
+      gSel.value = allowed.has(v) ? v : 'none';
+    }
+  };
+
+  // Auto-refetch audio if missing
+  const a = $('#tt-audio-el');
+  if(a && !a._ttBound){
+    a.addEventListener('error', ()=>{ a.removeAttribute('src'); playOrGenAudio(); }, {once:false});
+    a._ttBound = true;
+  }
+
+  function genderOptionsForLanguage(lang){
+    const L = String(lang||'en').toLowerCase();
+    if(['fr','es','it','pt','ro','ca'].includes(L)) return [['masc',window.t ? window.t('grammar.masculine', 'Maskulin') : 'Maskulin'],['fem',window.t ? window.t('grammar.feminine', 'Feminin') : 'Feminin'],['none',window.t ? window.t('grammar.no_gender', 'Kein Genus') : 'Kein Genus']];
+    if(['nl','sv','no','da'].includes(L)) return [['common',window.t ? window.t('grammar.common', 'Utrum') : 'Utrum'],['neut',window.t ? window.t('grammar.neuter', 'Neutrum') : 'Neutrum'],['none',window.t ? window.t('grammar.no_gender', 'Kein Genus') : 'Kein Genus']];
+    if(['de','ru','pl','cs','sk','uk','el','ar','tr'].includes(L)) return [['masc',window.t ? window.t('grammar.masculine', 'Maskulin') : 'Maskulin'],['fem',window.t ? window.t('grammar.feminine', 'Feminin') : 'Feminin'],['neut',window.t ? window.t('grammar.neuter', 'Neutrum') : 'Neutrum'],['none',window.t ? window.t('grammar.no_gender', 'Kein Genus') : 'Kein Genus']];
+    return [['none',window.t ? window.t('grammar.no_gender', 'Kein Genus') : 'Kein Genus']];
+  }
+
+  // Fetch details, enrich if needed
+  try{
+    const lang = window.RUN?.target || 'en';
+    const nat  = window.RUN?.native || 'de';
+    
+    // Check if this is a custom level and try to get word data from custom level context
+    let js1 = null;
+    if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
+      console.log('🔧 Tooltip for custom level word:', w);
+      
+      // For custom levels, try to get word data from the current item first
+      const currentItem = window.RUN.items[window.RUN.idx || 0];
+      if (currentItem && currentItem.words) {
+        // Look for the word in the current item's words array
+        const wordData = currentItem.words.find(word => word === w);
+        if (wordData) {
+          console.log('🔧 Found word in custom level item:', wordData);
+          // Create a basic word object for the tooltip
+          js1 = {
+            word: w,
+            language: lang,
+            translation: '', // Will be filled by enrichment
+            familiarity: 0,
+            pos: '',
+            ipa: '',
+            example_native: '',
+            synonyms: [],
+            collocations: [],
+            gender: 'none'
+          };
+        }
+      }
+    }
+    
+    // If we don't have word data yet, try to fetch from global database
+    if (!js1) {
+      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`);
+      js1 = await r1.json();
+    }
+    
+    fill(js1);
+    
+    const missing = !(js1 && (js1.translation||'').trim());
+    if(missing){
+      try{
+        // Check if we're in a custom level context
+        if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
+          console.log('🔧 Using custom level batch enrich for tooltip');
+          await fetch(`/api/custom-levels/${window.RUN._customGroupId}/${window.RUN._customLevelNumber}/enrich_batch`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              words: [w], // Batch API expects array of words
+              language:lang, 
+              native_language:nat,
+              sentence_context: TT.sentenceContext || '', // Use sentence context if available
+              sentence_native: ''
+            })
+          });
+        } else {
+          // Use standard enrichment API
+          await fetch('/api/word/enrich', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              word:w, 
+              language:lang, 
+              native_language:nat,
+              sentence_context: TT.sentenceContext || '', // Use sentence context if available
+              sentence_native: ''
+            })
+          });
+        }
+        
+        // Try to fetch the enriched word data
+        const r2 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`);
+        const js2 = await r2.json();
+        fill(js2);
+      }catch(_){ /* ignore */ }
+    }
+  }catch(_){ /* ignore */ }
+}
+
+// --- Outside click handler ----------------------------------------------------
+
+// --- Audio handling -----------------------------------------------------------
+export async function playOrGenAudio(word, sentenceContext = null){
+  const a = document.getElementById('tt-audio-el');
+  const w = (typeof word === 'string' && word.trim()) ? word.trim() : (TT.word || '');
+  const lang = (window.RUN && window.RUN.target) ? window.RUN.target : 'en';
+  if(!a || !w) return;
+
+  const loadedFor = a.dataset && a.dataset.word ? a.dataset.word : '';
+  const sameWord = loadedFor && loadedFor === w;
+
+  if(sameWord && a.src && a.src.trim() !== ''){
+    try{ a.pause(); a.currentTime = 0; await a.play(); return; }catch(_){}
+  }
+
+  try{
+    // Prepare request payload with optional sentence context
+    const payload = { word: w, language: lang };
+    if (sentenceContext && sentenceContext.trim()) {
+      payload.sentence = sentenceContext.trim();
+    }
+    
+    const r = await fetch('/api/word/tts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const js = await r.json();
+    if(js?.success && js.audio_url){
+      a.src = js.audio_url; a.style.display='block';
+      if(a.dataset) a.dataset.word = w;
+      try{ await a.play(); }catch(_){}
+    }
+  }catch(_){};
+}
+
+// --- Positioning --------------------------------------------------------------
+function positionTooltip(anchor){
+  const tip = TT.el || document.getElementById('tooltip');
+  if(!tip || !anchor || !anchor.getBoundingClientRect) return;
+  const r = anchor.getBoundingClientRect();
+  const pad = 8;
+  let x = r.left + window.scrollX;
+  let y = r.bottom + window.scrollY + pad;
+  const w = tip.offsetWidth||320, h = tip.offsetHeight||160;
+  if(x + w > window.scrollX + window.innerWidth) x = window.scrollX + window.innerWidth - w - pad;
+  if(y + h > window.scrollY + window.innerHeight) y = r.top + window.scrollY - h - pad;
+  tip.style.left = x+'px'; tip.style.top = y+'px';
+}
+
+// --- Setup wiring -------------------------------------------------------------
+export function setupTooltipSaveClose(){
+  const tip = document.getElementById('tooltip');
+  TT.el = tip || null;
+  const x = document.getElementById('tt-close');
+  const saveBtn = document.getElementById('tt-save');
+
+  if(x){ x.onclick = ()=> closeTooltip(true); }
+  if(saveBtn){ saveBtn.onclick = ()=>{ ttSave(); }; }
+
+// Close when clicking outside (capturing phase to run before other handlers)
+document.addEventListener('click',(ev)=>{
+  if(!TT.el || TT.el.style.display==='none') return;
+  if(TT.el.contains(ev.target)) return;
+  const isWord = ev.target.closest && ev.target.closest('.word');
+  if(isWord) return; // Wechsel handled openTooltip
+  closeTooltip(true);
+  }, true);
+
+  // ESC closes tooltip and saves
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') { closeTooltip(true); } });
+
+  // Tooltip textareas autoresize
+  document.querySelectorAll('#tooltip textarea').forEach(ta=>{
+    ta.addEventListener('input', ()=>{ ta.style.height='auto'; ta.style.height = (ta.scrollHeight)+"px"; });
+  });
+}
+
+export function observeTooltipClose(){
+  const tip = document.getElementById('tooltip');
+  if(!tip) return;
+  const isVisible = () => window.getComputedStyle(tip).display !== 'none';
+  let wasVisible = isVisible();
+  const obs = new MutationObserver(async () => {
+    const nowVisible = isVisible();
+    if (wasVisible && !nowVisible) { try { await ttSave(); } catch(_) {} }
+    wasVisible = nowVisible;
+  });
+  obs.observe(tip, { attributes:true, attributeFilter:['style'] });
+}
+
+export function onDocClick(ev){
+  const tip = TT.el || document.getElementById('tooltip');
+  if(!tip) return;
+  if(tip.contains(ev.target)) return;
+
+  const nextWordEl = ev.target.closest && ev.target.closest('.word');
+  if(nextWordEl && nextWordEl.dataset && nextWordEl.dataset.word){
+    openTooltip(nextWordEl, nextWordEl.dataset.word);
+    ev.stopPropagation();
+    return;
+  }
+  if(ev.target === TT.anchor) return;
+  closeTooltip(true);
+}
+
+const enrichBtn = document.getElementById('tt-enrich');
+const audioBtn  = document.getElementById('tt-audio-btn');
+if(enrichBtn){ enrichBtn.onclick = async (e)=>{ e.stopPropagation(); await enrichCurrentTooltip(); }; }
+if(audioBtn && !audioBtn._bound){
+  audioBtn.addEventListener('click', (e)=>{ e.stopPropagation(); playOrGenAudio(TT.word, TT.sentenceContext); });
+  audioBtn._bound = true;
+}
+
+async function enrichCurrentTooltip(){
+  const w = (document.getElementById('tt-title')?.textContent||'').trim();
+  if(!w) return;
+  const lang = (document.getElementById('target-lang')?.value||window.RUN?.target||'en');
+  const nat  = (localStorage.getItem('siluma_native')||window.RUN?.native||'de');
+  
+  // Check if word is already enriched
+  const cached = cacheGet(w, lang);
+  if(cached && cached.translation && cached.pos) {
+    console.log('🎯 Word already enriched, skipping tooltip enrichment:', w);
+    return;
+  }
+  
+  try{
+    // Check if we're in a custom level context
+    const isCustomLevel = window.RUN && (window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP);
+    
+    if (isCustomLevel) {
+      // Use custom level batch enrichment API
+      const groupId = window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP;
+      const levelNumber = window.RUN._customLevelNumber || window.SELECTED_CUSTOM_LEVEL || 1;
+      
+      await fetch(`/api/custom-levels/${groupId}/${levelNumber}/enrich_batch`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          words: [w],
+          language:lang,
+          native_language:nat,
+          sentence_context: '', // No context available in tooltip
+          sentence_native: ''
+        })
+      });
+    } else {
+      // Use standard enrichment API
+      await fetch('/api/word/enrich',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        word:w,
+        language:lang,
+        native_language:nat,
+        sentence_context: '', // No context available in tooltip
+        sentence_native: ''
+      })});
+    }
+    const js = await (await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`)).json();
+    const tIn = document.getElementById('tt-translation');
+    const exIn = document.getElementById('tt-example');
+    const exN  = document.getElementById('tt-example-native');
+    if(tIn) tIn.value = js.translation || tIn.value || '';
+    if(exIn) exIn.value = js.example || exIn.value || '';
+    if(exN) exN.value  = js.example_native || exN.value || '';
+    const fam = document.getElementById('tt-fam'); if(fam) fam.value = String(js.familiarity ?? fam.value ?? 0);
+    const lem = document.getElementById('tt-lemma'); if(lem) lem.value = js.lemma || lem.value || '';
+    const pos = document.getElementById('tt-pos'); if(pos) pos.value = (js.pos||'').toUpperCase();
+    const ipa = document.getElementById('tt-ipa'); if(ipa) ipa.value = js.ipa || ipa.value || '';
+    const a = document.getElementById('tt-audio-el');
+    if(a){ if((js.audio_url||'').trim()){ a.src = js.audio_url; a.style.display='block'; } else { a.removeAttribute('src'); a.style.display='none'; } }
+    const syn = document.getElementById('tt-syn'); if(syn) syn.value = Array.isArray(js.synonyms) ? js.synonyms.join(', ') : (syn.value||'');
+    const col = document.getElementById('tt-col'); if(col) col.value = Array.isArray(js.collocations) ? js.collocations.join(', ') : (col.value||'');
+    const gSel = document.getElementById('tt-gender'); if(gSel){
+      const allowed = new Set(['masc','fem','neut','common','none']);
+      const v = String(js.gender||'none').toLowerCase();
+      gSel.value = allowed.has(v) ? v : 'none';
+    }
+  }catch(_){}
+}
+
+// Expose selected API for legacy inline code in index.html
+if(typeof window !== 'undefined'){
+  window.openTooltip = openTooltip;
+  window.playOrGenAudio = playOrGenAudio;
+  window.closeTooltip = closeTooltip;
+}

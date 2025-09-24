@@ -1,0 +1,100 @@
+{
+  "language": "nl",
+  "level": 1,
+  "title": "Level 1",
+  "section": "Dutch Basics",
+  "topic": "daily life",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Ik drink elke ochtend koffie.",
+      "text_native_ref": "",
+      "words": [
+        "Ik",
+        "drink",
+        "elke",
+        "ochtend",
+        "koffie"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "Vandaag ga ik naar de markt.",
+      "text_native_ref": "",
+      "words": [
+        "Vandaag",
+        "ga",
+        "ik",
+        "naar",
+        "de",
+        "markt"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Mijn vriend komt vanavond langs.",
+      "text_native_ref": "",
+      "words": [
+        "Mijn",
+        "vriend",
+        "komt",
+        "vanavond",
+        "langs"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Ik lees graag boeken in mijn vrije tijd.",
+      "text_native_ref": "",
+      "words": [
+        "Ik",
+        "lees",
+        "graag",
+        "boeken",
+        "in",
+        "mijn",
+        "vrije",
+        "tijd"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "We koken samen een lekker diner.",
+      "text_native_ref": "",
+      "words": [
+        "We",
+        "koken",
+        "samen",
+        "een",
+        "lekker",
+        "diner"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "run_id": 370,
+      "ts": "2025-09-04T16:33:27.443316+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    }
+  ],
+  "status": "in_progress",
+  "created_at": "2025-09-02T16:49:32.639110+00:00",
+  "fam_counts": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  }
+}

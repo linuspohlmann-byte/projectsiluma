@@ -1,0 +1,50 @@
+# Apache configuration for Strato hosting
+# Enable Python support
+AddHandler fcgid-script .py
+
+# Set Python path
+SetEnv PYTHONPATH /kunden/homepages/XX/XXXXXXXX/htdocs/
+
+# WSGI configuration
+WSGIScriptAlias / /kunden/homepages/XX/XXXXXXXX/htdocs/wsgi.py
+WSGIApplicationGroup %{GLOBAL}
+
+# Security headers
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options DENY
+Header always set X-XSS-Protection "1; mode=block"
+
+# Cache static files
+<FilesMatch "\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$">
+    ExpiresActive On
+    ExpiresDefault "access plus 1 month"
+    Header set Cache-Control "public, max-age=2592000"
+</FilesMatch>
+
+# Cache audio files
+<FilesMatch "\.(mp3|wav|ogg)$">
+    ExpiresActive On
+    ExpiresDefault "access plus 1 year"
+    Header set Cache-Control "public, max-age=31536000"
+</FilesMatch>
+
+# Deny access to sensitive files
+<FilesMatch "\.(db|sqlite|sqlite3|py|pyc|pyo|log|txt|md|csv)$">
+    Require all denied
+</FilesMatch>
+
+# Allow access to static files
+<Directory "/kunden/homepages/XX/XXXXXXXX/htdocs/static/">
+    Require all granted
+</Directory>
+
+# Allow access to media files
+<Directory "/kunden/homepages/XX/XXXXXXXX/htdocs/media/">
+    Require all granted
+</Directory>
+
+# Redirect all requests to Flask app
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /wsgi.py [QSA,L]

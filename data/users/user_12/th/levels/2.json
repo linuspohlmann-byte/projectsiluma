@@ -1,0 +1,78 @@
+{
+  "language": "th",
+  "level": 2,
+  "title": "Level 2",
+  "section": "Thai Basics",
+  "topic": "Daily Routines",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "ฉันตื่นนอนแต่เช้า",
+      "text_native_ref": "I wake up early",
+      "words": [
+        "ฉ",
+        "นต",
+        "นนอนแต",
+        "เช",
+        "า"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "ฉันกินข้าวเช้า",
+      "text_native_ref": "I have breakfast",
+      "words": [
+        "ฉ",
+        "นก",
+        "นข",
+        "าวเช",
+        "า"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "ฉันไปทำงานตอนแปดโมง",
+      "text_native_ref": "I go to work at eight o'clock",
+      "words": [
+        "ฉ",
+        "นไปทำงานตอนแปดโมง"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "ฉันกินข้าวทุกวัน",
+      "text_native_ref": "I eat rice every day",
+      "words": [
+        "ฉ",
+        "นก",
+        "นข",
+        "าวท",
+        "กว",
+        "น"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "เขาไปทำงานตอนเช้า",
+      "text_native_ref": "He goes to work in the morning",
+      "words": [
+        "เขาไปทำงานตอนเช",
+        "า"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "เราเล่นกีฬาในสวน",
+      "text_native_ref": "We play sports in the park",
+      "words": [
+        "เราเล",
+        "นก",
+        "ฬาในสวน"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:46:53.710712+00:00"
+}

@@ -1,0 +1,178 @@
+{
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Jag går till jobbet varje dag.",
+      "text_native_ref": "",
+      "words": [
+        "Jag",
+        "går",
+        "till",
+        "jobbet",
+        "varje",
+        "dag"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "Vi lagar middag tillsammans på kvällen.",
+      "text_native_ref": "",
+      "words": [
+        "Vi",
+        "lagar",
+        "middag",
+        "tillsammans",
+        "på",
+        "kvällen"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Barnen leker i parken.",
+      "text_native_ref": "",
+      "words": [
+        "Barnen",
+        "leker",
+        "i",
+        "parken"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Hon läser en bok på soffan.",
+      "text_native_ref": "",
+      "words": [
+        "Hon",
+        "läser",
+        "en",
+        "bok",
+        "på",
+        "soffan"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "Vi handlar mat på lördagar.",
+      "text_native_ref": "",
+      "words": [
+        "Vi",
+        "handlar",
+        "mat",
+        "på",
+        "lördagar"
+      ]
+    }
+  ],
+  "meta": {
+    "level": 1,
+    "section": "Foundations",
+    "theme": "Basic greetings"
+  },
+  "runs": [
+    {
+      "run_id": 362,
+      "ts": "2025-09-04T16:12:42.515855+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 363,
+      "ts": "2025-09-04T16:21:15.312018+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 364,
+      "ts": "2025-09-04T16:21:26.381207+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 365,
+      "ts": "2025-09-04T16:24:27.405395+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 366,
+      "ts": "2025-09-04T16:24:27.419344+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 367,
+      "ts": "2025-09-04T16:24:46.381766+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 368,
+      "ts": "2025-09-04T16:25:15.073404+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    }
+  ],
+  "fam_counts": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  },
+  "language": "sv",
+  "level": 1,
+  "title": "",
+  "section": "",
+  "topic": "daily life",
+  "status": "in_progress"
+}

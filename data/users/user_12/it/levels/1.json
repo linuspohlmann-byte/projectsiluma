@@ -1,0 +1,92 @@
+{
+  "language": "it",
+  "level": 1,
+  "title": "",
+  "section": "",
+  "topic": "daily life",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Mi sveglio alle sette.",
+      "text_native_ref": "Ich wache um sieben auf.",
+      "words": [
+        "Mi",
+        "sveglio",
+        "alle",
+        "sette"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "Faccio colazione ogni mattina.",
+      "text_native_ref": "Ich frühstücke jeden Morgen.",
+      "words": [
+        "Faccio",
+        "colazione",
+        "ogni",
+        "mattina"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Vado al lavoro in autobus.",
+      "text_native_ref": "Ich fahre mit dem Bus zur Arbeit.",
+      "words": [
+        "Vado",
+        "al",
+        "lavoro",
+        "in",
+        "autobus"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Pranzo con i miei amici.",
+      "text_native_ref": "Ich esse mit meinen Freunden zu Mittag.",
+      "words": [
+        "Pranzo",
+        "con",
+        "i",
+        "miei",
+        "amici"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "Torno a casa nel pomeriggio.",
+      "text_native_ref": "Ich komme am Nachmittag nach Hause.",
+      "words": [
+        "Torno",
+        "a",
+        "casa",
+        "nel",
+        "pomeriggio"
+      ]
+    }
+  ],
+  "fam_counts": {
+    "0": 21,
+    "1": 2,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  },
+  "runs": [
+    {
+      "run_id": 340,
+      "ts": "2025-09-01T12:49:50.468374+00:00",
+      "score": 0.064,
+      "fam_counts": {
+        "0": 21,
+        "1": 2,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    }
+  ],
+  "status": "completed",
+  "last_score": 0.064
+}

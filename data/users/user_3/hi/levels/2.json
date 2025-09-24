@@ -1,0 +1,95 @@
+{
+  "language": "hi",
+  "level": 2,
+  "title": "Level 2",
+  "section": "Hindi Basics",
+  "topic": "Daily Routines",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "मैं सुबह जल्दी उठता हूँ।",
+      "text_native_ref": "I wake up early in the morning.",
+      "words": [
+        "म",
+        "स",
+        "बह",
+        "जल",
+        "द",
+        "उठत",
+        "ह"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "मैं नाश्ता करता हूँ।",
+      "text_native_ref": "I have breakfast.",
+      "words": [
+        "म",
+        "न",
+        "श",
+        "त",
+        "करत",
+        "ह"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "मैं काम पर जाता हूँ।",
+      "text_native_ref": "I go to work.",
+      "words": [
+        "म",
+        "क",
+        "म",
+        "पर",
+        "ज",
+        "त",
+        "ह"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "मैं सुबह जल्दी उठता हूँ।",
+      "text_native_ref": "I wake up early in the morning.",
+      "words": [
+        "म",
+        "स",
+        "बह",
+        "जल",
+        "द",
+        "उठत",
+        "ह"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "मैं नाश्ता करता हूँ।",
+      "text_native_ref": "I have breakfast.",
+      "words": [
+        "म",
+        "न",
+        "श",
+        "त",
+        "करत",
+        "ह"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "मैं स्कूल जाता हूँ।",
+      "text_native_ref": "I go to school.",
+      "words": [
+        "म",
+        "स",
+        "क",
+        "ल",
+        "ज",
+        "त",
+        "ह"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:46:11.725416+00:00"
+}

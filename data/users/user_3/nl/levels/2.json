@@ -1,0 +1,123 @@
+{
+  "language": "nl",
+  "level": 2,
+  "title": "Level 2",
+  "section": "Dutch Basics",
+  "topic": "Dagelijkse routine",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Ik sta elke ochtend vroeg op.",
+      "text_native_ref": "I wake up early every morning.",
+      "words": [
+        "Ik",
+        "sta",
+        "elke",
+        "ochtend",
+        "vroeg",
+        "op"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "Ik ontbijt met brood en koffie.",
+      "text_native_ref": "I have breakfast with bread and coffee.",
+      "words": [
+        "Ik",
+        "ontbijt",
+        "met",
+        "brood",
+        "en",
+        "koffie"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "Ik ga daarna naar mijn werk.",
+      "text_native_ref": "I then go to my work.",
+      "words": [
+        "Ik",
+        "ga",
+        "daarna",
+        "naar",
+        "mijn",
+        "werk"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Ik heb een goede vriend.",
+      "text_native_ref": "I have a good friend.",
+      "words": [
+        "Ik",
+        "heb",
+        "een",
+        "goede",
+        "vriend"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Mijn zus is heel lief.",
+      "text_native_ref": "My sister is very sweet.",
+      "words": [
+        "Mijn",
+        "zus",
+        "is",
+        "heel",
+        "lief"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Wij gaan samen naar het park.",
+      "text_native_ref": "We are going to the park together.",
+      "words": [
+        "Wij",
+        "gaan",
+        "samen",
+        "naar",
+        "het",
+        "park"
+      ]
+    },
+    {
+      "idx": 7,
+      "text_target": "Ik hou van pizza.",
+      "text_native_ref": "I love pizza.",
+      "words": [
+        "Ik",
+        "hou",
+        "van",
+        "pizza"
+      ]
+    },
+    {
+      "idx": 7,
+      "text_target": "Zij drinkt graag koffie.",
+      "text_native_ref": "She enjoys drinking coffee.",
+      "words": [
+        "Zij",
+        "drinkt",
+        "graag",
+        "koffie"
+      ]
+    },
+    {
+      "idx": 7,
+      "text_target": "Wij eten fruit iedere dag.",
+      "text_native_ref": "We eat fruit every day.",
+      "words": [
+        "Wij",
+        "eten",
+        "fruit",
+        "iedere",
+        "dag"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:49:39.812088+00:00"
+}

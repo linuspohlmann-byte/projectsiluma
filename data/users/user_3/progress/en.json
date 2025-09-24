@@ -1,0 +1,20 @@
+{
+  "language": "en",
+  "levels": {
+    "1": {
+      "status": "completed",
+      "score": 1.0,
+      "completed_at": "2025-09-17T12:52:15.787687+00:00",
+      "updated_at": "2025-09-17T12:52:15.787687+00:00"
+    },
+    "2": {
+      "status": "in_progress",
+      "score": null,
+      "completed_at": null,
+      "updated_at": "2025-09-17T12:53:15.575173+00:00"
+    }
+  },
+  "total_score": 1.0,
+  "levels_completed": 1,
+  "last_updated": "2025-09-24T14:09:31.825243+00:00"
+}

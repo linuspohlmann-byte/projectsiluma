@@ -1,0 +1,113 @@
+{
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "من هر روز صبح زود بیدار می‌شوم.",
+      "text_native_ref": "Ich wache jeden Morgen früh auf.",
+      "words": [
+        "من",
+        "هر",
+        "روز",
+        "صبح",
+        "زود",
+        "بیدار",
+        "می",
+        "شوم"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "برای صبحانه نان و پنیر می‌خورم.",
+      "text_native_ref": "Zum Frühstück esse ich Brot und Käse.",
+      "words": [
+        "برای",
+        "صبحانه",
+        "نان",
+        "و",
+        "پنیر",
+        "می",
+        "خورم"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "بعد از صبحانه به سر کار می‌روم.",
+      "text_native_ref": "Nach dem Frühstück gehe ich zur Arbeit.",
+      "words": [
+        "بعد",
+        "از",
+        "صبحانه",
+        "به",
+        "سر",
+        "کار",
+        "می",
+        "روم"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "در طول روز با همکارانم صحبت می‌کنم.",
+      "text_native_ref": "Tagsüber spreche ich mit meinen Kollegen.",
+      "words": [
+        "در",
+        "طول",
+        "روز",
+        "با",
+        "همکارانم",
+        "صحبت",
+        "می",
+        "کنم"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "شب‌ها فیلم می‌بینم و استراحت می‌کنم.",
+      "text_native_ref": "Abends schaue ich Filme und entspanne mich.",
+      "words": [
+        "شب",
+        "ها",
+        "فیلم",
+        "می",
+        "بینم",
+        "و",
+        "استراحت",
+        "می",
+        "کنم"
+      ]
+    }
+  ],
+  "meta": {
+    "level": 1,
+    "section": "Foundations",
+    "theme": "Basic greetings"
+  },
+  "runs": [
+    {
+      "run_id": 345,
+      "ts": "2025-09-02T19:48:04.950546+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    }
+  ],
+  "fam_counts": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  },
+  "language": "fa",
+  "level": 1,
+  "title": "",
+  "section": "",
+  "topic": "daily life",
+  "status": "in_progress"
+}

@@ -1,0 +1,11 @@
+{
+  "language": "hi",
+  "native_language": "en",
+  "name": "Hindi Basics",
+  "description": "Learn basic Hindi for everyday communication",
+  "cefr_level": "A1",
+  "num_levels": 2,
+  "topics_per_level": 2,
+  "created_at": "2025-09-02T16:46:05.169812+00:00",
+  "status": "active"
+}

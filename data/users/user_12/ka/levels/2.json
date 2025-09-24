@@ -1,0 +1,80 @@
+{
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "ჩემი ოჯახი დიდი და ბედნიერია.",
+      "text_native_ref": "Meine Familie ist groß und glücklich.",
+      "words": [
+        "ჩემი",
+        "ოჯახი",
+        "დიდი",
+        "და",
+        "ბედნიერია"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "მყავს ერთი ძმა და ერთი და.",
+      "text_native_ref": "Ich habe einen Bruder und eine Schwester.",
+      "words": [
+        "მყავს",
+        "ერთი",
+        "ძმა",
+        "და",
+        "ერთი",
+        "და"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "ჩემი დედა კარგი და მზრუნველი ადამიანია.",
+      "text_native_ref": "Meine Mutter ist eine gute und fürsorgliche Person.",
+      "words": [
+        "ჩემი",
+        "დედა",
+        "კარგი",
+        "და",
+        "მზრუნველი",
+        "ადამიანია"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "მამა ხშირად მუშაობს და ძალიან შრომისმოყვარეა.",
+      "text_native_ref": "Mein Vater arbeitet oft und ist sehr fleißig.",
+      "words": [
+        "მამა",
+        "ხშირად",
+        "მუშაობს",
+        "და",
+        "ძალიან",
+        "შრომისმოყვარეა"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "ჩვენ ერთად ვთამაშობთ და ვსადილობთ.",
+      "text_native_ref": "Wir spielen und essen zusammen.",
+      "words": [
+        "ჩვენ",
+        "ერთად",
+        "ვთამაშობთ",
+        "და",
+        "ვსადილობთ"
+      ]
+    }
+  ],
+  "meta": {
+    "level": 2,
+    "section": "",
+    "topic": "ჩემი ოჯახი",
+    "title": "ჩემი ოჯახი და მეგობრები",
+    "language": "ka",
+    "cefr": "A1"
+  },
+  "language": "ka",
+  "level": 2,
+  "title": "ჩემი ოჯახი და მეგობრები",
+  "section": "",
+  "topic": "ჩემი ოჯახი"
+}

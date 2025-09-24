@@ -1,0 +1,71 @@
+{
+  "language": "sw",
+  "level": 1,
+  "title": "Level 1",
+  "section": "Swahili Basics",
+  "topic": "Basic Greetings and Introductions",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Hej! Hur mår du?",
+      "text_native_ref": "Hello! How are you?",
+      "words": [
+        "Hej",
+        "Hur",
+        "mår",
+        "du"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "Jag heter Anna.",
+      "text_native_ref": "My name is Anna.",
+      "words": [
+        "Jag",
+        "heter",
+        "Anna"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Trevligt att träffas!",
+      "text_native_ref": "Nice to meet you!",
+      "words": [
+        "Trevligt",
+        "att",
+        "träffas"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "Hej!",
+      "text_native_ref": "Hello!",
+      "words": [
+        "Hej"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "God morgon!",
+      "text_native_ref": "Good morning!",
+      "words": [
+        "God",
+        "morgon"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Trevligt att träffas!",
+      "text_native_ref": "Nice to meet you!",
+      "words": [
+        "Trevligt",
+        "att",
+        "träffas"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:43:16.244908+00:00"
+}

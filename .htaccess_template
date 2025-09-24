@@ -1,0 +1,66 @@
+# Apache configuration for Strato hosting
+# IMPORTANT: Replace XX/XXXXXXXX with your actual Strato path
+# You can find this path in your Strato control panel under "FTP-Zugang"
+
+# Enable Python support
+AddHandler fcgid-script .py
+
+# Set Python path (REPLACE WITH YOUR ACTUAL PATH)
+# SetEnv PYTHONPATH /kunden/homepages/XX/XXXXXXXX/htdocs/
+
+# WSGI configuration (REPLACE WITH YOUR ACTUAL PATH)
+# WSGIScriptAlias / /kunden/homepages/XX/XXXXXXXX/htdocs/wsgi.py
+# WSGIApplicationGroup %{GLOBAL}
+
+# Alternative: Use mod_rewrite for cleaner URLs
+RewriteEngine On
+
+# Security headers
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options DENY
+Header always set X-XSS-Protection "1; mode=block"
+
+# Cache static files
+<FilesMatch "\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$">
+    ExpiresActive On
+    ExpiresDefault "access plus 1 month"
+    Header set Cache-Control "public, max-age=2592000"
+</FilesMatch>
+
+# Cache audio files
+<FilesMatch "\.(mp3|wav|ogg)$">
+    ExpiresActive On
+    ExpiresDefault "access plus 1 year"
+    Header set Cache-Control "public, max-age=31536000"
+</FilesMatch>
+
+# Deny access to sensitive files
+<FilesMatch "\.(db|sqlite|sqlite3|py|pyc|pyo|log|txt|md|csv)$">
+    Require all denied
+</FilesMatch>
+
+# Allow access to static files
+<Directory "static/">
+    Require all granted
+</Directory>
+
+# Allow access to media files
+<Directory "media/">
+    Require all granted
+</Directory>
+
+# Allow access to specific files
+<Files "index.html">
+    Require all granted
+</Files>
+
+<Files "wsgi.py">
+    Require all granted
+</Files>
+
+# Redirect all requests to Flask app
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/static/
+RewriteCond %{REQUEST_URI} !^/media/
+RewriteRule ^(.*)$ /wsgi.py [QSA,L]

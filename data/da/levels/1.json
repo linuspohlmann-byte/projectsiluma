@@ -1,0 +1,128 @@
+{
+  "language": "da",
+  "level": 1,
+  "title": "",
+  "section": "",
+  "topic": "Level 1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "The quick brown fox jumps over the lazy dog.",
+      "text_native_ref": "",
+      "words": [
+        "The",
+        "quick",
+        "brown",
+        "fox",
+        "jumps",
+        "over",
+        "the",
+        "lazy",
+        "dog"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "I drink coffee every morning before work.",
+      "text_native_ref": "",
+      "words": [
+        "I",
+        "drink",
+        "coffee",
+        "every",
+        "morning",
+        "before",
+        "work"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Learning languages takes time and practice.",
+      "text_native_ref": "",
+      "words": [
+        "Learning",
+        "languages",
+        "takes",
+        "time",
+        "and",
+        "practice"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Please open the window, it is too hot here.",
+      "text_native_ref": "",
+      "words": [
+        "Please",
+        "open",
+        "the",
+        "window",
+        "it",
+        "is",
+        "too",
+        "hot",
+        "here"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "She wrote a letter and sent it yesterday.",
+      "text_native_ref": "",
+      "words": [
+        "She",
+        "wrote",
+        "a",
+        "letter",
+        "and",
+        "sent",
+        "it",
+        "yesterday"
+      ]
+    }
+  ],
+  "fam_counts": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  },
+  "runs": [
+    {
+      "run_id": 343,
+      "ts": "2025-09-02T15:26:40.131073+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    },
+    {
+      "run_id": 361,
+      "ts": "2025-09-04T16:12:31.064699+00:00",
+      "score": null,
+      "fam_counts": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0
+      }
+    }
+  ],
+  "status": "in_progress",
+  "meta": {
+    "level": 1,
+    "language": "da",
+    "cefr": "none",
+    "topic": "Level 1",
+    "title": "",
+    "section": ""
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "items": [
+    {
+      "text_target": "Hello",
+      "words": [
+        "hello"
+      ]
+    },
+    {
+      "text_target": "Good morning",
+      "words": [
+        "good",
+        "morning"
+      ]
+    },
+    {
+      "text_target": "How are you?",
+      "words": [
+        "how",
+        "are",
+        "you"
+      ]
+    },
+    {
+      "text_target": "Thank you",
+      "words": [
+        "thank",
+        "you"
+      ]
+    },
+    {
+      "text_target": "Goodbye",
+      "words": [
+        "goodbye"
+      ]
+    }
+  ],
+  "meta": {
+    "level": 1,
+    "section": "Foundations",
+    "theme": "Basic greetings"
+  },
+  "runs": [],
+  "fam_counts": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "language": "sw",
+  "level": 3,
+  "title": "Level 3",
+  "section": "Swahili Basics",
+  "topic": "Daily Routines Vocabulary",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Jag vaknar tidigt varje dag.",
+      "text_native_ref": "I wake up early every day.",
+      "words": [
+        "Jag",
+        "vaknar",
+        "tidigt",
+        "varje",
+        "dag"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "Jag äter frukost klockan åtta.",
+      "text_native_ref": "I eat breakfast at eight o'clock.",
+      "words": [
+        "Jag",
+        "äter",
+        "frukost",
+        "klockan",
+        "åtta"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Jag går till skolan efter frukosten.",
+      "text_native_ref": "I go to school after breakfast.",
+      "words": [
+        "Jag",
+        "går",
+        "till",
+        "skolan",
+        "efter",
+        "frukosten"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "Jag går upp tidigt varje dag.",
+      "text_native_ref": "I wake up early every day.",
+      "words": [
+        "Jag",
+        "går",
+        "upp",
+        "tidigt",
+        "varje",
+        "dag"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "Jag äter frukost vid sju.",
+      "text_native_ref": "I have breakfast at seven.",
+      "words": [
+        "Jag",
+        "äter",
+        "frukost",
+        "vid",
+        "sju"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Jag arbetar på kontoret hela dagen.",
+      "text_native_ref": "I work at the office all day.",
+      "words": [
+        "Jag",
+        "arbetar",
+        "på",
+        "kontoret",
+        "hela",
+        "dagen"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:43:29.622292+00:00"
+}

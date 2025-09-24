@@ -1,0 +1,64 @@
+{
+  "language": "ko",
+  "level": 1,
+  "title": "Level 1",
+  "section": "Korean Essentials",
+  "topic": "Basic Greetings in Korean",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "안녕하세요!",
+      "text_native_ref": "Hello!",
+      "words": [
+        "안녕하세요"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "안녕!",
+      "text_native_ref": "Hi!",
+      "words": [
+        "안녕"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "안녕하세요, 만나서 반가워요.",
+      "text_native_ref": "Hello, nice to meet you.",
+      "words": [
+        "안녕하세요",
+        "만나서",
+        "반가워요"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "안녕하세요!",
+      "text_native_ref": "Hello!",
+      "words": [
+        "안녕하세요"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "안녕!",
+      "text_native_ref": "Hi!",
+      "words": [
+        "안녕"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "잘 지내세요?",
+      "text_native_ref": "How are you?",
+      "words": [
+        "잘",
+        "지내세요"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:45:14.384274+00:00"
+}

@@ -1,0 +1,70 @@
+{
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "ეს ჩემი ოჯახია.",
+      "text_native_ref": "Das ist meine Familie.",
+      "words": [
+        "ეს",
+        "ჩემი",
+        "ოჯახია."
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "მყავს ერთი ძმა.",
+      "text_native_ref": "Ich habe einen Bruder.",
+      "words": [
+        "მყავს",
+        "ერთი",
+        "ძმა."
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "ჩემი მეგობარი არის ლამაზი.",
+      "text_native_ref": "Meine Freundin ist schön.",
+      "words": [
+        "ჩემი",
+        "მეგობარი",
+        "არის",
+        "ლამაზი."
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "ჩვენ ერთად ვთამაშობთ.",
+      "text_native_ref": "Wir spielen zusammen.",
+      "words": [
+        "ჩვენ",
+        "ერთად",
+        "ვთამაშობთ."
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "ჩემი და ძალიან ჭკვიანი არის.",
+      "text_native_ref": "Meine Schwester ist sehr klug.",
+      "words": [
+        "ჩემი",
+        "და",
+        "ძალიან",
+        "ჭკვიანი",
+        "არის."
+      ]
+    }
+  ],
+  "meta": {
+    "level": 3,
+    "section": "",
+    "topic": "Level 3",
+    "title": "ოჯახი და მეგობრები Level 3",
+    "language": "ka",
+    "cefr": "none"
+  },
+  "language": "ka",
+  "level": 3,
+  "title": "ოჯახი და მეგობრები Level 3",
+  "section": "",
+  "topic": "Level 3"
+}

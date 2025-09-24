@@ -1,0 +1,153 @@
+{
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "My grandmother often recounts stories from her childhood, enriching our family traditions with vivid memories.",
+      "text_native_ref": "Meine Großmutter erzählt oft Geschichten aus ihrer Kindheit und bereichert unsere Familientraditionen mit lebhaften Erinnerungen.",
+      "words": [
+        "My",
+        "grandmother",
+        "often",
+        "recounts",
+        "stories",
+        "from",
+        "her",
+        "childhood",
+        "enriching",
+        "our",
+        "family",
+        "traditions",
+        "with",
+        "vivid",
+        "memories"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "We gather every Sunday for a familial brunch, where laughter intertwines with delectable dishes passed down through generations.",
+      "text_native_ref": "Wir versammeln uns jeden Sonntag zu einem familiären Brunch, bei dem Lachen mit köstlichen Gerichten verwoben ist, die über Generationen weitergegeben wurden.",
+      "words": [
+        "We",
+        "gather",
+        "every",
+        "Sunday",
+        "for",
+        "a",
+        "familial",
+        "brunch",
+        "where",
+        "laughter",
+        "intertwines",
+        "with",
+        "delectable",
+        "dishes",
+        "passed",
+        "down",
+        "through",
+        "generations"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "Understanding the intricate dynamics of my family has deepened my appreciation for our unique cultural heritage.",
+      "text_native_ref": "Das Verständnis der komplexen Dynamik meiner Familie hat meine Wertschätzung für unser einzigartiges kulturelles Erbe vertieft.",
+      "words": [
+        "Understanding",
+        "the",
+        "intricate",
+        "dynamics",
+        "of",
+        "my",
+        "family",
+        "has",
+        "deepened",
+        "my",
+        "appreciation",
+        "for",
+        "our",
+        "unique",
+        "cultural",
+        "heritage"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "During holidays, we engage in various rituals that not only strengthen our bonds but also celebrate our shared values.",
+      "text_native_ref": "Während der Feiertage nehmen wir an verschiedenen Ritualen teil, die nicht nur unsere Bindungen stärken, sondern auch unsere gemeinsamen Werte feiern.",
+      "words": [
+        "During",
+        "holidays",
+        "we",
+        "engage",
+        "in",
+        "various",
+        "rituals",
+        "that",
+        "not",
+        "only",
+        "strengthen",
+        "our",
+        "bonds",
+        "but",
+        "also",
+        "celebrate",
+        "our",
+        "shared",
+        "values"
+      ]
+    },
+    {
+      "idx": 5,
+      "text_target": "As the eldest sibling, I feel a profound responsibility to uphold our family's legacy and impart its significance to the younger generation.",
+      "text_native_ref": "Als ältestes Geschwisterkind fühle ich eine tiefgreifende Verantwortung, das Erbe unserer Familie zu bewahren und dessen Bedeutung an die jüngere Generation weiterzugeben.",
+      "words": [
+        "As",
+        "the",
+        "eldest",
+        "sibling",
+        "I",
+        "feel",
+        "a",
+        "profound",
+        "responsibility",
+        "to",
+        "uphold",
+        "our",
+        "family's",
+        "legacy",
+        "and",
+        "impart",
+        "its",
+        "significance",
+        "to",
+        "the",
+        "younger",
+        "generation"
+      ]
+    }
+  ],
+  "meta": {
+    "level": 2,
+    "section": "Placeholder",
+    "theme": "Not yet generated"
+  },
+  "runs": [],
+  "fam_counts": {
+    "0": 0,
+    "1": 0,
+    "2": 0,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  },
+  "status": null,
+  "score": null,
+  "last_score": null,
+  "placeholder": true,
+  "created": "2025-09-09T21:05:55.116917+00:00",
+  "language": "en",
+  "level": 2,
+  "title": "Family Ties and Traditions",
+  "section": "",
+  "topic": "My family"
+}

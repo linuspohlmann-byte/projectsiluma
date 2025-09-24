@@ -1,0 +1,389 @@
+
+
+// topbar.js — Navigation, language/topic prefs, header widgets
+// Public API: initTopbar(), refreshMaxFam()
+// Depends on: levels.js (showTab, setNativeDropdownVisible), words.js (loadWords)
+
+import { showTab, setNativeDropdownVisible } from './levels.js';
+import { loadWords } from './words.js';
+import { t, setLocale, applyI18n, applySelectTranslations } from '../i18n.js';
+
+const $ = (sel)=> document.querySelector(sel);
+const $$ = (sel)=> Array.from(document.querySelectorAll(sel));
+
+function cefrKey(){ return 'siluma_cefr_' + ($('#target-lang')?.value || 'en'); }
+function loadCefrForLang(){ try{ const v = localStorage.getItem( cefrKey() ); if(v && $('#cefr')) $('#cefr').value = v; }catch(_){}}
+function topicKey(){ return 'siluma_topic_' + ($('#target-lang')?.value || 'en'); }
+function loadTopicForLang(){
+  try{
+    const key = topicKey();
+    let val = localStorage.getItem(key);
+    if(!val){
+      const legacy = localStorage.getItem('siluma_topic');
+      if(legacy) val = legacy;
+      if(!val){
+        const lang = $('#target-lang')?.value || 'en';
+        const courseRaw = localStorage.getItem('siluma_course_'+lang);
+        if(courseRaw){
+          try{ const prefs = JSON.parse(courseRaw)||{}; if(typeof prefs.topic==='string' && prefs.topic) val = prefs.topic; }catch(_){ }
+        }
+      }
+    }
+    if(!val){ const sel=$('#topic'); if(sel && sel.options && sel.options.length){ val = sel.options[0].value; } }
+    if(val && $('#topic')){ $('#topic').value = val; }
+    if(val){ localStorage.setItem(key, val); }
+  }catch(_){ }
+}
+function saveSessionPrefs(){
+  try{
+    const tgt = $('#target-lang')?.value || 'en';
+    const nat = $('#native-lang')?.value || 'de';
+    const cef = $('#cefr')?.value || 'none';
+    const tpc = $('#topic')?.value || '';
+    localStorage.setItem('siluma_target', tgt);
+    localStorage.setItem('siluma_native', nat);
+    localStorage.setItem( cefrKey(), cef );
+    if(tpc) localStorage.setItem( topicKey(), tpc );
+  }catch(_){ }
+}
+function restoreSettings(){
+  try{
+    const t = localStorage.getItem('siluma_target');
+    const n = localStorage.getItem('siluma_native');
+    if(t){
+      const sel = document.getElementById('target-lang');
+      if(sel && !Array.from(sel.options).some(o=>o.value===t)){
+        const o = document.createElement('option'); o.value=t; o.textContent=t; sel.appendChild(o);
+      }
+      $('#target-lang').value = t;
+    }
+    if(n) $('#native-lang').value = n;
+  }catch(_){ }
+}
+function restoreTopic(){
+  try{
+    const per = localStorage.getItem( topicKey() );
+    if(per && $('#topic')){ $('#topic').value = per; return; }
+    const legacy = localStorage.getItem('siluma_topic');
+    if(legacy){
+      localStorage.setItem( topicKey(), legacy );
+      if($('#topic')) $('#topic').value = legacy;
+    }
+  }catch(_){ }
+}
+
+function codeToFlag(code){
+  try{
+    const c = String(code||'').toLowerCase();
+    const map = { en:'🇬🇧', de:'🇩🇪', fr:'🇫🇷', it:'🇮🇹', es:'🇪🇸', pt:'🇵🇹', ru:'🇷🇺', tr:'🇹🇷', ka:'🇬🇪' };
+    if(map[c]) return map[c];
+    // try derive from region (e.g., en-US -> US)
+    const region = (c.includes('-') ? c.split('-')[1] : c).toUpperCase();
+    if(region.length===2){
+      const A = 127397; // 0x1F1E6 - 'A'
+      const flag = String.fromCodePoint(region.charCodeAt(0)+A, region.charCodeAt(1)+A);
+      return flag;
+    }
+  }catch(_){ }
+  return '🌐';
+}
+
+function ensureTargetLangOptions(){
+  console.log('🔍 ensureTargetLangOptions called');
+  const sel = document.getElementById('target-lang');
+  if(sel){
+    // Get current native language
+    const currentNativeLang = $('#native-lang')?.value || 'de';
+    console.log('🌍 Current native language:', currentNativeLang);
+    
+    // Load localization for current native language
+    console.log('📥 Loading localization for:', currentNativeLang);
+    fetch(`/api/localization/${currentNativeLang}`)
+      .then(response => response.json())
+      .then(data => {
+        console.log('📋 Localization data received:', data);
+        if(data.success && data.localization) {
+          // Load available languages from server
+          console.log('🌐 Loading languages list...');
+          fetch('/api/languages/list')
+            .then(response => response.json())
+            .then(langData => {
+              console.log('📝 Languages data received:', langData);
+              if(langData.success && langData.languages) {
+                // Clear existing options
+                sel.innerHTML = '';
+                console.log('🧹 Cleared dropdown options');
+                
+                // Add all available languages with localized names
+                langData.languages.forEach(lang => {
+                  const o = document.createElement('option');
+                  o.value = lang.code;
+                  
+                  // Get localized name from localization data
+                  const localizedName = data.localization.language_names[lang.code] || lang.name;
+                  console.log(`🌍 Language ${lang.code}: ${lang.name} → ${localizedName}`);
+                  o.textContent = localizedName;
+                  sel.appendChild(o);
+                });
+                
+                // Add "Add Language" option with localized text
+                const addOption = document.createElement('option');
+                addOption.value = '__add__';
+                addOption.textContent = '➕ ' + (data.localization.ui['add-language'] || 'Add Language');
+                addOption.style.fontStyle = 'italic';
+                sel.appendChild(addOption);
+                
+                // Restore selected language if it was set
+                const savedLang = localStorage.getItem('siluma_target');
+                if(savedLang && langData.languages.some(l => l.code === savedLang)) {
+                  sel.value = savedLang;
+                }
+                
+                // Mark as localized to prevent applySelectTranslations from overriding
+                sel.dataset.localized = 'true';
+                console.log('✅ Dropdown localized and marked as localized');
+              }
+            })
+            .catch(error => {
+              console.error('❌ Error loading languages:', error);
+              // Fallback to hardcoded languages if API fails
+              fallbackToHardcodedLanguages();
+            });
+        }
+      })
+      .catch(error => {
+        console.error('❌ Error loading localization:', error);
+        // Fallback to hardcoded approach
+        loadLanguagesWithFallback();
+      });
+  } else {
+    console.log('❌ target-lang select element not found');
+  }
+}
+
+function fallbackToHardcodedLanguages(){
+  const sel = document.getElementById('target-lang');
+  if(!sel) return;
+  
+  const opts = Array.from(sel.options).map(o=>o.value);
+  const required = [
+    {value:'en', label:'English'},
+    {value:'de', label:'German'},
+    {value:'fr', label:'French'},
+    {value:'it', label:'Italian'},
+    {value:'es', label:'Spanish'},
+    {value:'pt', label:'Portuguese'},
+    {value:'ru', label:'Russian'},
+    {value:'tr', label:'Turkish'},
+    {value:'ka', label:'Georgian'},
+    {value:'nl', label:'Dutch'},
+    {value:'jp', label:'Japanese'},
+    {value:'ko', label:'Korean'},
+    {value:'zh', label:'Chinese'},
+    {value:'ar', label:'Arabic'},
+    {value:'da', label:'Danish'}
+  ];
+  required.forEach(r=>{
+    if(!opts.includes(r.value)){
+      const o = document.createElement('option');
+      o.value = r.value; o.textContent = r.label;
+      sel.appendChild(o);
+    }
+  });
+  
+  // Add "Add Language" option if not already present
+  if(!opts.includes('__add__')){
+    const addOption = document.createElement('option');
+    addOption.value = '__add__';
+    addOption.textContent = '➕ ' + t('ui.add-language', 'Add Language');
+    addOption.style.fontStyle = 'italic';
+    sel.appendChild(addOption);
+  }
+}
+
+function loadLanguagesWithFallback(){
+  console.log('🔄 loadLanguagesWithFallback called');
+  const sel = document.getElementById('target-lang');
+  if(sel){
+    // Load available languages from server
+    fetch('/api/languages/list')
+      .then(response => response.json())
+      .then(data => {
+        if(data.success && data.languages) {
+          // Clear existing options
+          sel.innerHTML = '';
+          
+          // Add all available languages
+          data.languages.forEach(lang => {
+            const o = document.createElement('option');
+            o.value = lang.code;
+            o.textContent = lang.name;
+            sel.appendChild(o);
+          });
+          
+          // Add "Add Language" option
+          const addOption = document.createElement('option');
+          addOption.value = '__add__';
+          addOption.textContent = '➕ Add Language';
+          addOption.style.fontStyle = 'italic';
+          sel.appendChild(addOption);
+          
+          // Restore selected language if it was set
+          const savedLang = localStorage.getItem('siluma_target');
+          if(savedLang && data.languages.some(l => l.code === savedLang)) {
+            sel.value = savedLang;
+          }
+        }
+      })
+      .catch(error => {
+        console.error('❌ Error loading languages:', error);
+        // Fallback to hardcoded languages if API fails
+        fallbackToHardcodedLanguages();
+      });
+  }
+}
+
+function ensureNativeLangOptions(){
+  const sel = document.getElementById('native-lang');
+  if(!sel) return;
+  const existing = Array.from(sel.options).map(o=>o.value);
+  const builtins = ['de','en','fr','it','es','pt','ru','tr','ka'];
+  builtins.forEach(c=>{
+    if(!existing.includes(c)){
+      const o=document.createElement('option'); o.value=c; o.textContent=codeToFlag(c); o.setAttribute('aria-label', t(`lang.${c}`, c.toUpperCase())); sel.appendChild(o);
+    }
+  });
+}
+
+export async function refreshMaxFam(){
+  const el = document.getElementById('maxfam-pill'); if(!el) return;
+  const lang = document.getElementById('target-lang')?.value || 'en';
+  try{
+    const r = await fetch(`/api/words/count_max?language=${encodeURIComponent(lang)}`);
+    const js = await r.json();
+    const n = Number((js && js.count) || 0);
+    el.textContent = `★ Auswendig · ${lang.toUpperCase()}: ${n}`;
+  }catch(_){ }
+}
+
+async function addNewLanguage(){
+  const languageName = prompt('Bitte gib den Namen der neuen Sprache ein (z.B. "Schwedisch", "Polnisch"):');
+  if(!languageName || languageName.trim() === '') return;
+  
+  try {
+    // Show loading state
+    const sel = document.getElementById('target-lang');
+    const addOption = sel.querySelector('option[value="__add__"]');
+    if(addOption) {
+      addOption.textContent = '⏳ ' + t('ui.validating', 'Validiere...');
+      addOption.disabled = true;
+    }
+    
+    // Validate language with AI
+    const response = await fetch('/api/language/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        language_name: languageName.trim(),
+        native_lang: $('#native-lang')?.value || 'de'
+      })
+    });
+    
+    const result = await response.json();
+    
+    if(result.success && result.language_code) {
+      // Refresh the language list to show the new language
+      ensureTargetLangOptions();
+      
+      // Show success message
+      alert(t('ui.language-added', 'Sprache {0} erfolgreich hinzugefügt').replace('{0}', languageName));
+    } else {
+      throw new Error(result.error || 'Unbekannter Fehler');
+    }
+  } catch(error) {
+    console.error('Error adding language:', error);
+    alert(t('ui.language-add-error', 'Fehler beim Hinzufügen der Sprache') + ': ' + error.message);
+  } finally {
+    // Restore add option
+    if(addOption) {
+      addOption.textContent = '➕ ' + t('ui.add-language', 'Sprache hinzufügen');
+      addOption.disabled = false;
+    }
+  }
+}
+
+function bindNav(){
+  const setActive = (id)=>{ $$('.nav button').forEach(b=> b.classList.remove('active')); if(id) $(id)?.classList.add('active'); };
+  $('#nav-home')?.addEventListener('click', ()=>{
+    setActive('#nav-home');
+    showTab('levels');
+    setNativeDropdownVisible(true);
+  });
+  $('#show-words')?.addEventListener('click', ()=>{
+    setActive('#show-words');
+    showTab('words');
+    try{ loadWords(); }catch(_){ }
+    setNativeDropdownVisible(true);
+  });
+  $('#nav-alphabet')?.addEventListener('click', ()=>{
+    setActive('#nav-alphabet');
+    try{ if(window.startAlphabet) window.startAlphabet(); }catch(_){ }
+    const abEntry=document.getElementById('alphabet-entry'); if(abEntry) abEntry.style.display='none';
+  });
+}
+
+function bindPrefs(){
+  // Language changes
+  $('#target-lang')?.addEventListener('change', (e)=>{
+    // Handle "Add Language" option
+    if(e.target.value === '__add__') {
+      addNewLanguage();
+      // Reset to previous selection
+      const prevLang = localStorage.getItem('siluma_target') || 'en';
+      e.target.value = prevLang;
+      return;
+    }
+    
+    loadCefrForLang();
+    loadTopicForLang();
+    saveSessionPrefs();
+    try{ refreshMaxFam(); }catch(_){ }
+    try{ if(typeof window.renderLevels==='function') window.renderLevels(); }catch(_){ }
+    try{ applySelectTranslations(); }catch(_){ }
+  });
+  $('#native-lang')?.addEventListener('change', ()=>{
+    saveSessionPrefs();
+    try{ localStorage.setItem('siluma_native', $('#native-lang')?.value||'de'); }catch(_){ }
+    // Hard reload to re-bootstrap in the new UI language
+    try{ window.location.reload(); }catch(_){ }
+  });
+  // CEFR changes
+  $('#cefr')?.addEventListener('change', (e)=>{ try{ localStorage.setItem( cefrKey(), e.target.value ); }catch(_){} saveSessionPrefs(); try{ if(typeof window.renderLevels==='function') window.renderLevels(); }catch(_){ } });
+  // Topic changes (per language)
+  $('#topic')?.addEventListener('change', (e)=>{ try{ localStorage.setItem( topicKey(), e.target.value ); }catch(_){ } });
+}
+
+export function initTopbar(){
+  ensureTargetLangOptions();
+  ensureNativeLangOptions();
+  restoreSettings();
+  restoreTopic();
+  loadCefrForLang();
+  // Set initial UI locale from native language
+  try{ setLocale($('#native-lang')?.value || 'de'); applyI18n(); }catch(_){ }
+  // Note: applySelectTranslations() is NOT called here because ensureTargetLangOptions() 
+  // already handles localization and marks the dropdown as localized
+  saveSessionPrefs();
+  bindNav();
+  bindPrefs();
+  refreshMaxFam();
+  // initial state
+  $$('.nav button').forEach(b=> b.classList.remove('active'));
+  $('#nav-alphabet')?.classList.remove('active');
+  $('#nav-home')?.classList.add('active');
+}
+
+// Legacy exposure for inline callers
+if(typeof window !== 'undefined'){
+  window.refreshMaxFam = refreshMaxFam;
+}

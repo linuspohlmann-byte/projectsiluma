@@ -1,0 +1,26 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#16a34a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle with gradient -->
+  <circle cx="18" cy="18" r="18" fill="url(#logoGradient)"/>
+  
+  <!-- Speech bubble representing language learning -->
+  <path d="M8 12c0-2.2 1.8-4 4-4h8c2.2 0 4 1.8 4 4v6c0 2.2-1.8 4-4 4h-2l-3 3v-3h-3c-2.2 0-4-1.8-4-4v-6z" fill="white" opacity="0.9"/>
+  
+  <!-- Letter "P" for Polo -->
+  <text x="18" y="22" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="url(#logoGradient)">P</text>
+  
+  <!-- Small accent dots representing different languages -->
+  <circle cx="24" cy="10" r="2" fill="url(#accentGradient)"/>
+  <circle cx="28" cy="14" r="1.5" fill="url(#accentGradient)" opacity="0.8"/>
+  <circle cx="26" cy="26" r="1" fill="url(#accentGradient)" opacity="0.6"/>
+</svg>

@@ -1,0 +1,11 @@
+{
+  "settings": {
+    "theme": "light",
+    "language": "en",
+    "notifications": true,
+    "sound_enabled": true,
+    "auto_play_audio": false,
+    "difficulty_preference": "adaptive",
+    "native_language": "de"
+  }
+}

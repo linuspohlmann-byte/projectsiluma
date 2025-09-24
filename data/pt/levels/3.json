@@ -1,0 +1,96 @@
+{
+  "language": "pt",
+  "level": 3,
+  "title": "Level 3",
+  "section": "Portuguese for Travel",
+  "topic": "Daily Routines Vocabulary",
+  "cefr": "A2",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "Eu acordo cedo todos os dias.",
+      "text_native_ref": "I wake up early every day.",
+      "words": [
+        "Eu",
+        "acordo",
+        "cedo",
+        "todos",
+        "os",
+        "dias"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "Depois de tomar banho, eu tomo café da manhã.",
+      "text_native_ref": "After taking a shower, I have breakfast.",
+      "words": [
+        "Depois",
+        "de",
+        "tomar",
+        "banho",
+        "eu",
+        "tomo",
+        "café",
+        "da",
+        "manhã"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "À noite, eu leio um livro antes de dormir.",
+      "text_native_ref": "At night, I read a book before sleeping.",
+      "words": [
+        "À",
+        "noite",
+        "eu",
+        "leio",
+        "um",
+        "livro",
+        "antes",
+        "de",
+        "dormir"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Eu acordo cedo todos os dias.",
+      "text_native_ref": "I wake up early every day.",
+      "words": [
+        "Eu",
+        "acordo",
+        "cedo",
+        "todos",
+        "os",
+        "dias"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "Depois, eu tomo café da manhã.",
+      "text_native_ref": "Then, I have breakfast.",
+      "words": [
+        "Depois",
+        "eu",
+        "tomo",
+        "café",
+        "da",
+        "manhã"
+      ]
+    },
+    {
+      "idx": 4,
+      "text_target": "À tarde, eu vou trabalhar.",
+      "text_native_ref": "In the afternoon, I go to work.",
+      "words": [
+        "À",
+        "tarde",
+        "eu",
+        "vou",
+        "trabalhar"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:49:24.053572+00:00"
+}

@@ -1,0 +1,76 @@
+{
+  "language": "hi",
+  "level": 1,
+  "title": "Level 1",
+  "section": "Hindi Basics",
+  "topic": "Basic Greetings in Hindi",
+  "cefr": "A1",
+  "items": [
+    {
+      "idx": 1,
+      "text_target": "नमस्ते!",
+      "text_native_ref": "Hello!",
+      "words": [
+        "नमस",
+        "त"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "कैसे हो?",
+      "text_native_ref": "How are you?",
+      "words": [
+        "क",
+        "स",
+        "ह"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "शुभ प्रभात!",
+      "text_native_ref": "Good morning!",
+      "words": [
+        "श",
+        "भ",
+        "प",
+        "रभ",
+        "त"
+      ]
+    },
+    {
+      "idx": 1,
+      "text_target": "नमस्ते!",
+      "text_native_ref": "Hello!",
+      "words": [
+        "नमस",
+        "त"
+      ]
+    },
+    {
+      "idx": 2,
+      "text_target": "आप कैसे हैं?",
+      "text_native_ref": "How are you?",
+      "words": [
+        "आप",
+        "क",
+        "स",
+        "ह"
+      ]
+    },
+    {
+      "idx": 3,
+      "text_target": "शुभ प्रभात!",
+      "text_native_ref": "Good morning!",
+      "words": [
+        "श",
+        "भ",
+        "प",
+        "रभ",
+        "त"
+      ]
+    }
+  ],
+  "runs": [],
+  "status": "not_started",
+  "created_at": "2025-09-02T16:46:06.913685+00:00"
+}
