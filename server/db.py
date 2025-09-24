@@ -586,32 +586,77 @@ def init_db():
 # --- Words CRUD helpers ---
 
 def list_words_rows():
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
-    rows = conn.execute(
-        'SELECT id, word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, cefr, freq_rank, synonyms, collocations, tags, note, info, updated_at FROM words ORDER BY COALESCE(updated_at, created_at) DESC'
-    ).fetchall()
-    conn.close()
-    return rows
+    
+    try:
+        if config['type'] == 'postgresql':
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT id, word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, cefr, freq_rank, synonyms, collocations, tags, note, info, updated_at FROM words ORDER BY COALESCE(updated_at, created_at) DESC'
+            )
+            rows = cur.fetchall()
+            cur.close()
+            return rows
+        else:
+            rows = conn.execute(
+                'SELECT id, word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, cefr, freq_rank, synonyms, collocations, tags, note, info, updated_at FROM words ORDER BY COALESCE(updated_at, created_at) DESC'
+            ).fetchall()
+            return rows
+    finally:
+        conn.close()
 
 
 def get_word_row(word: str, language: str):
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
-    row = conn.execute(
-        'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=? AND (language=? OR ?="") LIMIT 1',
-        (word, language, language)
-    ).fetchone()
-    conn.close()
-    return row
+    
+    try:
+        if config['type'] == 'postgresql':
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=%s AND (language=%s OR %s=\'\') LIMIT 1',
+                (word, language, language)
+            )
+            row = cur.fetchone()
+            cur.close()
+            return row
+        else:
+            row = conn.execute(
+                'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=? AND (language=? OR ?="") LIMIT 1',
+                (word, language, language)
+            ).fetchone()
+            return row
+    finally:
+        conn.close()
 
 
 def count_words_fam5(language: str | None = None) -> int:
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
+    
     try:
-        if language:
-            row = conn.execute('SELECT COUNT(*) AS c FROM words WHERE (language=? OR ?="")', (language, language)).fetchone()
+        if config['type'] == 'postgresql':
+            cur = conn.cursor()
+            if language:
+                cur.execute('SELECT COUNT(*) AS c FROM words WHERE (language=%s OR %s=\'\')', (language, language))
+            else:
+                cur.execute('SELECT COUNT(*) AS c FROM words')
+            row = cur.fetchone()
+            cur.close()
+            return int(row[0] if row else 0)
         else:
-            row = conn.execute('SELECT COUNT(*) AS c FROM words').fetchone()
-        return int(row['c'] if row else 0)
+            if language:
+                row = conn.execute('SELECT COUNT(*) AS c FROM words WHERE (language=? OR ?="")', (language, language)).fetchone()
+            else:
+                row = conn.execute('SELECT COUNT(*) AS c FROM words').fetchone()
+            return int(row['c'] if row else 0)
     finally:
         conn.close()
 
@@ -619,9 +664,19 @@ def count_words_fam5(language: str | None = None) -> int:
 def delete_words_by_ids(ids_int: list[int]) -> int:
     if not ids_int:
         return 0
+    
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db(); cur = conn.cursor()
-    q = ','.join('?' for _ in ids_int)
-    cur.execute(f'DELETE FROM words WHERE id IN ({q})', tuple(ids_int))
+    
+    if config['type'] == 'postgresql':
+        q = ','.join('%s' for _ in ids_int)
+        cur.execute(f'DELETE FROM words WHERE id IN ({q})', tuple(ids_int))
+    else:
+        q = ','.join('?' for _ in ids_int)
+        cur.execute(f'DELETE FROM words WHERE id IN ({q})', tuple(ids_int))
+    
     n = cur.rowcount
     conn.commit(); conn.close()
     return int(n)
@@ -677,30 +732,60 @@ def upsert_word_row(payload: dict) -> None:
 
 def get_localization_entry(reference_key: str, language: str = None):
     """Get a localization entry by reference key and optionally language"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
+    
     try:
-        if language:
-            # Get specific language translation
-            row = conn.execute(
-                'SELECT * FROM localization WHERE reference_key = ?',
+        if config['type'] == 'postgresql':
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT * FROM localization WHERE reference_key = %s',
                 (reference_key,)
-            ).fetchone()
+            )
+            row = cur.fetchone()
+            cur.close()
+            
             if row:
-                # Convert row to dict and return only the requested language
-                row_dict = dict(row)
-                lang_column = language.lower()
-                if lang_column in row_dict:
-                    return {lang_column: row_dict[lang_column]}
+                # Convert row to dict
+                columns = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
+                row_dict = dict(zip(columns, row)) if columns else {}
+                
+                if language:
+                    # Return only the requested language
+                    lang_column = language.lower()
+                    if lang_column in row_dict:
+                        return {lang_column: row_dict[lang_column]}
+                    else:
+                        return {}
                 else:
-                    return {}
+                    # Return all translations
+                    return row_dict
             return {}
         else:
-            # Get all translations for the key
-            row = conn.execute(
-                'SELECT * FROM localization WHERE reference_key = ?',
-                (reference_key,)
-            ).fetchone()
-            return row
+            if language:
+                # Get specific language translation
+                row = conn.execute(
+                    'SELECT * FROM localization WHERE reference_key = ?',
+                    (reference_key,)
+                ).fetchone()
+                if row:
+                    # Convert row to dict and return only the requested language
+                    row_dict = dict(row)
+                    lang_column = language.lower()
+                    if lang_column in row_dict:
+                        return {lang_column: row_dict[lang_column]}
+                    else:
+                        return {}
+                return {}
+            else:
+                # Get all translations for the key
+                row = conn.execute(
+                    'SELECT * FROM localization WHERE reference_key = ?',
+                    (reference_key,)
+                ).fetchone()
+                return row
     finally:
         conn.close()
 
