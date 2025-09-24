@@ -1037,6 +1037,10 @@ def get_user_by_username(username: str):
             )
             row = cur.fetchone()
             
+            # Debug: Print row type and content
+            print(f"DEBUG: PostgreSQL row type: {type(row)}")
+            print(f"DEBUG: PostgreSQL row content: {row}")
+            
             cur.close()
             return row
         else:
