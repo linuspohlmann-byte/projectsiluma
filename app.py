@@ -4914,63 +4914,68 @@ def api_create_postgresql_tables():
 def api_database_info():
     """Get database information and table list"""
     try:
-        from server.db_config import get_database_config, get_db_connection
-        config = get_database_config()
+        import psycopg2
+        from urllib.parse import urlparse
+        import os
         
-        # Use get_db_connection directly instead of get_db()
-        conn = get_db_connection()
-        
-        if conn is None:
-            return jsonify({'success': False, 'error': 'Failed to get database connection'}), 500
-        
-        if config['type'] == 'postgresql':
-            # Get table list
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                ORDER BY table_name;
-            """)
-            tables = [row[0] for row in cur.fetchall()]
-            
-            # Get user count
-            cur.execute("SELECT COUNT(*) FROM users")
-            user_count = cur.fetchone()[0]
-            
-            # Get session count
-            cur.execute("SELECT COUNT(*) FROM user_sessions")
-            session_count = cur.fetchone()[0]
-            
-            conn.close()
-            
+        # Check if DATABASE_URL is set (PostgreSQL)
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            try:
+                # Parse and connect to PostgreSQL
+                parsed = urlparse(database_url)
+                conn = psycopg2.connect(
+                    host=parsed.hostname,
+                    port=parsed.port,
+                    database=parsed.path[1:],
+                    user=parsed.username,
+                    password=parsed.password
+                )
+                
+                # Get table list
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    ORDER BY table_name;
+                """)
+                tables = [row[0] for row in cur.fetchall()]
+                
+                # Get user count
+                cur.execute("SELECT COUNT(*) FROM users")
+                user_count = cur.fetchone()[0]
+                
+                # Get session count
+                cur.execute("SELECT COUNT(*) FROM user_sessions")
+                session_count = cur.fetchone()[0]
+                
+                cur.close()
+                conn.close()
+                
+                return jsonify({
+                    'success': True,
+                    'database_type': 'postgresql',
+                    'tables': tables,
+                    'user_count': user_count,
+                    'session_count': session_count,
+                    'message': f'Found {len(tables)} tables in PostgreSQL database'
+                })
+                
+            except Exception as e:
+                return jsonify({
+                    'success': False, 
+                    'error': f'PostgreSQL connection failed: {str(e)}'
+                }), 500
+        else:
+            # No DATABASE_URL, assume SQLite
             return jsonify({
                 'success': True,
-                'database_type': 'postgresql',
-                'tables': tables,
-                'user_count': user_count,
-                'session_count': session_count,
-                'message': f'Found {len(tables)} tables in PostgreSQL database'
+                'database_type': 'sqlite',
+                'tables': [],
+                'user_count': 0,
+                'message': 'No DATABASE_URL set, using SQLite'
             })
-            
-        else:
-            # SQLite info
-            cur = conn.cursor()
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-            tables = [row[0] for row in cur.fetchall()]
-            
-            cur.execute("SELECT COUNT(*) FROM users")
-            user_count = cur.fetchone()[0]
-            
-            conn.close()
-            
-        return jsonify({
-            'success': True,
-            'database_type': 'sqlite',
-            'tables': tables,
-            'user_count': user_count,
-            'message': f'Found {len(tables)} tables in SQLite database'
-        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -4979,22 +4984,36 @@ def api_database_info():
 def api_create_test_user():
     """Create a test user directly"""
     try:
-        from server.db_config import get_database_config, get_db_connection, execute_query
-        config = get_database_config()
+        import psycopg2
+        from urllib.parse import urlparse
+        import os
+        import hashlib
         
-        if config['type'] != 'postgresql':
+        # Get DATABASE_URL
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
             return jsonify({
                 'success': False, 
-                'error': 'This endpoint only works with PostgreSQL'
+                'error': 'DATABASE_URL not set'
             }), 400
         
-        conn = get_db_connection()
+        # Parse and connect to PostgreSQL
+        parsed = urlparse(database_url)
+        conn = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            database=parsed.path[1:],
+            user=parsed.username,
+            password=parsed.password
+        )
         
         # Check if test user already exists
-        cur = execute_query(conn, "SELECT id FROM users WHERE username = %s", ('testuser',))
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM users WHERE username = %s", ('testuser',))
         existing_user = cur.fetchone()
         
         if existing_user:
+            cur.close()
             conn.close()
             return jsonify({
                 'success': True,
@@ -5004,17 +5023,18 @@ def api_create_test_user():
             })
         
         # Create test user
-        import hashlib
         password_hash = hashlib.sha256('password123'.encode()).hexdigest()
         
-        cur = execute_query(conn, """
+        cur.execute("""
             INSERT INTO users (username, email, password_hash, created_at, is_active, native_language)
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE, 'en')
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE, 'de')
             RETURNING id
         """, ('testuser', 'test@example.com', password_hash))
         
         user_id = cur.fetchone()[0]
+        conn.commit()
         
+        cur.close()
         conn.close()
         
         return jsonify({
