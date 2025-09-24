@@ -4501,6 +4501,21 @@ def api_setup_database():
         # Initialize database
         init_db()
         
+        # Add missing columns to users table if they don't exist
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Check if native_language column exists
+        cur.execute("PRAGMA table_info(users)")
+        columns = [column[1] for column in cur.fetchall()]
+        
+        if 'native_language' not in columns:
+            cur.execute("ALTER TABLE users ADD COLUMN native_language TEXT DEFAULT 'en'")
+            print("Added native_language column to users table")
+        
+        conn.commit()
+        conn.close()
+        
         # Create test user if it doesn't exist
         from server.services.auth import register_user
         
