@@ -304,7 +304,45 @@ DB_PATH  = os.path.join(APP_ROOT, 'polo.db')
 
 def get_db():
     """Get database connection - supports both SQLite and PostgreSQL"""
-    return get_db_connection()
+    conn = get_db_connection()
+    config = get_database_config()
+    
+    if config['type'] == 'postgresql':
+        # For PostgreSQL, return a wrapper that provides .execute() method
+        class PostgreSQLWrapper:
+            def __init__(self, conn):
+                self.conn = conn
+                self.cursor = None
+            
+            def execute(self, query, params=None):
+                # Convert SQLite ? placeholders to PostgreSQL %s
+                if params:
+                    query = query.replace('?', '%s')
+                    self.cursor = self.conn.cursor()
+                    self.cursor.execute(query, params)
+                else:
+                    self.cursor = self.conn.cursor()
+                    self.cursor.execute(query)
+                return self
+            
+            def fetchall(self):
+                return self.cursor.fetchall() if self.cursor else []
+            
+            def fetchone(self):
+                return self.cursor.fetchone() if self.cursor else None
+            
+            def commit(self):
+                return self.conn.commit()
+            
+            def close(self):
+                if self.cursor:
+                    self.cursor.close()
+                return self.conn.close()
+        
+        return PostgreSQLWrapper(conn)
+    else:
+        # For SQLite, return the connection (which has .execute method)
+        return conn
 
 def execute_sql(conn, query, params=None):
     """Execute SQL query with appropriate parameter style"""
