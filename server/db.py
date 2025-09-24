@@ -907,14 +907,29 @@ def get_missing_translations(language_code: str):
 
 def create_user(username: str, email: str, password_hash: str) -> int:
     """Create a new user and return user ID"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db(); cur = conn.cursor()
+    
     try:
         now = datetime.now(UTC).isoformat()
-        cur.execute(
-            'INSERT INTO users (username, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?)',
-            (username, email, password_hash, now, now)
-        )
-        user_id = cur.lastrowid
+        
+        if config['type'] == 'postgresql':
+            # PostgreSQL doesn't have updated_at column in users table
+            cur.execute(
+                'INSERT INTO users (username, email, password_hash, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
+                (username, email, password_hash, now)
+            )
+            user_id = cur.fetchone()[0]
+        else:
+            # SQLite has updated_at column
+            cur.execute(
+                'INSERT INTO users (username, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?)',
+                (username, email, password_hash, now, now)
+            )
+            user_id = cur.lastrowid
+            
         conn.commit()
         return int(user_id)
     finally:
@@ -1006,13 +1021,27 @@ def get_user_by_id(user_id: int):
 
 def update_user_last_login(user_id: int):
     """Update user's last login timestamp"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db(); cur = conn.cursor()
+    
     try:
         now = datetime.now(UTC).isoformat()
-        cur.execute(
-            'UPDATE users SET last_login=?, updated_at=? WHERE id=?',
-            (now, now, user_id)
-        )
+        
+        if config['type'] == 'postgresql':
+            # PostgreSQL doesn't have updated_at column in users table
+            cur.execute(
+                'UPDATE users SET last_login=%s WHERE id=%s',
+                (now, user_id)
+            )
+        else:
+            # SQLite has updated_at column
+            cur.execute(
+                'UPDATE users SET last_login=?, updated_at=? WHERE id=?',
+                (now, now, user_id)
+            )
+            
         conn.commit()
     finally:
         conn.close()
