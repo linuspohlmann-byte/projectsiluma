@@ -48,17 +48,18 @@ def update_user_native_language(user_id: int, native_language: str) -> bool:
         cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
         row = cur.fetchone()
         
-        if row:
-            settings = json.loads(row['settings']) if row['settings'] else {}
-        else:
-            settings = {}
-        
+        if not row:
+            print(f"User {user_id} not found")
+            return False
+            
+        settings = json.loads(row['settings']) if row['settings'] else {}
         settings['native_language'] = native_language
         
         # Update both settings JSON and native_language column
         cur.execute("UPDATE users SET settings = ?, native_language = ? WHERE id = ?", 
                    (json.dumps(settings), native_language, user_id))
         conn.commit()
+        print(f"Successfully updated native language for user {user_id} to {native_language}")
         return True
     except Exception as e:
         print(f"Error updating user native language: {e}")

@@ -3236,6 +3236,10 @@ def api_levels_bulk_stats():
     user_context = get_user_context()
     user_id = user_context['user_id']
     
+    # Handle unauthenticated users
+    if user_id is None:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    
     try:
         # Parse levels parameter
         levels = []
