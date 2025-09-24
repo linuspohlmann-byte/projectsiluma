@@ -5076,13 +5076,23 @@ def api_test_postgresql():
         cur.execute('SELECT COUNT(*) FROM users')
         user_count = cur.fetchone()[0]
         
+        # Get table structure
+        cur.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'users' 
+            ORDER BY ordinal_position
+        """)
+        columns = cur.fetchall()
+        
         cur.close()
         conn.close()
         
         return jsonify({
             'success': True,
             'message': 'PostgreSQL connection successful',
-            'user_count': user_count
+            'user_count': user_count,
+            'users_table_columns': columns
         })
         
     except Exception as e:
