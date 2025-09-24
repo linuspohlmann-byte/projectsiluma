@@ -2552,232 +2552,236 @@ FALLBACK_SENTENCES = {
 
 @levels_bp.post('/api/level/start')
 def api_level_start():
-    payload = request.get_json(force=True) or {}
-    level = int(payload.get('level') or 1)
-    target_lang = (payload.get('target_lang') or 'en').lower()
-    native_lang = (payload.get('native_lang') or 'de').lower()
-    # Normalize BCP-47 tags to base codes and guard against accidental swaps
-    target_lang = (target_lang.split('-')[0] or 'en').lower()
-    native_lang = (native_lang.split('-')[0] or 'de').lower()
-    if target_lang == native_lang:
-        # Heuristic: if identical, keep native as-is and default target to English to avoid German-on-German
-        # This prevents LLM from using the native language by mistake.
-        target_lang = 'en' if native_lang != 'en' else 'de'
-    topic = (payload.get('topic') or 'daily life').strip() or 'daily life'
-    cefr = (payload.get('cefr') or 'A0').strip()  # Default to A0 instead of 'none'
-    reuse = bool(payload.get('reuse', False))
-    
-    # Check for user authentication
-    session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
-    user = get_current_user(session_token) if session_token else None
-    user_id = user['id'] if user else None
-
-    # Gate: only allow starting level N>1 if previous level score > 0.6
     try:
-        if level > 1:
-            if user_id:
-                # Check user's previous level progress
-                from server.db import get_user_progress
-                from server.db_multi_user import get_user_native_language
-                native_language = get_user_native_language(user_id)
-                prev_progress = get_user_progress(user_id, target_lang, native_language)
-                prev_level_data = next((p for p in prev_progress if p['level'] == level-1), None)
-                prev_score = prev_level_data['score'] if prev_level_data else None
-            else:
-                # Fallback to global level data
-                prev = _read_level(target_lang, level-1)
-                prev_score = None if not prev else prev.get('last_score')
-            
-            if not (isinstance(prev_score, (int, float)) and float(prev_score) > 0.6):
-                return jsonify({'success': False, 'error': 'previous level score must be > 0.6'}), 403
-    except Exception:
-        # Defensive: block when we cannot verify
-        if level > 1:
-            return jsonify({'success': False, 'error': 'previous level score must be > 0.6'}), 403
+        payload = request.get_json(force=True) or {}
+        level = int(payload.get('level') or 1)
+        target_lang = (payload.get('target_lang') or 'en').lower()
+        native_lang = (payload.get('native_lang') or 'de').lower()
+        # Normalize BCP-47 tags to base codes and guard against accidental swaps
+        target_lang = (target_lang.split('-')[0] or 'en').lower()
+        native_lang = (native_lang.split('-')[0] or 'de').lower()
+        if target_lang == native_lang:
+            # Heuristic: if identical, keep native as-is and default target to English to avoid German-on-German
+            # This prevents LLM from using the native language by mistake.
+            target_lang = 'en' if native_lang != 'en' else 'de'
+        topic = (payload.get('topic') or 'daily life').strip() or 'daily life'
+        cefr = (payload.get('cefr') or 'A0').strip()  # Default to A0 instead of 'none'
+        reuse = bool(payload.get('reuse', False))
+        
+        # Check for user authentication
+        session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        user = get_current_user(session_token) if session_token else None
+        user_id = user['id'] if user else None
 
-    # Check if user-specific level file already exists and should be reused
-    _ensure_course_dirs(target_lang)
-    existing_fs = _read_level(target_lang, level, user_id)
-    
-    # Reuse existing items from FS if available and not explicitly regenerating
-    if reuse or (existing_fs and existing_fs.get('items')):
+        # Gate: only allow starting level N>1 if previous level score > 0.6
         try:
-            _ensure_course_dirs(target_lang)
-            fs = _read_level(target_lang, level, user_id)
+            if level > 1:
+                if user_id:
+                    # Check user's previous level progress
+                    from server.db import get_user_progress
+                    from server.db_multi_user import get_user_native_language
+                    native_language = get_user_native_language(user_id)
+                    prev_progress = get_user_progress(user_id, target_lang, native_language)
+                    prev_level_data = next((p for p in prev_progress if p['level'] == level-1), None)
+                    prev_score = prev_level_data['score'] if prev_level_data else None
+                else:
+                    # Fallback to global level data
+                    prev = _read_level(target_lang, level-1)
+                    prev_score = None if not prev else prev.get('last_score')
+                
+                if not (isinstance(prev_score, (int, float)) and float(prev_score) > 0.6):
+                    return jsonify({'success': False, 'error': 'previous level score must be > 0.6'}), 403
         except Exception:
-            fs = None
-        
-        # Check if we should regenerate content based on topic changes
-        should_regenerate = False
-        if fs:
-            existing_topic = fs.get('topic', '').strip()
-            existing_title = fs.get('title', '').strip()
-            existing_items = fs.get('items', [])
-            
-            # Only regenerate if level file is empty/invalid
-            if not existing_items or len(existing_items) == 0:
-                print(f"Level file exists but has no items (placeholder) - regenerating content")
-                should_regenerate = True
-            # If level file has content, always reuse it unless explicitly told not to
-            else:
-                print(f"Level file has content - reusing existing level (topic: '{existing_topic}')")
-                should_regenerate = False
-        
-        if fs and isinstance(fs.get('items'), list) and fs['items'] and not should_regenerate:
-            items = fs['items']
-            # ensure words exist in DB for these items
+            # Defensive: block when we cannot verify
+            if level > 1:
+                return jsonify({'success': False, 'error': 'previous level score must be > 0.6'}), 403
+
+        # Check if user-specific level file already exists and should be reused
+        _ensure_course_dirs(target_lang)
+        existing_fs = _read_level(target_lang, level, user_id)
+    
+        # Reuse existing items from FS if available and not explicitly regenerating
+        if reuse or (existing_fs and existing_fs.get('items')):
             try:
-                for it in (items or []):
-                    ensure_words_exist(it.get('words') or [], target_lang, native_lang)
+                _ensure_course_dirs(target_lang)
+                fs = _read_level(target_lang, level, user_id)
             except Exception:
-                pass
-            run_id = create_level_run(level, items, topic, target_lang, native_lang)
+                fs = None
+            
+            # Check if we should regenerate content based on topic changes
+            should_regenerate = False
+            if fs:
+                existing_topic = fs.get('topic', '').strip()
+                existing_title = fs.get('title', '').strip()
+                existing_items = fs.get('items', [])
+                
+                # Only regenerate if level file is empty/invalid
+                if not existing_items or len(existing_items) == 0:
+                    print(f"Level file exists but has no items (placeholder) - regenerating content")
+                    should_regenerate = True
+                # If level file has content, always reuse it unless explicitly told not to
+                else:
+                    print(f"Level file has content - reusing existing level (topic: '{existing_topic}')")
+                    should_regenerate = False
+            
+            if fs and isinstance(fs.get('items'), list) and fs['items'] and not should_regenerate:
+                items = fs['items']
+                # ensure words exist in DB for these items
+                try:
+                    for it in (items or []):
+                        ensure_words_exist(it.get('words') or [], target_lang, native_lang)
+                except Exception:
+                    pass
+                run_id = create_level_run(level, items, topic, target_lang, native_lang)
+                
+                # Sync all words for this language to ensure they appear in Words tab
+                if user_id:
+                    try:
+                        from server.word_sync import ensure_level_words_synced
+                        
+                        # Ensure all words for this language are synced and level words are unlocked
+                        sync_success = ensure_level_words_synced(user_id, target_lang, level)
+                        
+                        if sync_success:
+                            print(f"Words synced and unlocked for user {user_id}, level {level}, language {target_lang} (reuse path)")
+                        else:
+                            print(f"Warning: Word sync failed for user {user_id}, level {level}, language {target_lang} (reuse path)")
+                            
+                    except Exception as e:
+                        print(f"Error syncing words for user {user_id}, level {level}, language {target_lang} (reuse path): {e}")
+                        # Fallback to old method
+                        try:
+                            from server.db_multi_user import unlock_level_words
+                            unlock_level_words(user_id, target_lang, level)
+                            print(f"Fallback: Words unlocked for user {user_id}, level {level}, language {target_lang} (reuse path)")
+                        except Exception as e2:
+                            print(f"Fallback also failed: {e2}")
+                
+                # NOTE: Global level file updates removed - runs are now user-specific only
+                # Only save the topic to global level file, no progress data
+                try:
+                    fs['topic'] = topic
+                    # Update meta section with correct topic and title
+                    if 'meta' not in fs:
+                        fs['meta'] = {}
+                    fs['meta']['level'] = level
+                    fs['meta']['language'] = target_lang
+                    fs['meta']['cefr'] = cefr
+                    fs['meta']['topic'] = topic
+                    fs['meta']['title'] = fs.get('title', f'Level {level}')
+                    fs['meta']['section'] = fs.get('section') or ''
+                    _write_level(target_lang, level, fs, user_id)
+                except Exception:
+                    pass
+                return jsonify({'success': True, 'run_id': run_id, 'level': level, 'items': items, 'target_lang': target_lang, 'native_lang': native_lang})
+
+        # Only generate new content if no existing level file was reused
+        print(f"No existing level file found or regeneration requested - generating new content for level {level}")
+        
+        # v0.3: LLM-Satzgenerierung mit Thema + Referenzübersetzungen
+        # Generate better topic if current one is generic
+        if topic.lower() in ['level 1', 'level 2', 'level 3', 'level 4', 'level 5']:
+            topic = suggest_topic(target_lang, native_lang, cefr, topic, level)
+        
+        # Generate level title based on topic
+        level_title = suggest_level_title(target_lang, native_lang, topic, level, cefr)
+        
+        sentences = llm_generate_sentences(target_lang, native_lang, n=5, topic=topic, cefr=cefr, level_title=level_title) or FALLBACK_SENTENCES.get(target_lang, FALLBACK_SENTENCES['en'])
+        refs = llm_translate_batch(sentences, native_lang) if OPENAI_KEY else None
+
+        # Build items with native reference if we have a quick translation (none yet). Keep old ref as empty to avoid biasing score.
+        items = []
+        for idx, s in enumerate(sentences, start=1):
+            txt = str(s).strip()
+            words = tokenize_words(txt)
+            ref_txt = ''
+            if isinstance(refs, list) and idx-1 < len(refs):
+                ref_txt = str(refs[idx-1] or '').strip()
+            items.append({
+                'idx': idx,
+                'text_target': txt,
+                'text_native_ref': ref_txt,
+                'words': words
+            })
+            ensure_words_exist(words, target_lang, native_lang)
+
+        run_id = create_level_run(level, items, topic, target_lang, native_lang)
+
+        # Update user progress if authenticated
+        if user_id:
+            update_user_level_progress(user_id, target_lang, level, 'in_progress')
             
             # Sync all words for this language to ensure they appear in Words tab
-            if user_id:
-                try:
-                    from server.word_sync import ensure_level_words_synced
-                    
-                    # Ensure all words for this language are synced and level words are unlocked
-                    sync_success = ensure_level_words_synced(user_id, target_lang, level)
-                    
-                    if sync_success:
-                        print(f"Words synced and unlocked for user {user_id}, level {level}, language {target_lang} (reuse path)")
-                    else:
-                        print(f"Warning: Word sync failed for user {user_id}, level {level}, language {target_lang} (reuse path)")
-                        
-                except Exception as e:
-                    print(f"Error syncing words for user {user_id}, level {level}, language {target_lang} (reuse path): {e}")
-                    # Fallback to old method
-                    try:
-                        from server.db_multi_user import unlock_level_words
-                        unlock_level_words(user_id, target_lang, level)
-                        print(f"Fallback: Words unlocked for user {user_id}, level {level}, language {target_lang} (reuse path)")
-                    except Exception as e2:
-                        print(f"Fallback also failed: {e2}")
-            
-            # NOTE: Global level file updates removed - runs are now user-specific only
-            # Only save the topic to global level file, no progress data
             try:
-                fs['topic'] = topic
-                # Update meta section with correct topic and title
-                if 'meta' not in fs:
-                    fs['meta'] = {}
-                fs['meta']['level'] = level
-                fs['meta']['language'] = target_lang
-                fs['meta']['cefr'] = cefr
-                fs['meta']['topic'] = topic
-                fs['meta']['title'] = fs.get('title', f'Level {level}')
-                fs['meta']['section'] = fs.get('section') or ''
-                _write_level(target_lang, level, fs, user_id)
-            except Exception:
-                pass
-            return jsonify({'success': True, 'run_id': run_id, 'level': level, 'items': items, 'target_lang': target_lang, 'native_lang': native_lang})
-
-    # Only generate new content if no existing level file was reused
-    print(f"No existing level file found or regeneration requested - generating new content for level {level}")
-    
-    # v0.3: LLM-Satzgenerierung mit Thema + Referenzübersetzungen
-    # Generate better topic if current one is generic
-    if topic.lower() in ['level 1', 'level 2', 'level 3', 'level 4', 'level 5']:
-        topic = suggest_topic(target_lang, native_lang, cefr, topic, level)
-    
-    # Generate level title based on topic
-    level_title = suggest_level_title(target_lang, native_lang, topic, level, cefr)
-    
-    sentences = llm_generate_sentences(target_lang, native_lang, n=5, topic=topic, cefr=cefr, level_title=level_title) or FALLBACK_SENTENCES.get(target_lang, FALLBACK_SENTENCES['en'])
-    refs = llm_translate_batch(sentences, native_lang) if OPENAI_KEY else None
-
-    # Build items with native reference if we have a quick translation (none yet). Keep old ref as empty to avoid biasing score.
-    items = []
-    for idx, s in enumerate(sentences, start=1):
-        txt = str(s).strip()
-        words = tokenize_words(txt)
-        ref_txt = ''
-        if isinstance(refs, list) and idx-1 < len(refs):
-            ref_txt = str(refs[idx-1] or '').strip()
-        items.append({
-            'idx': idx,
-            'text_target': txt,
-            'text_native_ref': ref_txt,
-            'words': words
-        })
-        ensure_words_exist(words, target_lang, native_lang)
-
-    run_id = create_level_run(level, items, topic, target_lang, native_lang)
-
-    # Update user progress if authenticated
-    if user_id:
-        update_user_level_progress(user_id, target_lang, level, 'in_progress')
-        
-        # Sync all words for this language to ensure they appear in Words tab
-        try:
-            from server.word_sync import ensure_level_words_synced
-            
-            # Ensure all words for this language are synced and level words are unlocked
-            sync_success = ensure_level_words_synced(user_id, target_lang, level)
-            
-            if sync_success:
-                print(f"Words synced and unlocked for user {user_id}, level {level}, language {target_lang}")
-            else:
-                print(f"Warning: Word sync failed for user {user_id}, level {level}, language {target_lang}")
+                from server.word_sync import ensure_level_words_synced
                 
-        except Exception as e:
-            print(f"Error syncing words for user {user_id}, level {level}, language {target_lang}: {e}")
-            # Fallback to old method
-            try:
-                from server.db_multi_user import unlock_level_words
-                unlock_level_words(user_id, target_lang, level)
-                print(f"Fallback: Words unlocked for user {user_id}, level {level}, language {target_lang}")
-            except Exception as e2:
-                print(f"Fallback also failed: {e2}")
+                # Ensure all words for this language are synced and level words are unlocked
+                sync_success = ensure_level_words_synced(user_id, target_lang, level)
+                
+                if sync_success:
+                    print(f"Words synced and unlocked for user {user_id}, level {level}, language {target_lang}")
+                else:
+                    print(f"Warning: Word sync failed for user {user_id}, level {level}, language {target_lang}")
+                    
+            except Exception as e:
+                print(f"Error syncing words for user {user_id}, level {level}, language {target_lang}: {e}")
+                # Fallback to old method
+                try:
+                    from server.db_multi_user import unlock_level_words
+                    unlock_level_words(user_id, target_lang, level)
+                    print(f"Fallback: Words unlocked for user {user_id}, level {level}, language {target_lang}")
+                except Exception as e2:
+                    print(f"Fallback also failed: {e2}")
 
-    # --- FS: persist level file per target language and create initial run stub
-    try:
-        _ensure_course_dirs(target_lang)
-        fs = _read_level(target_lang, level) or {}
-        # merge or initialize structure
-        fs.setdefault('language', target_lang)
-        fs.setdefault('level', level)
-        fs['title'] = level_title  # Use the generated level title
-        fs['section'] = fs.get('section') or ''
-        fs['topic'] = topic
-        fs['items'] = items  # overwrite with latest generated items
-        
-        # Update meta section with correct topic and title
-        if 'meta' not in fs:
-            fs['meta'] = {}
-        fs['meta']['level'] = level
-        fs['meta']['language'] = target_lang
-        fs['meta']['cefr'] = cefr
-        fs['meta']['topic'] = topic
-        fs['meta']['title'] = level_title
-        fs['meta']['section'] = fs.get('section') or ''
-        # optional quick familiarity snapshot for summary
+        # --- FS: persist level file per target language and create initial run stub
         try:
-            all_words = []
-            for it in (items or []):
-                for w in (it.get('words') or []):
-                    k = str(w).strip()
-                    if k and k not in all_words:
-                        all_words.append(k)
-            # Use user-specific familiarity counts if authenticated
-            if user_id:
-                from server.db import get_user_familiarity_counts
-                dist = get_user_familiarity_counts(user_id, target_lang)
-            else:
-                dist = fam_counts_for_words(all_words, target_lang)
+            _ensure_course_dirs(target_lang)
+            fs = _read_level(target_lang, level) or {}
+            # merge or initialize structure
+            fs.setdefault('language', target_lang)
+            fs.setdefault('level', level)
+            fs['title'] = level_title  # Use the generated level title
+            fs['section'] = fs.get('section') or ''
+            fs['topic'] = topic
+            fs['items'] = items  # overwrite with latest generated items
+            
+            # Update meta section with correct topic and title
+            if 'meta' not in fs:
+                fs['meta'] = {}
+            fs['meta']['level'] = level
+            fs['meta']['language'] = target_lang
+            fs['meta']['cefr'] = cefr
+            fs['meta']['topic'] = topic
+            fs['meta']['title'] = level_title
+            fs['meta']['section'] = fs.get('section') or ''
+            # optional quick familiarity snapshot for summary
+            try:
+                all_words = []
+                for it in (items or []):
+                    for w in (it.get('words') or []):
+                        k = str(w).strip()
+                        if k and k not in all_words:
+                            all_words.append(k)
+                # Use user-specific familiarity counts if authenticated
+                if user_id:
+                    from server.db import get_user_familiarity_counts
+                    dist = get_user_familiarity_counts(user_id, target_lang)
+                else:
+                    dist = fam_counts_for_words(all_words, target_lang)
+            except Exception:
+                dist = {str(i):0 for i in range(6)}
+            # NOTE: Global level file updates removed - runs are now user-specific only
+            # Only save the items and meta data to global level file, no progress data
+            fs['items'] = items
+            fs['topic'] = topic
+            _write_level(target_lang, level, fs, user_id)
         except Exception:
-            dist = {str(i):0 for i in range(6)}
-        # NOTE: Global level file updates removed - runs are now user-specific only
-        # Only save the items and meta data to global level file, no progress data
-        fs['items'] = items
-        fs['topic'] = topic
-        _write_level(target_lang, level, fs, user_id)
-    except Exception:
-        pass
+            pass
 
-    return jsonify({'success': True, 'run_id': run_id, 'level': level, 'items': items, 'target_lang': target_lang, 'native_lang': native_lang, 'user_id': user_id})
+        return jsonify({'success': True, 'run_id': run_id, 'level': level, 'items': items, 'target_lang': target_lang, 'native_lang': native_lang, 'user_id': user_id})
+    except Exception as e:
+        print(f"Error in api_level_start: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ... oben unverändert ...
@@ -3237,150 +3241,154 @@ def api_words_familiarity_counts():
 @app.route('/api/levels/bulk-stats')
 def api_levels_bulk_stats():
     """Get stats for multiple levels in one call"""
-    lang = request.args.get('language', 'en').strip().lower()
-    levels_param = request.args.get('levels', '1,2,3,4,5')
-    user_context = get_user_context()
-    user_id = user_context['user_id']
-    
-    # Handle unauthenticated users - return empty stats instead of error
-    if user_id is None:
-        return jsonify({'success': True, 'stats': {}})
-    
     try:
-        # Parse levels parameter
-        levels = []
-        for level_str in levels_param.split(','):
-            try:
-                level = int(level_str.strip())
-                if 1 <= level <= 50:  # Reasonable range
-                    levels.append(level)
-            except ValueError:
-                continue
+        lang = request.args.get('language', 'en').strip().lower()
+        levels_param = request.args.get('levels', '1,2,3,4,5')
+        user_context = get_user_context()
+        user_id = user_context['user_id']
         
-        if not levels:
-            return jsonify({'success': False, 'error': 'no valid levels provided'}), 400
+        # Handle unauthenticated users - return empty stats instead of error
+        if user_id is None:
+            return jsonify({'success': True, 'stats': {}})
         
-        result = {}
-        
-        if user_id:
-            # Get user-specific data for all levels
-            from server.db_multi_user import get_user_native_language, ensure_user_databases
-            from server.multi_user_db import db_manager
-            native_language = get_user_native_language(user_id)
-            ensure_user_databases(user_id, native_language)
-            
-            for level in levels:
-                try:
-                    # Get user-specific level content first
-                    user_level_content = _read_level(lang, level, user_id)
-                    
-                    # Get level stats for this level
-                    user_stats = get_user_level_stats(user_id, lang, level)
-                    global_stats = get_global_level_stats(lang, level)
-                    
-                    # Get user progress for status/score
-                    from server.db import get_user_progress
-                    user_progress_data = get_user_progress(user_id, lang, native_language)
-                    user_progress = next((p for p in user_progress_data if p['level'] == level), None)
-                    
-                    if user_progress:
-                        status = user_progress['status']
-                        last_score = user_progress['score']
-                    else:
-                        status = 'not_started'
-                        last_score = None
-                    
-                    result[level] = {
-                        'success': True,
-                        'language': lang,
-                        'level': level,
-                        'fam_counts': user_stats['familiarity_counts'],
-                        'status': status,
-                        'last_score': last_score,
-                        'total_words': user_stats['total_words'],
-                        'memorized_words': user_stats['memorized_words'],
-                        'level_score': user_stats['level_score'],
-                        'user_progress': user_progress,
-                        'words': user_stats.get('words', []),
-                        'word_hashes': user_stats.get('word_hashes', []),
-                        'familiarity_data': user_stats.get('familiarity_data', {})
-                    }
-                except Exception as e:
-                    result[level] = {
-                        'success': False,
-                        'error': str(e),
-                        'level': level
-                    }
-        else:
-            # For unauthenticated users, return empty data
-            for level in levels:
-                level_words_info = get_level_words_with_familiarity(lang, level, None)
-                plain_words = level_words_info.get('words', [])
-                hash_keys = []
-                for w in plain_words:
-                    key = f"{lang}:{w.strip().lower()}"
-                    hash_keys.append(key)
-
-                result[level] = {
-                    'success': True,
-                    'language': lang,
-                    'level': level,
-                    'fam_counts': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
-                    'status': 'not_started',
-                    'last_score': None,
-                    'total_words': level_words_info.get('total_words', len(plain_words)),
-                    'memorized_words': 0,
-                    'level_score': 0,
-                    'user_progress': None,
-                    'words': plain_words,
-                    'word_hashes': hash_keys,
-                    'familiarity_data': {}
-                }
-        
-        # Add header stats to the response
-        header_stats = {}
-        # Compute header stats from requested levels
         try:
-            all_word_ids = set()
-            memorized_ids = set()
-            for lvl in levels:
-                entry = result.get(lvl)
-                if not entry or not entry.get('success'):
+            # Parse levels parameter
+            levels = []
+            for level_str in levels_param.split(','):
+                try:
+                    level = int(level_str.strip())
+                    if 1 <= level <= 50:  # Reasonable range
+                        levels.append(level)
+                except ValueError:
                     continue
-                word_hashes = entry.get('word_hashes') or []
-                words_list = entry.get('words') or []
-                familiarity_data = entry.get('familiarity_data') or {}
-
-                # Ensure hash list aligns with words list
-                if not word_hashes:
-                    for idx, word in enumerate(words_list):
-                        key = f"{lang}:{str(word).strip().lower()}"
-                        word_hashes.append(key)
+        
+            if not levels:
+                return jsonify({'success': False, 'error': 'no valid levels provided'}), 400
+        
+            result = {}
+            
+            if user_id:
+                # Get user-specific data for all levels
+                from server.db_multi_user import get_user_native_language, ensure_user_databases
+                from server.multi_user_db import db_manager
+                native_language = get_user_native_language(user_id)
+                ensure_user_databases(user_id, native_language)
                 
-                for idx, hash_key in enumerate(word_hashes):
-                    if not hash_key:
-                        # fallback to normalized word string
-                        base_word = words_list[idx] if idx < len(words_list) else ''
-                        hash_key = f"{lang}:{str(base_word).strip().lower()}"
-                    all_word_ids.add(hash_key)
-                    fam_entry = familiarity_data.get(hash_key)
-                    if fam_entry and isinstance(fam_entry, dict):
-                        try:
-                            fam_value = fam_entry.get('familiarity', fam_entry.get('familiarity_level', 0))
-                        except Exception:
-                            fam_value = 0
-                        if fam_value is not None and float(fam_value) >= 5:
-                            memorized_ids.add(hash_key)
+                for level in levels:
+                    try:
+                        # Get user-specific level content first
+                        user_level_content = _read_level(lang, level, user_id)
+                        
+                        # Get level stats for this level
+                        user_stats = get_user_level_stats(user_id, lang, level)
+                        global_stats = get_global_level_stats(lang, level)
+                        
+                        # Get user progress for status/score
+                        from server.db import get_user_progress
+                        user_progress_data = get_user_progress(user_id, lang, native_language)
+                        user_progress = next((p for p in user_progress_data if p['level'] == level), None)
+                    
+                        if user_progress:
+                            status = user_progress['status']
+                            last_score = user_progress['score']
+                        else:
+                            status = 'not_started'
+                            last_score = None
+                        
+                        result[level] = {
+                            'success': True,
+                            'language': lang,
+                            'level': level,
+                            'fam_counts': user_stats['familiarity_counts'],
+                            'status': status,
+                            'last_score': last_score,
+                            'total_words': user_stats['total_words'],
+                            'memorized_words': user_stats['memorized_words'],
+                            'level_score': user_stats['level_score'],
+                            'user_progress': user_progress,
+                            'words': user_stats.get('words', []),
+                            'word_hashes': user_stats.get('word_hashes', []),
+                            'familiarity_data': user_stats.get('familiarity_data', {})
+                        }
+                    except Exception as e:
+                        result[level] = {
+                            'success': False,
+                            'error': str(e),
+                            'level': level
+                        }
+            else:
+                # For unauthenticated users, return empty data
+                for level in levels:
+                    level_words_info = get_level_words_with_familiarity(lang, level, None)
+                    plain_words = level_words_info.get('words', [])
+                    hash_keys = []
+                    for w in plain_words:
+                            key = f"{lang}:{w.strip().lower()}"
+                            hash_keys.append(key)
 
-            header_stats = {
-                'total_words': len(all_word_ids),
-                'memorized_words': len(memorized_ids)
-            }
+                    result[level] = {
+                            'success': True,
+                            'language': lang,
+                            'level': level,
+                            'fam_counts': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+                            'status': 'not_started',
+                            'last_score': None,
+                            'total_words': level_words_info.get('total_words', len(plain_words)),
+                            'memorized_words': 0,
+                            'level_score': 0,
+                            'user_progress': None,
+                            'words': plain_words,
+                            'word_hashes': hash_keys,
+                            'familiarity_data': {}
+                    }
+        
+            # Add header stats to the response
+            header_stats = {}
+            # Compute header stats from requested levels
+            try:
+                all_word_ids = set()
+                memorized_ids = set()
+                for lvl in levels:
+                    entry = result.get(lvl)
+                    if not entry or not entry.get('success'):
+                            continue
+                    word_hashes = entry.get('word_hashes') or []
+                    words_list = entry.get('words') or []
+                    familiarity_data = entry.get('familiarity_data') or {}
+
+                    # Ensure hash list aligns with words list
+                    if not word_hashes:
+                            for idx, word in enumerate(words_list):
+                                key = f"{lang}:{str(word).strip().lower()}"
+                                word_hashes.append(key)
+                    
+                    for idx, hash_key in enumerate(word_hashes):
+                            if not hash_key:
+                                # fallback to normalized word string
+                                base_word = words_list[idx] if idx < len(words_list) else ''
+                                hash_key = f"{lang}:{str(base_word).strip().lower()}"
+                            all_word_ids.add(hash_key)
+                            fam_entry = familiarity_data.get(hash_key)
+                            if fam_entry and isinstance(fam_entry, dict):
+                                try:
+                                    fam_value = fam_entry.get('familiarity', fam_entry.get('familiarity_level', 0))
+                                except Exception:
+                                    fam_value = 0
+                                if fam_value is not None and float(fam_value) >= 5:
+                                    memorized_ids.add(hash_key)
+
+                header_stats = {
+                    'total_words': len(all_word_ids),
+                    'memorized_words': len(memorized_ids)
+                }
+            except Exception as e:
+                print(f"Error computing header stats: {e}")
+                header_stats = {'total_words': 0, 'memorized_words': 0}
+
+            return jsonify({'success': True, 'levels': result, 'header_stats': header_stats})
+
         except Exception as e:
-            print(f"Error computing header stats: {e}")
-            header_stats = {'total_words': 0, 'memorized_words': 0}
-
-        return jsonify({'success': True, 'levels': result, 'header_stats': header_stats})
+            return jsonify({'success': False, 'error': str(e)}), 500
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

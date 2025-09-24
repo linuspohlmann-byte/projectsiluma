@@ -141,17 +141,25 @@ class MultiUserDBManager:
     
     def ensure_global_database(self, native_language: str) -> bool:
         """Ensure global database exists for native language"""
-        db_path = self.get_global_db_path(native_language)
-        if not os.path.exists(db_path):
-            return self.create_global_database(native_language)
-        return True
+        try:
+            db_path = self.get_global_db_path(native_language)
+            if not os.path.exists(db_path):
+                return self.create_global_database(native_language)
+            return True
+        except Exception as e:
+            print(f"Error ensuring global database for {native_language}: {e}")
+            return False
     
     def ensure_user_database(self, user_id: int, native_language: str) -> bool:
         """Ensure user database exists for native language"""
-        db_path = self.get_user_db_path(user_id, native_language)
-        if not os.path.exists(db_path):
-            return self.create_user_database(user_id, native_language)
-        return True
+        try:
+            db_path = self.get_user_db_path(user_id, native_language)
+            if not os.path.exists(db_path):
+                return self.create_user_database(user_id, native_language)
+            return True
+        except Exception as e:
+            print(f"Error ensuring user database for user {user_id}, language {native_language}: {e}")
+            return False
     
     def add_word_to_global(self, word: str, language: str, native_language: str, 
                           word_data: Dict[str, Any]) -> Optional[str]:

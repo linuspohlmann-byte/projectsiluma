@@ -67,12 +67,20 @@ def get_db_connection():
         except Exception as e:
             print(f"ERROR: Failed to connect to PostgreSQL: {e}")
             print(f"ERROR: DATABASE_URL: {config['url']}")
-            raise e
-    else:
-        # SQLite
+            # Fallback to SQLite if PostgreSQL fails
+            print("Falling back to SQLite...")
+            config['type'] = 'sqlite'
+            config['path'] = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'polo.db')
+    
+    # SQLite (either primary or fallback)
+    try:
         conn = sqlite3.connect(config['path'])
         conn.row_factory = sqlite3.Row
         return conn
+    except Exception as e:
+        print(f"ERROR: Failed to connect to SQLite: {e}")
+        print(f"ERROR: SQLite path: {config['path']}")
+        raise e
 
 def get_db_cursor(conn):
     """Get appropriate cursor for database type"""

@@ -69,16 +69,22 @@ def update_user_native_language(user_id: int, native_language: str) -> bool:
 
 def ensure_user_databases(user_id: int, native_language: str = None):
     """Ensure user has databases for their native language"""
-    if not native_language:
-        native_language = get_user_native_language(user_id)
-    
-    # Ensure global database exists
-    db_manager.ensure_global_database(native_language)
-    
-    # Ensure user database exists
-    db_manager.ensure_user_database(user_id, native_language)
-    
-    return native_language
+    try:
+        if not native_language:
+            native_language = get_user_native_language(user_id)
+        
+        # Ensure global database exists
+        if not db_manager.ensure_global_database(native_language):
+            print(f"Warning: Failed to ensure global database for {native_language}")
+        
+        # Ensure user database exists
+        if not db_manager.ensure_user_database(user_id, native_language):
+            print(f"Warning: Failed to ensure user database for user {user_id}, language {native_language}")
+        
+        return native_language
+    except Exception as e:
+        print(f"Error in ensure_user_databases: {e}")
+        return native_language or 'en'  # Fallback to English
 
 def get_level_words_with_familiarity(language: str, level: int, user_id: int = None) -> Dict[str, Any]:
     """Get level words with familiarity data for user"""
@@ -136,22 +142,30 @@ def get_level_words_with_familiarity(language: str, level: int, user_id: int = N
 def unlock_level_words(user_id: int, language: str, level: int) -> bool:
     """Unlock words for user when starting a level"""
     
-    # Get words from level file
-    level_file = f"data/{language}/levels/{level}.json"
     try:
-        with open(level_file, 'r', encoding='utf-8') as f:
-            level_data = json.load(f)
-        
-        # Extract words from items
-        words = []
-        items = level_data.get('items', [])
-        for item in items:
-            item_words = item.get('words', [])
-            words.extend(item_words)
-        
-        # Remove duplicates while preserving order
-        words = list(dict.fromkeys(words))
-    except FileNotFoundError:
+        # Get words from level file
+        level_file = f"data/{language}/levels/{level}.json"
+        try:
+            with open(level_file, 'r', encoding='utf-8') as f:
+                level_data = json.load(f)
+            
+            # Extract words from items
+            words = []
+            items = level_data.get('items', [])
+            for item in items:
+                item_words = item.get('words', [])
+                words.extend(item_words)
+            
+            # Remove duplicates while preserving order
+            words = list(dict.fromkeys(words))
+        except FileNotFoundError:
+            print(f"Level file not found: {level_file}")
+            return False
+        except Exception as e:
+            print(f"Error reading level file {level_file}: {e}")
+            return False
+    except Exception as e:
+        print(f"Error in unlock_level_words: {e}")
         return False
     
     if not words:
@@ -339,35 +353,50 @@ def get_user_level_stats(user_id: int, language: str, level: int) -> Dict[str, A
             'level_score': 0.0
         }
     
-    # Get level words with familiarity data
-    level_data = get_level_words_with_familiarity(language, level, user_id)
-    
-    # Get level score from main database
-    conn = get_db()
     try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT score FROM user_progress 
-            WHERE user_id = ? AND language = ? AND level = ?
-        """, (user_id, language, level))
+        # Get level words with familiarity data
+        level_data = get_level_words_with_familiarity(language, level, user_id)
         
-        row = cur.fetchone()
-        level_score = row['score'] if row and row['score'] else 0.0
-    finally:
-        conn.close()
-    
-    # Get familiarity counts
-    familiarity_counts = get_familiarity_counts_for_level(language, level, user_id)
-    
-    return {
-        'total_words': level_data['total_words'],
-        'memorized_words': level_data['memorized_words'],
-        'familiarity_counts': familiarity_counts,
-        'level_score': level_score,
-        'words': level_data.get('words', []),
-        'word_hashes': level_data.get('word_hashes', []),
-        'familiarity_data': level_data.get('familiarity_data', {})
-    }
+        # Get level score from main database
+        conn = get_db()
+        level_score = 0.0
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT score FROM user_progress 
+                WHERE user_id = ? AND language = ? AND level = ?
+            """, (user_id, language, level))
+            
+            row = cur.fetchone()
+            level_score = row['score'] if row and row['score'] else 0.0
+        except Exception as e:
+            print(f"Error getting user level score: {e}")
+        finally:
+            conn.close()
+        
+        # Get familiarity counts
+        familiarity_counts = get_familiarity_counts_for_level(language, level, user_id)
+        
+        return {
+            'total_words': level_data.get('total_words', 0),
+            'memorized_words': level_data.get('memorized_words', 0),
+            'familiarity_counts': familiarity_counts,
+            'level_score': level_score,
+            'words': level_data.get('words', []),
+            'word_hashes': level_data.get('word_hashes', []),
+            'familiarity_data': level_data.get('familiarity_data', {})
+        }
+    except Exception as e:
+        print(f"Error in get_user_level_stats: {e}")
+        return {
+            'total_words': 0,
+            'memorized_words': 0,
+            'familiarity_counts': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+            'level_score': 0.0,
+            'words': [],
+            'word_hashes': [],
+            'familiarity_data': {}
+        }
 
 def get_global_level_stats(language: str, level: int) -> Dict[str, Any]:
     """Get global level statistics (not user-specific)"""
