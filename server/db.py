@@ -922,37 +922,85 @@ def create_user(username: str, email: str, password_hash: str) -> int:
 
 def get_user_by_username(username: str):
     """Get user by username"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
+    
     try:
-        row = conn.execute(
-            'SELECT id, username, email, password_hash, created_at, updated_at, last_login, is_active, settings FROM users WHERE username=? AND is_active=1',
-            (username,)
-        ).fetchone()
-        return row
+        if config['type'] == 'postgresql':
+            # PostgreSQL doesn't have updated_at column in users table
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT id, username, email, password_hash, created_at, last_login, is_active, settings FROM users WHERE username=%s AND is_active=TRUE',
+                (username,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            return row
+        else:
+            # SQLite has updated_at column
+            row = conn.execute(
+                'SELECT id, username, email, password_hash, created_at, updated_at, last_login, is_active, settings FROM users WHERE username=? AND is_active=1',
+                (username,)
+            ).fetchone()
+            return row
     finally:
         conn.close()
 
 def get_user_by_email(email: str):
     """Get user by email"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
+    
     try:
-        row = conn.execute(
-            'SELECT id, username, email, password_hash, created_at, updated_at, last_login, is_active, settings FROM users WHERE email=? AND is_active=1',
-            (email,)
-        ).fetchone()
-        return row
+        if config['type'] == 'postgresql':
+            # PostgreSQL doesn't have updated_at column in users table
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT id, username, email, password_hash, created_at, last_login, is_active, settings FROM users WHERE email=%s AND is_active=TRUE',
+                (email,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            return row
+        else:
+            # SQLite has updated_at column
+            row = conn.execute(
+                'SELECT id, username, email, password_hash, created_at, updated_at, last_login, is_active, settings FROM users WHERE email=? AND is_active=1',
+                (email,)
+            ).fetchone()
+            return row
     finally:
         conn.close()
 
 def get_user_by_id(user_id: int):
     """Get user by ID"""
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
     conn = get_db()
+    
     try:
-        row = conn.execute(
-            'SELECT id, username, email, password_hash, created_at, updated_at, last_login, is_active, settings FROM users WHERE id=? AND is_active=1',
-            (user_id,)
-        ).fetchone()
-        return row
+        if config['type'] == 'postgresql':
+            # PostgreSQL doesn't have updated_at column in users table
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT id, username, email, password_hash, created_at, last_login, is_active, settings FROM users WHERE id=%s AND is_active=TRUE',
+                (user_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            return row
+        else:
+            # SQLite has updated_at column
+            row = conn.execute(
+                'SELECT id, username, email, password_hash, created_at, updated_at, last_login, is_active, settings FROM users WHERE id=? AND is_active=1',
+                (user_id,)
+            ).fetchone()
+            return row
     finally:
         conn.close()
 
