@@ -281,10 +281,9 @@ def init_db():
     
     if config['type'] == 'postgresql':
         # PostgreSQL table creation
-        cur = conn.cursor()
         
         # Users table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(255) UNIQUE NOT NULL,
@@ -299,7 +298,7 @@ def init_db():
         """)
         
         # User sessions table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS user_sessions (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -311,7 +310,7 @@ def init_db():
         """)
         
         # User progress table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS user_progress (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -329,7 +328,7 @@ def init_db():
         """)
         
         # User word familiarity table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS user_word_familiarity (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
@@ -346,7 +345,7 @@ def init_db():
         """)
         
         # Words table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS words (
                 id SERIAL PRIMARY KEY,
                 word VARCHAR(255) NOT NULL,
@@ -379,7 +378,7 @@ def init_db():
         """)
         
         # Level runs table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS level_runs (
                 id SERIAL PRIMARY KEY,
                 level INTEGER,
@@ -392,7 +391,7 @@ def init_db():
         """)
         
         # Practice runs table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS practice_runs (
                 id SERIAL PRIMARY KEY,
                 level INTEGER,
@@ -404,7 +403,7 @@ def init_db():
         """)
         
         # Localization table
-        cur.execute("""
+        execute_query(conn, """
             CREATE TABLE IF NOT EXISTS localization (
                 id SERIAL PRIMARY KEY,
                 reference_key VARCHAR(255) UNIQUE NOT NULL,
