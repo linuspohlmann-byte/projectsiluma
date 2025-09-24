@@ -360,6 +360,8 @@ class ConnectionWrapper:
     
     def __getattr__(self, name):
         """Delegate any other attributes to the underlying connection"""
+        if name == 'lastrowid' and self._current_cursor:
+            return self._current_cursor.lastrowid
         return getattr(self.conn, name)
 
 # Legacy support - will be removed after migration
@@ -1120,25 +1122,25 @@ def create_user(username: str, email: str, password_hash: str) -> int:
     from server.db_config import get_database_config
     
     config = get_database_config()
-    conn = get_db(); cur = conn.cursor()
+    conn = get_db()
     
     try:
         now = datetime.now(UTC).isoformat()
         
         if config['type'] == 'postgresql':
             # PostgreSQL doesn't have updated_at column in users table
-            cur.execute(
+            cursor = conn.execute(
                 'INSERT INTO users (username, email, password_hash, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
                 (username, email, password_hash, now)
             )
-            user_id = cur.fetchone()[0]
+            user_id = cursor.fetchone()[0]
         else:
             # SQLite has updated_at column
-            cur.execute(
+            cursor = conn.execute(
                 'INSERT INTO users (username, email, password_hash, created_at, updated_at) VALUES (?,?,?,?,?)',
                 (username, email, password_hash, now, now)
             )
-            user_id = cur.lastrowid
+            user_id = cursor.lastrowid
             
         conn.commit()
         return int(user_id)
@@ -1155,18 +1157,11 @@ def get_user_by_username(username: str):
     try:
         if config['type'] == 'postgresql':
             # PostgreSQL doesn't have updated_at column in users table
-            cur = conn.cursor()
-            cur.execute(
+            cursor = conn.execute(
                 'SELECT id, username, email, password_hash, created_at, last_login, is_active, settings FROM users WHERE username=%s AND is_active=TRUE',
                 (username,)
             )
-            row = cur.fetchone()
-            
-            # Debug: Print row type and content
-            print(f"DEBUG: PostgreSQL row type: {type(row)}")
-            print(f"DEBUG: PostgreSQL row content: {row}")
-            
-            cur.close()
+            row = cursor.fetchone()
             return row
         else:
             # SQLite has updated_at column
@@ -1188,14 +1183,11 @@ def get_user_by_email(email: str):
     try:
         if config['type'] == 'postgresql':
             # PostgreSQL doesn't have updated_at column in users table
-            cur = conn.cursor()
-            cur.execute(
+            cursor = conn.execute(
                 'SELECT id, username, email, password_hash, created_at, last_login, is_active, settings FROM users WHERE email=%s AND is_active=TRUE',
                 (email,)
             )
-            row = cur.fetchone()
-            cur.close()
-            
+            row = cursor.fetchone()
             return row
         else:
             # SQLite has updated_at column
@@ -1265,14 +1257,27 @@ def update_user_last_login(user_id: int):
 
 def create_user_session(user_id: int, session_token: str, expires_at: str) -> int:
     """Create a new user session"""
-    conn = get_db(); cur = conn.cursor()
+    from server.db_config import get_database_config
+    
+    config = get_database_config()
+    conn = get_db()
+    
     try:
         now = datetime.now(UTC).isoformat()
-        cur.execute(
-            'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (?,?,?,?)',
-            (user_id, session_token, expires_at, now)
-        )
-        session_id = cur.lastrowid
+        
+        if config['type'] == 'postgresql':
+            cursor = conn.execute(
+                'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (%s,%s,%s,%s) RETURNING id',
+                (user_id, session_token, expires_at, now)
+            )
+            session_id = cursor.fetchone()[0]
+        else:
+            cursor = conn.execute(
+                'INSERT INTO user_sessions (user_id, session_token, expires_at, created_at) VALUES (?,?,?,?)',
+                (user_id, session_token, expires_at, now)
+            )
+            session_id = cursor.lastrowid
+            
         conn.commit()
         return int(session_id)
     finally:
