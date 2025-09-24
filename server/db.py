@@ -1330,8 +1330,8 @@ def get_user_by_session(session_token: str):
                 SELECT u.id, u.username, u.email, u.password_hash, u.created_at, u.last_login, u.is_active, u.settings
                 FROM users u
                 JOIN user_sessions s ON u.id = s.user_id
-                WHERE s.session_token = %s AND s.expires_at > %s AND u.is_active = TRUE
-            ''', (session_token, datetime.now(UTC).isoformat()))
+                WHERE s.session_token = %s AND s.expires_at > NOW() AND u.is_active = TRUE
+            ''', (session_token,))
             row = cur.fetchone()
             cur.close()
             
@@ -1342,8 +1342,8 @@ def get_user_by_session(session_token: str):
                 SELECT u.id, u.username, u.email, u.password_hash, u.created_at, u.updated_at, u.last_login, u.is_active, u.settings
                 FROM users u
                 JOIN user_sessions s ON u.id = s.user_id
-                WHERE s.session_token = ? AND s.expires_at > ? AND u.is_active = 1
-            ''', (session_token, datetime.now(UTC).isoformat())).fetchone()
+                WHERE s.session_token = ? AND s.expires_at > datetime('now') AND u.is_active = 1
+            ''', (session_token,)).fetchone()
             return row
     finally:
         conn.close()
@@ -1365,12 +1365,10 @@ def cleanup_expired_sessions():
     conn = get_db()
     
     try:
-        now = datetime.now(UTC).isoformat()
-        
         if config['type'] == 'postgresql':
-            cursor = conn.execute('DELETE FROM user_sessions WHERE expires_at <= %s', (now,))
+            cursor = conn.execute('DELETE FROM user_sessions WHERE expires_at <= NOW()')
         else:
-            cursor = conn.execute('DELETE FROM user_sessions WHERE expires_at <= ?', (now,))
+            cursor = conn.execute('DELETE FROM user_sessions WHERE expires_at <= datetime("now")')
             
         conn.commit()
     finally:

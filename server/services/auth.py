@@ -41,7 +41,11 @@ def create_session(user_id: int) -> str:
         
         # Generate session token and expiration
         session_token = generate_session_token()
-        expires_at = (datetime.now(UTC) + timedelta(hours=SESSION_DURATION_HOURS)).isoformat()
+        now = datetime.now(UTC)
+        expires_at = (now + timedelta(hours=SESSION_DURATION_HOURS)).isoformat()
+        
+        print(f"DEBUG: Session creation - now: {now.isoformat()}, expires_at: {expires_at}")
+        print(f"DEBUG: Session duration: {SESSION_DURATION_HOURS} hours")
         
         # Create session in database
         session_id = create_user_session(user_id, session_token, expires_at)
