@@ -290,10 +290,16 @@ def api_get_user_settings():
         if not user:
             return jsonify({'success': False, 'error': 'Not authenticated'}), 401
         
-        settings = load_user_settings(user['id'])
-        return jsonify({'success': True, 'settings': settings})
+        try:
+            settings = load_user_settings(user['id'])
+            return jsonify({'success': True, 'settings': settings})
+        except Exception as settings_error:
+            print(f"Error loading user settings for user {user['id']}: {settings_error}")
+            # Return default settings if loading fails
+            return jsonify({'success': True, 'settings': {}})
         
     except Exception as e:
+        print(f"Error in api_get_user_settings: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @user_bp.post('/api/user/settings')
@@ -3172,39 +3178,49 @@ def api_words_familiarity_count():
         if level:
             # Use new multi-user system
             if user_id:
-                # Get user-specific familiarity counts
-                fam_counts = get_familiarity_counts_for_level(lang, int(level), user_id)
-                count = int(fam_counts.get(int(familiarity), 0))
+                try:
+                    # Get user-specific familiarity counts
+                    from server.db_multi_user import get_familiarity_counts_for_level
+                    fam_counts = get_familiarity_counts_for_level(lang, int(level), user_id)
+                    count = int(fam_counts.get(int(familiarity), 0))
+                except Exception as e:
+                    print(f"Error getting familiarity counts for level {level}: {e}")
+                    count = 0
             else:
                 # For unauthenticated users, return 0
                 count = 0
         else:
             # Count all words with specified familiarity for the language
             if user_id:
-                # Get user's native language and count from local database
-                native_language = get_user_native_language(user_id)
-                ensure_user_databases(user_id, native_language)
+                try:
+                    # Get user's native language and count from local database
+                    from server.db_multi_user import get_user_native_language, ensure_user_databases
+                    native_language = get_user_native_language(user_id)
+                    ensure_user_databases(user_id, native_language)
                 
-                # Count words with specified familiarity level
-                from server.multi_user_db import db_manager
-                import sqlite3
-                import os
-                db_path = db_manager.get_user_db_path(user_id, native_language)
-                if os.path.exists(db_path):
-                    conn = sqlite3.connect(db_path)
-                    conn.row_factory = sqlite3.Row
-                    cur = conn.cursor()
-                    
-                    cur.execute("""
-                        SELECT COUNT(*) as count
-                        FROM words_local
-                        WHERE familiarity = ?
-                    """, (int(familiarity),))
-                    
-                    row = cur.fetchone()
-                    count = row['count'] if row else 0
-                    conn.close()
-                else:
+                    # Count words with specified familiarity level
+                    from server.multi_user_db import db_manager
+                    import sqlite3
+                    import os
+                    db_path = db_manager.get_user_db_path(user_id, native_language)
+                    if os.path.exists(db_path):
+                        conn = sqlite3.connect(db_path)
+                        conn.row_factory = sqlite3.Row
+                        cur = conn.cursor()
+                        
+                        cur.execute("""
+                            SELECT COUNT(*) as count
+                            FROM words_local
+                            WHERE familiarity = ?
+                        """, (int(familiarity),))
+                        
+                        row = cur.fetchone()
+                        count = row['count'] if row else 0
+                        conn.close()
+                    else:
+                        count = 0
+                except Exception as e:
+                    print(f"Error counting words familiarity for user {user_id}: {e}")
                     count = 0
             else:
                 # For unauthenticated users, return 0
@@ -3228,14 +3244,20 @@ def api_words_familiarity_counts():
     
     try:
         if user_id:
-            # Use existing function to get all familiarity counts for the level
-            from server.db_multi_user import get_familiarity_counts_for_level
-            fam_counts = get_familiarity_counts_for_level(lang, int(level), user_id)
-            return jsonify({'success': True, 'fam_counts': fam_counts})
+            try:
+                # Use existing function to get all familiarity counts for the level
+                from server.db_multi_user import get_familiarity_counts_for_level
+                fam_counts = get_familiarity_counts_for_level(lang, int(level), user_id)
+                return jsonify({'success': True, 'fam_counts': fam_counts})
+            except Exception as e:
+                print(f"Error getting familiarity counts for level {level}: {e}")
+                # Return all zeros if function fails
+                return jsonify({'success': True, 'fam_counts': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}})
         else:
             # For unauthenticated users, return all zeros
             return jsonify({'success': True, 'fam_counts': {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}})
     except Exception as e:
+        print(f"Error in api_words_familiarity_counts: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/levels/bulk-stats')
@@ -3269,10 +3291,15 @@ def api_levels_bulk_stats():
             
             if user_id:
                 # Get user-specific data for all levels
-                from server.db_multi_user import get_user_native_language, ensure_user_databases
-                from server.multi_user_db import db_manager
-                native_language = get_user_native_language(user_id)
-                ensure_user_databases(user_id, native_language)
+                try:
+                    from server.db_multi_user import get_user_native_language, ensure_user_databases
+                    from server.multi_user_db import db_manager
+                    native_language = get_user_native_language(user_id)
+                    ensure_user_databases(user_id, native_language)
+                except Exception as db_error:
+                    print(f"Error setting up user databases for user {user_id}: {db_error}")
+                    # Fall back to unauthenticated behavior
+                    user_id = None
                 
                 for level in levels:
                     try:

@@ -12,33 +12,45 @@ from .multi_user_db import db_manager
 
 def get_db():
     """Get connection to main database (for backward compatibility)"""
-    conn = sqlite3.connect('polo.db')
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect('polo.db')
+        conn.row_factory = sqlite3.Row
+        return conn
+    except Exception as e:
+        print(f"Error connecting to main database: {e}")
+        raise e
 
 def get_user_native_language(user_id: int) -> str:
     """Get user's native language from native_language column or settings or default to 'en'"""
-    conn = get_db()
     try:
-        cur = conn.cursor()
-        # First try to get from native_language column
-        cur.execute("SELECT native_language FROM users WHERE id = ?", (user_id,))
-        row = cur.fetchone()
-        
-        if row and row['native_language']:
-            return row['native_language']
-        
-        # Fallback to settings
-        cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
-        row = cur.fetchone()
-        
-        if row and row['settings']:
-            settings = json.loads(row['settings'])
-            return settings.get('native_language', 'en')
-        
-        return 'en'  # Default to English
-    finally:
-        conn.close()
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            # First try to get from native_language column
+            cur.execute("SELECT native_language FROM users WHERE id = ?", (user_id,))
+            row = cur.fetchone()
+            
+            if row and row['native_language']:
+                return row['native_language']
+            
+            # Fallback to settings
+            cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
+            row = cur.fetchone()
+            
+            if row and row['settings']:
+                try:
+                    settings = json.loads(row['settings'])
+                    return settings.get('native_language', 'en')
+                except json.JSONDecodeError:
+                    print(f"Error parsing settings JSON for user {user_id}")
+                    return 'en'
+            
+            return 'en'  # Default to English
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"Error getting native language for user {user_id}: {e}")
+        return 'en'  # Default to English on any error
 
 def update_user_native_language(user_id: int, native_language: str) -> bool:
     """Update user's native language in both settings and native_language column"""
