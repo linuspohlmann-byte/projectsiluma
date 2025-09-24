@@ -213,6 +213,11 @@ class SettingsManager {
                         option.textContent = lang.native_name || lang.name;
                         nativeLangSelect.appendChild(option);
                     });
+                    
+                    // Set the current value after options are loaded
+                    const currentNativeLang = this.currentSettings?.native_language || localStorage.getItem('siluma_native') || 'de';
+                    nativeLangSelect.value = currentNativeLang;
+                    console.log('🎨 Language options loaded, set value to:', currentNativeLang);
                 }
             }
         } catch (error) {
@@ -243,7 +248,23 @@ class SettingsManager {
         }
         
         if (nativeLangSelector) {
-            nativeLangSelector.value = currentNativeLang;
+            // Ensure the dropdown has options before setting value
+            if (nativeLangSelector.options.length > 0) {
+                nativeLangSelector.value = currentNativeLang;
+                console.log('🎨 Native language dropdown set to:', currentNativeLang);
+            } else {
+                // If no options yet, wait for them to load and then set the value
+                console.log('🎨 Waiting for language options to load before setting value');
+                const checkOptions = () => {
+                    if (nativeLangSelector.options.length > 0) {
+                        nativeLangSelector.value = currentNativeLang;
+                        console.log('🎨 Native language dropdown set to (delayed):', currentNativeLang);
+                    } else {
+                        setTimeout(checkOptions, 100);
+                    }
+                };
+                checkOptions();
+            }
         }
         
         // Debug: Log form population
@@ -965,10 +986,15 @@ SettingsManager.prototype.populateLanguageSelects = function(selectElement, lang
     languages.forEach(lang => {
         const option = document.createElement('option');
         option.value = lang.code;
-        option.textContent = lang.native_name;
+        option.textContent = lang.native_name || lang.name;
         option.setAttribute('data-i18n', `language_names.${lang.code}`);
         selectElement.appendChild(option);
     });
+    
+    // Set the current value after options are loaded
+    const currentNativeLang = this.currentSettings?.native_language || localStorage.getItem('siluma_native') || 'de';
+    selectElement.value = currentNativeLang;
+    console.log('🎨 Language selects populated, set value to:', currentNativeLang);
     
     // Apply localization to the select options
     if (window.applyI18n) {
