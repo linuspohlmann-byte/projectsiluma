@@ -139,7 +139,7 @@ auth_bp = Blueprint('auth', __name__)
 user_bp = Blueprint('user', __name__)
 custom_levels_bp = Blueprint('custom_levels', __name__)
 
-init_db()
+# init_db() - Removed to prevent startup failures
 
 
 
