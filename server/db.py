@@ -2,7 +2,7 @@
 # --- Level run helpers ---
 import os, sqlite3, json
 from datetime import datetime, UTC
-from .db_config import get_db_connection, execute_query, get_database_config
+from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE
 
 def latest_run_id_for_level(level: int) -> int | None:
     conn = get_db()
@@ -347,8 +347,16 @@ class ConnectionWrapper:
             self._current_cursor.close()
         return self.conn.close()
     
-    def cursor(self):
-        return self.conn.cursor()
+    def cursor(self, cursor_factory=None):
+        """Get cursor with optional cursor_factory for PostgreSQL"""
+        if self.config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
+            if cursor_factory:
+                return self.conn.cursor(cursor_factory=cursor_factory)
+            else:
+                return self.conn.cursor()
+        else:
+            # SQLite doesn't support cursor_factory
+            return self.conn.cursor()
     
     def __getattr__(self, name):
         """Delegate any other attributes to the underlying connection"""
