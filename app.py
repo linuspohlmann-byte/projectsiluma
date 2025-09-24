@@ -4914,10 +4914,14 @@ def api_create_postgresql_tables():
 def api_database_info():
     """Get database information and table list"""
     try:
-        from server.db_config import get_database_config
+        from server.db_config import get_database_config, get_db_connection
         config = get_database_config()
         
-        conn = get_db()
+        # Use get_db_connection directly instead of get_db()
+        conn = get_db_connection()
+        
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Failed to get database connection'}), 500
         
         if config['type'] == 'postgresql':
             # Get table list
