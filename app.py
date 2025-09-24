@@ -5022,3 +5022,43 @@ def api_create_test_user():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/test-postgresql', methods=['GET'])
+def api_test_postgresql():
+    """Test PostgreSQL connection directly"""
+    try:
+        import psycopg2
+        from urllib.parse import urlparse
+        import os
+        
+        # Get DATABASE_URL
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({'success': False, 'error': 'DATABASE_URL not set'}), 400
+        
+        # Parse and connect
+        parsed = urlparse(database_url)
+        conn = psycopg2.connect(
+            host=parsed.hostname,
+            port=parsed.port,
+            database=parsed.path[1:],
+            user=parsed.username,
+            password=parsed.password
+        )
+        
+        # Test query
+        cur = conn.cursor()
+        cur.execute('SELECT COUNT(*) FROM users')
+        user_count = cur.fetchone()[0]
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'PostgreSQL connection successful',
+            'user_count': user_count
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
