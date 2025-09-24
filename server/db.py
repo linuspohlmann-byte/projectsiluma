@@ -278,6 +278,14 @@ class ConnectionWrapper:
             # For SQLite, use original conn.execute
             return self.conn.execute(query, params)
     
+    def fetchall(self):
+        """Dummy method for compatibility"""
+        return []
+    
+    def fetchone(self):
+        """Dummy method for compatibility"""
+        return None
+    
     def commit(self):
         return self.conn.commit()
     
@@ -730,11 +738,17 @@ def upsert_localization_entry(payload: dict) -> None:
 
 def get_all_localization_entries():
     """Get all localization entries"""
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        cur = execute_query(conn, 'SELECT * FROM localization ORDER BY reference_key')
-        rows = cur.fetchall()
-        return rows
+        if config['type'] == 'postgresql':
+            cur = execute_query(conn, 'SELECT * FROM localization ORDER BY reference_key')
+            rows = cur.fetchall()
+            return rows
+        else:
+            # SQLite
+            rows = conn.execute('SELECT * FROM localization ORDER BY reference_key').fetchall()
+            return rows
     finally:
         conn.close()
 
