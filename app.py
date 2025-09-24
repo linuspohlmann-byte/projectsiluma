@@ -4501,20 +4501,24 @@ def api_setup_database():
         # Initialize database
         init_db()
         
-        # Add missing columns to users table if they don't exist
-        conn = get_db()
-        cur = conn.cursor()
+        # Add missing columns to users table if they don't exist (SQLite only)
+        from server.db_config import get_database_config
+        config = get_database_config()
         
-        # Check if native_language column exists
-        cur.execute("PRAGMA table_info(users)")
-        columns = [column[1] for column in cur.fetchall()]
-        
-        if 'native_language' not in columns:
-            cur.execute("ALTER TABLE users ADD COLUMN native_language TEXT DEFAULT 'en'")
-            print("Added native_language column to users table")
-        
-        conn.commit()
-        conn.close()
+        if config['type'] == 'sqlite':
+            conn = get_db()
+            cur = conn.cursor()
+            
+            # Check if native_language column exists
+            cur.execute("PRAGMA table_info(users)")
+            columns = [column[1] for column in cur.fetchall()]
+            
+            if 'native_language' not in columns:
+                cur.execute("ALTER TABLE users ADD COLUMN native_language TEXT DEFAULT 'en'")
+                print("Added native_language column to users table")
+            
+            conn.commit()
+            conn.close()
         
         # Create test user if it doesn't exist
         from server.services.auth import register_user
@@ -4529,6 +4533,7 @@ def api_setup_database():
                 return jsonify({
                     'success': True, 
                     'message': 'Database initialized and test user created',
+                    'database_type': config['type'],
                     'test_credentials': {
                         'username': 'testuser',
                         'password': 'password123'
@@ -4540,11 +4545,47 @@ def api_setup_database():
             return jsonify({
                 'success': True, 
                 'message': 'Database already initialized',
+                'database_type': config['type'],
                 'test_credentials': {
                     'username': 'testuser',
                     'password': 'password123'
                 }
             })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/migrate-to-postgresql', methods=['POST'])
+def api_migrate_to_postgresql():
+    """Migrate from SQLite to PostgreSQL"""
+    try:
+        from server.db_config import get_database_config
+        config = get_database_config()
+        
+        if config['type'] != 'postgresql':
+            return jsonify({
+                'success': False, 
+                'error': 'DATABASE_URL not set or not PostgreSQL'
+            }), 400
+        
+        # Initialize PostgreSQL database
+        init_db()
+        
+        # Create test user
+        from server.services.auth import register_user
+        from server.db import get_user_by_username
+        
+        existing_user = get_user_by_username('testuser')
+        if not existing_user:
+            result = register_user('testuser', 'test@example.com', 'password123')
+            if not result['success']:
+                return jsonify({'success': False, 'error': 'Failed to create test user'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': 'Successfully migrated to PostgreSQL',
+            'database_type': 'postgresql'
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
