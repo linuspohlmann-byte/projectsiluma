@@ -1,5 +1,8 @@
 
 # --- Level run helpers ---
+import os, sqlite3, json
+from datetime import datetime, UTC
+from .db_config import get_db_connection, execute_query, get_database_config
 
 def latest_run_id_for_level(level: int) -> int | None:
     conn = get_db()
@@ -258,9 +261,6 @@ def pick_words_by_run(run_id: int, limit: int = 10) -> list[str]:
     if len(out) > limit:
         import random as _r; _r.shuffle(out); out = out[:limit]
     return out
-import os, sqlite3, json
-from datetime import datetime, UTC
-from .db_config import get_db_connection, execute_query, get_database_config
 
 # Wrapper to maintain compatibility with old conn.execute() calls
 class ConnectionWrapper:
