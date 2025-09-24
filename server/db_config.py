@@ -1,13 +1,20 @@
 import os
 import sqlite3
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from urllib.parse import urlparse
+
+# Conditional import for PostgreSQL
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+    print("WARNING: psycopg2 not available. PostgreSQL support disabled.")
 
 def get_database_config():
     """Get database configuration based on environment"""
     # Check if we're in production (Railway)
-    if os.getenv('DATABASE_URL'):
+    if os.getenv('DATABASE_URL') and PSYCOPG2_AVAILABLE:
         # Production: Try PostgreSQL first, fallback to SQLite if it fails
         try:
             # Test PostgreSQL connection
@@ -32,6 +39,8 @@ def get_database_config():
             }
     else:
         # Development: Use SQLite
+        if os.getenv('DATABASE_URL') and not PSYCOPG2_AVAILABLE:
+            print("WARNING: DATABASE_URL set but psycopg2 not available. Using SQLite instead.")
         return {
             'type': 'sqlite',
             'path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'polo.db')
@@ -41,7 +50,7 @@ def get_db_connection():
     """Get database connection based on environment"""
     config = get_database_config()
     
-    if config['type'] == 'postgresql':
+    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
         try:
             # Parse DATABASE_URL
             parsed = urlparse(config['url'])
@@ -69,7 +78,7 @@ def get_db_cursor(conn):
     """Get appropriate cursor for database type"""
     config = get_database_config()
     
-    if config['type'] == 'postgresql':
+    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
         return conn.cursor(cursor_factory=RealDictCursor)
     else:
         return conn.cursor()
@@ -79,7 +88,7 @@ def execute_query(conn, query, params=None):
     config = get_database_config()
     cursor = get_db_cursor(conn)
     
-    if config['type'] == 'postgresql':
+    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
         # PostgreSQL uses %s for parameters
         if params:
             cursor.execute(query.replace('?', '%s'), params)
@@ -98,7 +107,7 @@ def get_lastrowid(cursor):
     """Get last inserted row ID"""
     config = get_database_config()
     
-    if config['type'] == 'postgresql':
+    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
         return cursor.fetchone()['id'] if cursor.description else None
     else:
         return cursor.lastrowid
