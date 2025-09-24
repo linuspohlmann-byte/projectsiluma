@@ -4493,3 +4493,43 @@ else:
     # Set up logging for production
     import logging
     logging.basicConfig(level=logging.WARNING)
+
+@app.route('/api/setup-database', methods=['POST'])
+def api_setup_database():
+    """Setup database and create test user (for Railway deployment)"""
+    try:
+        # Initialize database
+        init_db()
+        
+        # Create test user if it doesn't exist
+        from server.services.auth import register_user
+        
+        # Check if test user exists
+        from server.db import get_user_by_username
+        existing_user = get_user_by_username('testuser')
+        
+        if not existing_user:
+            result = register_user('testuser', 'test@example.com', 'password123')
+            if result['success']:
+                return jsonify({
+                    'success': True, 
+                    'message': 'Database initialized and test user created',
+                    'test_credentials': {
+                        'username': 'testuser',
+                        'password': 'password123'
+                    }
+                })
+            else:
+                return jsonify({'success': False, 'error': 'Failed to create test user'}), 500
+        else:
+            return jsonify({
+                'success': True, 
+                'message': 'Database already initialized',
+                'test_credentials': {
+                    'username': 'testuser',
+                    'password': 'password123'
+                }
+            })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
