@@ -68,47 +68,89 @@ def create_level_ratings_table():
 
 def create_custom_level_groups_table():
     """Create the custom_level_groups table if it doesn't exist"""
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()  # Get raw connection
+    
     try:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS custom_level_groups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                language TEXT NOT NULL,
-                native_language TEXT NOT NULL,
-                group_name TEXT NOT NULL,
-                context_description TEXT NOT NULL,
-                cefr_level TEXT DEFAULT 'A1',
-                num_levels INTEGER DEFAULT 10,
-                status TEXT DEFAULT 'active',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                UNIQUE(user_id, language, group_name)
-            )
-        ''')
-        conn.commit()
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            execute_query(conn, '''
+                CREATE TABLE IF NOT EXISTS custom_level_groups (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    language VARCHAR(10) NOT NULL,
+                    native_language VARCHAR(10) NOT NULL,
+                    group_name VARCHAR(255) NOT NULL,
+                    context_description TEXT NOT NULL,
+                    cefr_level VARCHAR(10) DEFAULT 'A1',
+                    num_levels INTEGER DEFAULT 10,
+                    status VARCHAR(50) DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, language, group_name)
+                );
+            ''')
+        else:
+            # SQLite syntax
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS custom_level_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    language TEXT NOT NULL,
+                    native_language TEXT NOT NULL,
+                    group_name TEXT NOT NULL,
+                    context_description TEXT NOT NULL,
+                    cefr_level TEXT DEFAULT 'A1',
+                    num_levels INTEGER DEFAULT 10,
+                    status TEXT DEFAULT 'active',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(user_id, language, group_name)
+                )
+            ''')
+            conn.commit()
     finally:
         conn.close()
 
 def create_custom_levels_table():
     """Create the custom_levels table if it doesn't exist"""
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()  # Get raw connection
+    
     try:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS custom_levels (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id INTEGER NOT NULL,
-                level_number INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                topic TEXT NOT NULL,
-                content TEXT NOT NULL,  -- JSON content
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
-                UNIQUE(group_id, level_number)
-            )
-        ''')
-        conn.commit()
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            execute_query(conn, '''
+                CREATE TABLE IF NOT EXISTS custom_levels (
+                    id SERIAL PRIMARY KEY,
+                    group_id INTEGER NOT NULL,
+                    level_number INTEGER NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    topic VARCHAR(255) NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+                    UNIQUE(group_id, level_number)
+                );
+            ''')
+        else:
+            # SQLite syntax
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS custom_levels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER NOT NULL,
+                    level_number INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    content TEXT NOT NULL,  -- JSON content
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+                    UNIQUE(group_id, level_number)
+                )
+            ''')
+            conn.commit()
     finally:
         conn.close()
 
@@ -277,7 +319,10 @@ class ConnectionWrapper:
             return self
         else:
             # For SQLite, use original conn.execute
-            self._current_cursor = self.conn.execute(query, params)
+            if params is None:
+                self._current_cursor = self.conn.execute(query)
+            else:
+                self._current_cursor = self.conn.execute(query, params)
             return self
     
     def fetchall(self):
@@ -458,6 +503,40 @@ def init_db():
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Custom level groups table
+        execute_query(conn, """
+            CREATE TABLE IF NOT EXISTS custom_level_groups (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                language VARCHAR(10) NOT NULL,
+                native_language VARCHAR(10) NOT NULL,
+                group_name VARCHAR(255) NOT NULL,
+                context_description TEXT NOT NULL,
+                cefr_level VARCHAR(10) DEFAULT 'A1',
+                num_levels INTEGER DEFAULT 10,
+                status VARCHAR(50) DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, language, group_name)
+            );
+        """)
+        
+        # Custom levels table
+        execute_query(conn, """
+            CREATE TABLE IF NOT EXISTS custom_levels (
+                id SERIAL PRIMARY KEY,
+                group_id INTEGER NOT NULL,
+                level_number INTEGER NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                topic VARCHAR(255) NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+                UNIQUE(group_id, level_number)
             );
         """)
         
@@ -992,9 +1071,16 @@ def get_missing_translations(language_code: str):
         
         column = lang_columns.get(language_code.lower(), 'english')
         
-        rows = conn.execute(
-            f'SELECT reference_key, description, {column} as translation FROM localization WHERE {column} IS NULL OR {column} = "" ORDER BY reference_key'
-        ).fetchall()
+        # Use database-agnostic query for empty string check
+        config = get_database_config()
+        if config['type'] == 'postgresql':
+            # PostgreSQL: use COALESCE to handle NULL and empty string
+            query = f'SELECT reference_key, description, {column} as translation FROM localization WHERE COALESCE({column}, \'\') = \'\' ORDER BY reference_key'
+        else:
+            # SQLite: use original syntax
+            query = f'SELECT reference_key, description, {column} as translation FROM localization WHERE {column} IS NULL OR {column} = "" ORDER BY reference_key'
+        
+        rows = conn.execute(query, None).fetchall()
         
         return rows
     finally:
