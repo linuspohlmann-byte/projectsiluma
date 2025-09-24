@@ -5080,10 +5080,19 @@ def api_test_postgresql():
         cur.execute("""
             SELECT column_name, data_type 
             FROM information_schema.columns 
-            WHERE table_name = 'users' 
+            WHERE table_name = 'users' AND table_schema = 'public'
             ORDER BY ordinal_position
         """)
         columns = cur.fetchall()
+        
+        # Also get all tables
+        cur.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            ORDER BY table_name
+        """)
+        tables = cur.fetchall()
         
         cur.close()
         conn.close()
@@ -5092,7 +5101,8 @@ def api_test_postgresql():
             'success': True,
             'message': 'PostgreSQL connection successful',
             'user_count': user_count,
-            'users_table_columns': columns
+            'users_table_columns': columns,
+            'all_tables': tables
         })
         
     except Exception as e:
