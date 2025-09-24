@@ -523,6 +523,16 @@ def init_db():
             );
         """)
         
+        # Add missing language columns to existing localization table if they don't exist
+        language_columns = ['german', 'english', 'french', 'italian', 'spanish', 'portuguese', 'russian', 'turkish', 'georgian']
+        for column in language_columns:
+            try:
+                execute_query(conn, f"ALTER TABLE localization ADD COLUMN IF NOT EXISTS {column} TEXT;")
+            except Exception as e:
+                # Column might already exist, ignore the error
+                print(f"Note: Column {column} might already exist: {e}")
+                pass
+        
         # Custom level groups table
         execute_query(conn, """
             CREATE TABLE IF NOT EXISTS custom_level_groups (
