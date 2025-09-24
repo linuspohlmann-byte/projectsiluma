@@ -4959,13 +4959,66 @@ def api_database_info():
             
             conn.close()
             
+        return jsonify({
+            'success': True,
+            'database_type': 'sqlite',
+            'tables': tables,
+            'user_count': user_count,
+            'message': f'Found {len(tables)} tables in SQLite database'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/create-test-user', methods=['POST'])
+def api_create_test_user():
+    """Create a test user directly"""
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        config = get_database_config()
+        
+        if config['type'] != 'postgresql':
+            return jsonify({
+                'success': False, 
+                'error': 'This endpoint only works with PostgreSQL'
+            }), 400
+        
+        conn = get_db_connection()
+        
+        # Check if test user already exists
+        cur = execute_query(conn, "SELECT id FROM users WHERE username = %s", ('testuser',))
+        existing_user = cur.fetchone()
+        
+        if existing_user:
+            conn.close()
             return jsonify({
                 'success': True,
-                'database_type': 'sqlite',
-                'tables': tables,
-                'user_count': user_count,
-                'message': f'Found {len(tables)} tables in SQLite database'
+                'message': 'Test user already exists',
+                'username': 'testuser',
+                'password': 'password123'
             })
+        
+        # Create test user
+        import hashlib
+        password_hash = hashlib.sha256('password123'.encode()).hexdigest()
+        
+        cur = execute_query(conn, """
+            INSERT INTO users (username, email, password_hash, created_at, is_active, native_language)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE, 'en')
+            RETURNING id
+        """, ('testuser', 'test@example.com', password_hash))
+        
+        user_id = cur.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Test user created successfully',
+            'user_id': user_id,
+            'username': 'testuser',
+            'password': 'password123'
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
