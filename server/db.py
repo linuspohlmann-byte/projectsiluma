@@ -1162,7 +1162,10 @@ def get_user_by_username(username: str):
                 (username,)
             )
             row = cursor.fetchone()
-            return row
+            # Convert PostgreSQL row to dict-like object for compatibility
+            if row:
+                return dict(row)
+            return None
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -1188,7 +1191,10 @@ def get_user_by_email(email: str):
                 (email,)
             )
             row = cursor.fetchone()
-            return row
+            # Convert PostgreSQL row to dict-like object for compatibility
+            if row:
+                return dict(row)
+            return None
         else:
             # SQLite has updated_at column
             row = conn.execute(
