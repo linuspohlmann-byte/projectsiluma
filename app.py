@@ -220,7 +220,8 @@ def api_get_current_user():
         if user:
             return jsonify({'success': True, 'user': user})
         else:
-            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            # Return success with no user instead of 401 to prevent console errors
+            return jsonify({'success': True, 'user': None})
             
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -418,6 +419,11 @@ def api_user_migrate():
             return jsonify({'success': False, 'error': 'Migration failed'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# Serve static files
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(os.path.join(APP_ROOT, 'static'), filename)
 
 # Serve favicon or other root files if requested directly
 @app.get('/<path:fname>')
@@ -3236,9 +3242,9 @@ def api_levels_bulk_stats():
     user_context = get_user_context()
     user_id = user_context['user_id']
     
-    # Handle unauthenticated users
+    # Handle unauthenticated users - return empty stats instead of error
     if user_id is None:
-        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        return jsonify({'success': True, 'stats': {}})
     
     try:
         # Parse levels parameter
