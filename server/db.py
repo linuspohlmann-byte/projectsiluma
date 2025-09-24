@@ -943,6 +943,9 @@ def get_user_by_username(username: str):
     conn = get_db()
     
     try:
+        # Debug: Print config type
+        print(f"DEBUG: Database config type: {config['type']}")
+        
         if config['type'] == 'postgresql':
             # PostgreSQL doesn't have updated_at column in users table
             cur = conn.cursor()
