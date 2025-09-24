@@ -5269,20 +5269,8 @@
                 <h3 class="settings-section-title" data-i18n="settings.language">Sprache</h3>
                 <div class="settings-item">
                   <label class="settings-label" data-i18n="settings.native_language">Muttersprache</label>
-                  <select id="settings-native-language" class="settings-select">
-                    <option value="de">Deutsch</option>
-                    <option value="en">English</option>
-                    <option value="fr">Français</option>
-                    <option value="es">Español</option>
-                    <option value="it">Italiano</option>
-                    <option value="pt">Português</option>
-                    <option value="ru">Русский</option>
-                    <option value="ja">日本語</option>
-                    <option value="ko">한국어</option>
-                    <option value="zh">中文</option>
-                    <option value="ar">العربية</option>
-                    <option value="hi">हिन्दी</option>
-                    <option value="ka">ქართული</option>
+                  <select id="settings-native-lang" class="settings-select">
+                    <!-- Options will be populated dynamically -->
                   </select>
                 </div>
               </div>
@@ -6863,7 +6851,7 @@
                 id: 3,
                 username: 'testuser',
                 language: 'de',
-                native_language: 'de'
+                native_language: 'en'
             };
         }
         
@@ -7025,12 +7013,12 @@
             const user = getCurrentUser();
             if (user) {
                 // Set native language - use backend value if available, otherwise user value
-                const nativeLangSelect = document.getElementById('settings-native-language');
+                const nativeLangSelect = document.getElementById('settings-native-lang');
                 if (nativeLangSelect) {
                     // Check if we already have a backend value set
                     const currentValue = nativeLangSelect.value;
                     const backendValue = localStorage.getItem('siluma_native');
-                    const userValue = user.native_language || 'de';
+                    const userValue = user.native_language || 'en';
                     
                     // Use backend value if available and different from current, otherwise use user value
                     const valueToSet = (backendValue && backendValue !== currentValue) ? backendValue : userValue;
@@ -7073,7 +7061,7 @@
                 
                 try {
                     // Get settings values
-                    const nativeLang = document.getElementById('settings-native-language')?.value;
+                    const nativeLang = document.getElementById('settings-native-lang')?.value;
                     const autoPlay = document.getElementById('settings-auto-play')?.checked;
                     const soundEffects = document.getElementById('settings-sound-effects')?.checked;
                     
@@ -7158,7 +7146,7 @@
         // Helper function to update native language dropdown with retry
         function updateNativeLanguageDropdown(nativeLang, retryCount = 0) {
             // Try multiple selectors for the native language dropdown
-            const selectors = ['#settings-native-language', '#native-lang', '#settings-native-lang', 'select[name="native_language"]'];
+            const selectors = ['#settings-native-lang', '#native-lang', 'select[name="native_language"]'];
             let nativeLangSelect = null;
             
             for (const selector of selectors) {
@@ -8006,7 +7994,7 @@
                 } catch (error) {
                     console.warn('⚠️ Failed to initialize native language from backend:', error);
                     // Fallback: still try to update dropdown with localStorage value
-                    const fallbackLang = localStorage.getItem('siluma_native') || 'de';
+                    const fallbackLang = localStorage.getItem('siluma_native') || 'en';
                     updateNativeLanguageDropdown(fallbackLang);
                 }
             }

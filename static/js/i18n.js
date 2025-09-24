@@ -680,6 +680,19 @@ export function applySelectTranslations() {
       // Continue to process other dropdowns (CEFR, topic)
     }
     
+    // Apply native language dropdown translations
+    const nativeLangSelect = document.getElementById('settings-native-lang');
+    if (nativeLangSelect) {
+      const options = nativeLangSelect.querySelectorAll('option');
+      options.forEach(option => {
+        const langCode = option.value;
+        if (langCode) {
+          const translatedName = t(`language_names.${langCode}`, option.textContent);
+          option.textContent = translatedName;
+        }
+      });
+    }
+    
     // Apply CEFR level translations
     const cefrSelect = document.getElementById('cefr');
     if (cefrSelect) {

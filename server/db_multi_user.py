@@ -17,7 +17,7 @@ def get_db():
     return conn
 
 def get_user_native_language(user_id: int) -> str:
-    """Get user's native language from native_language column or settings or default to 'de'"""
+    """Get user's native language from native_language column or settings or default to 'en'"""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -34,9 +34,9 @@ def get_user_native_language(user_id: int) -> str:
         
         if row and row['settings']:
             settings = json.loads(row['settings'])
-            return settings.get('native_language', 'de')
+            return settings.get('native_language', 'en')
         
-        return 'de'  # Default to German
+        return 'en'  # Default to English
     finally:
         conn.close()
 

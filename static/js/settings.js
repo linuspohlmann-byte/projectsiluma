@@ -72,7 +72,22 @@ class SettingsManager {
         this.ensureCurrentSettings().then(() => {
             this.populateSettingsForm();
             this.loadUserStats();
+            // Ensure native language dropdown is properly populated and localized
+            this.ensureNativeLanguageDropdown();
         });
+    }
+    
+    async ensureNativeLanguageDropdown() {
+        const nativeLangSelect = document.getElementById('settings-native-lang');
+        if (nativeLangSelect && nativeLangSelect.options.length === 0) {
+            // If dropdown is empty, reload available languages
+            await this.loadAvailableLanguages();
+        }
+        
+        // Apply translations to the dropdown
+        if (window.applySelectTranslations) {
+            window.applySelectTranslations();
+        }
     }
     
     async ensureCurrentSettings() {
@@ -215,7 +230,7 @@ class SettingsManager {
                     });
                     
                     // Set the current value after options are loaded
-                    const currentNativeLang = this.currentSettings?.native_language || localStorage.getItem('siluma_native') || 'de';
+                    const currentNativeLang = this.currentSettings?.native_language || localStorage.getItem('siluma_native') || 'en';
                     nativeLangSelect.value = currentNativeLang;
                     console.log('🎨 Language options loaded, set value to:', currentNativeLang);
                 }
@@ -228,7 +243,7 @@ class SettingsManager {
     getDefaultSettings() {
         return {
             theme: 'light',
-            native_language: 'de'
+            native_language: 'en'
         };
     }
 
@@ -237,7 +252,7 @@ class SettingsManager {
         
         // Get current theme from localStorage as fallback
         const currentTheme = settings.theme || localStorage.getItem('siluma_theme') || 'light';
-        const currentNativeLang = settings.native_language || localStorage.getItem('siluma_native') || 'de';
+        const currentNativeLang = settings.native_language || localStorage.getItem('siluma_native') || 'en';
         
         // Set form values
         const themeSelector = document.getElementById('settings-theme');
@@ -783,7 +798,7 @@ class SettingsManager {
     async initializeTheme() {
         // Load theme from localStorage or user settings
         let theme = 'light';
-        let nativeLang = 'de';
+        let nativeLang = 'en';
         
         if (window.authManager && window.authManager.isAuthenticated()) {
             // For authenticated users, try to load from user settings
@@ -796,22 +811,22 @@ class SettingsManager {
                     const data = await response.json();
                     this.currentSettings = data.settings || {};
                     theme = this.currentSettings.theme || localStorage.getItem('siluma_theme') || 'light';
-                    nativeLang = this.currentSettings.native_language || localStorage.getItem('siluma_native') || 'de';
+                    nativeLang = this.currentSettings.native_language || localStorage.getItem('siluma_native') || 'en';
                 } else {
                     // Fallback to localStorage if server request fails
                     theme = localStorage.getItem('siluma_theme') || 'light';
-                    nativeLang = localStorage.getItem('siluma_native') || 'de';
+                    nativeLang = localStorage.getItem('siluma_native') || 'en';
                 }
             } catch (error) {
                 console.warn('Failed to load user settings, using localStorage:', error);
                 // Fallback to localStorage if server request fails
                 theme = localStorage.getItem('siluma_theme') || 'light';
-                nativeLang = localStorage.getItem('siluma_native') || 'de';
+                nativeLang = localStorage.getItem('siluma_native') || 'en';
             }
         } else {
             // For non-authenticated users, load from localStorage
             theme = localStorage.getItem('siluma_theme') || 'light';
-            nativeLang = localStorage.getItem('siluma_native') || 'de';
+            nativeLang = localStorage.getItem('siluma_native') || 'en';
         }
         
         // Apply theme with force background colors
@@ -992,13 +1007,18 @@ SettingsManager.prototype.populateLanguageSelects = function(selectElement, lang
     });
     
     // Set the current value after options are loaded
-    const currentNativeLang = this.currentSettings?.native_language || localStorage.getItem('siluma_native') || 'de';
+    const currentNativeLang = this.currentSettings?.native_language || localStorage.getItem('siluma_native') || 'en';
     selectElement.value = currentNativeLang;
     console.log('🎨 Language selects populated, set value to:', currentNativeLang);
     
     // Apply localization to the select options
     if (window.applyI18n) {
         window.applyI18n();
+    }
+    
+    // Apply select translations specifically for native language dropdown
+    if (window.applySelectTranslations) {
+        window.applySelectTranslations();
     }
 };
 

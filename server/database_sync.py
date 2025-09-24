@@ -11,7 +11,7 @@ from .db_multi_user import ensure_user_databases
 from .multi_user_db import db_manager
 
 
-DEFAULT_NATIVE_LANGUAGE = "de"
+DEFAULT_NATIVE_LANGUAGE = "en"
 
 
 def _get_connection() -> sqlite3.Connection:

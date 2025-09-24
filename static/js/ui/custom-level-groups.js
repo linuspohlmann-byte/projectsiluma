@@ -1465,7 +1465,7 @@ async function startCustomLevel(groupId, levelNumber) {
             window.RUN._customLevelNumber = levelNumber;
             
             // Ensure target language is set for tooltips
-            window.RUN.target = window.RUN.target || 'de'; // Default to German
+            window.RUN.target = window.RUN.target || 'en'; // Default to English
             
             console.log('🔧 Custom level context set:', {
                 groupId: window.RUN._customGroupId,
