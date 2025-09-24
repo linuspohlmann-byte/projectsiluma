@@ -25,17 +25,22 @@ def get_db_connection():
     config = get_database_config()
     
     if config['type'] == 'postgresql':
-        # Parse DATABASE_URL
-        parsed = urlparse(config['url'])
-        conn = psycopg2.connect(
-            host=parsed.hostname,
-            port=parsed.port,
-            database=parsed.path[1:],  # Remove leading slash
-            user=parsed.username,
-            password=parsed.password
-        )
-        conn.autocommit = True
-        return conn
+        try:
+            # Parse DATABASE_URL
+            parsed = urlparse(config['url'])
+            conn = psycopg2.connect(
+                host=parsed.hostname,
+                port=parsed.port,
+                database=parsed.path[1:],  # Remove leading slash
+                user=parsed.username,
+                password=parsed.password
+            )
+            conn.autocommit = True
+            return conn
+        except Exception as e:
+            print(f"ERROR: Failed to connect to PostgreSQL: {e}")
+            print(f"ERROR: DATABASE_URL: {config['url']}")
+            raise e
     else:
         # SQLite
         conn = sqlite3.connect(config['path'])
