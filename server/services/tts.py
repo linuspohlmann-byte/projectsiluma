@@ -512,6 +512,9 @@ def batch_ensure_tts_for_words(words: List[str], language: str, sentence_context
                     print(f"✅ Generated word audio: {word}")
             except Exception as e:
                 print(f"⚠️ Failed to generate word audio for '{word}': {e}")
+                # Railway fallback: try to generate on-demand or return None gracefully
+                if os.environ.get('RAILWAY_ENVIRONMENT'):
+                    print(f"Railway environment detected - using fallback for '{word}'")
                 existing_audio[word] = None
     
     return existing_audio

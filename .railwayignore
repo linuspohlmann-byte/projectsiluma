@@ -1,0 +1,52 @@
+# Railway ignore file
+# Exclude large media files that are generated on-demand
+
+# TTS audio files (generated dynamically)
+media/tts/
+media/tts_sentences/
+
+# Large database files (will be recreated)
+*.db
+databases/
+
+# Development files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Large test files
+test_*.mp3
+test_*.wav
