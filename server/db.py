@@ -489,9 +489,19 @@ def init_db():
                 user_translations TEXT,
                 score REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                topic VARCHAR(100)
+                topic VARCHAR(100),
+                target_lang VARCHAR(10),
+                native_lang VARCHAR(10)
             );
         """)
+        
+        # Add missing columns to existing level_runs table if they don't exist
+        try:
+            execute_query(conn, "ALTER TABLE level_runs ADD COLUMN IF NOT EXISTS target_lang VARCHAR(10)")
+            execute_query(conn, "ALTER TABLE level_runs ADD COLUMN IF NOT EXISTS native_lang VARCHAR(10)")
+            conn.commit()
+        except Exception as e:
+            print(f"Warning: Could not add columns to level_runs: {e}")
         
         # Practice runs table
         execute_query(conn, """
@@ -601,9 +611,29 @@ def init_db():
           user_translations TEXT,
           score REAL,
           created_at TEXT,
-          topic TEXT
+          topic TEXT,
+          target_lang TEXT,
+          native_lang TEXT
         );
         """)
+        
+        # Add missing columns to existing level_runs table if they don't exist (SQLite)
+        try:
+            # Check if columns exist
+            cursor = conn.execute("PRAGMA table_info(level_runs)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'target_lang' not in columns:
+                conn.execute("ALTER TABLE level_runs ADD COLUMN target_lang TEXT")
+                print("Added target_lang column to level_runs")
+            
+            if 'native_lang' not in columns:
+                conn.execute("ALTER TABLE level_runs ADD COLUMN native_lang TEXT")
+                print("Added native_lang column to level_runs")
+                
+            conn.commit()
+        except Exception as e:
+            print(f"Warning: Could not add columns to level_runs: {e}")
         
         cur.execute("""
         CREATE TABLE IF NOT EXISTS practice_runs (
