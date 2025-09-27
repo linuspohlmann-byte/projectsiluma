@@ -155,6 +155,25 @@ def index():
 def health():
     return jsonify({'ok': True})
 
+@app.get('/api/debug/user-status')
+def debug_user_status():
+    """Debug endpoint to check user authentication status"""
+    try:
+        session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        user = get_current_user(session_token) if session_token else None
+        
+        return jsonify({
+            'authenticated': user is not None,
+            'user_id': user['id'] if user else None,
+            'username': user.get('username') if user else None,
+            'has_token': bool(session_token)
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'authenticated': False
+        }), 500
+
 ############################
 # Authentication API
 ############################
@@ -2583,28 +2602,39 @@ def api_level_start():
         try:
             if level > 1:
                 if user_id:
-                    # Check user's previous level progress
-                    from server.db import get_user_progress
-                    from server.db_multi_user import get_user_native_language
-                    native_language = get_user_native_language(user_id)
-                    prev_progress = get_user_progress(user_id, target_lang, native_language)
-                    prev_level_data = next((p for p in prev_progress if p['level'] == level-1), None)
-                    prev_score = prev_level_data['score'] if prev_level_data else None
+                    try:
+                        # Check user's previous level progress
+                        from server.db import get_user_progress
+                        from server.db_multi_user import get_user_native_language
+                        native_language = get_user_native_language(user_id)
+                        prev_progress = get_user_progress(user_id, target_lang, native_language)
+                        prev_level_data = next((p for p in prev_progress if p['level'] == level-1), None)
+                        prev_score = prev_level_data['score'] if prev_level_data else None
+                    except Exception as user_error:
+                        print(f"Error checking user progress: {user_error}")
+                        # Fallback to global level data for logged-in users
+                        prev = _read_level(target_lang, level-1)
+                        prev_score = None if not prev else prev.get('last_score')
                 else:
-                    # Fallback to global level data
+                    # For anonymous users, use global level data
                     prev = _read_level(target_lang, level-1)
                     prev_score = None if not prev else prev.get('last_score')
                 
                 if not (isinstance(prev_score, (int, float)) and float(prev_score) > 0.6):
                     return jsonify({'success': False, 'error': 'previous level score must be > 0.6'}), 403
-        except Exception:
-            # Defensive: block when we cannot verify
+        except Exception as gate_error:
+            print(f"Error in level gate check: {gate_error}")
+            # For anonymous users, allow level 1 and block higher levels
             if level > 1:
-                return jsonify({'success': False, 'error': 'previous level score must be > 0.6'}), 403
+                return jsonify({'success': False, 'error': 'Please log in to access higher levels'}), 403
 
         # Check if user-specific level file already exists and should be reused
-        _ensure_course_dirs(target_lang)
-        existing_fs = _read_level(target_lang, level, user_id)
+        try:
+            _ensure_course_dirs(target_lang)
+            existing_fs = _read_level(target_lang, level, user_id)
+        except Exception as fs_error:
+            print(f"Error checking existing level file: {fs_error}")
+            existing_fs = None
     
         # Reuse existing items from FS if available and not explicitly regenerating
         if reuse or (existing_fs and existing_fs.get('items')):
