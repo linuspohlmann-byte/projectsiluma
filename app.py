@@ -246,6 +246,40 @@ def debug_database_schema():
             'success': False
         }), 500
 
+@app.get('/api/debug/tts-status')
+def debug_tts_status():
+    """Debug endpoint to check TTS service status"""
+    try:
+        from server.services.tts import _openai_ready
+        import os
+        
+        tts_info = {
+            'railway_environment': bool(os.environ.get('RAILWAY_ENVIRONMENT')),
+            'openai_api_key_set': bool(os.environ.get('OPENAI_API_KEY')),
+            'openai_ready': _openai_ready(),
+            'tts_service_available': False
+        }
+        
+        # Check if TTS service is available
+        if tts_info['openai_ready']:
+            tts_info['tts_service_available'] = True
+        elif tts_info['railway_environment'] and not tts_info['openai_api_key_set']:
+            tts_info['tts_service_available'] = False
+            tts_info['reason'] = 'Railway environment without OpenAI API key'
+        else:
+            tts_info['reason'] = 'OpenAI API not configured'
+        
+        return jsonify({
+            'tts_info': tts_info,
+            'success': True
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 ############################
 # Authentication API
 ############################
@@ -576,39 +610,64 @@ def api_i18n_translate():
 
 @words_bp.post('/api/word/tts')
 def api_word_tts():
-    payload = request.get_json(force=True) or {}
-    word = (payload.get('word') or '').strip()
-    language = (payload.get('language') or '').strip()
-    sentence = (payload.get('sentence') or '').strip()  # Optional sentence context
-    if not word or not language:
-        return jsonify({'success': False, 'error': 'word and language required'}), 400
-    # Precedence for TTS instructions: request > per-language env OPENAI_TTS_INSTRUCTIONS_<LANG> > global OPENAI_TTS_INSTRUCTIONS
-    instr = (payload.get('instructions') or payload.get('tts_instructions') or '').strip()
+    try:
+        payload = request.get_json(force=True) or {}
+        word = (payload.get('word') or '').strip()
+        language = (payload.get('language') or '').strip()
+        sentence = (payload.get('sentence') or '').strip()  # Optional sentence context
+        if not word or not language:
+            return jsonify({'success': False, 'error': 'word and language required'}), 400
+        
+        # Check if we're in Railway environment and TTS is disabled
+        if os.environ.get('RAILWAY_ENVIRONMENT') and not os.environ.get('OPENAI_API_KEY'):
+            print(f"⚠️ Railway environment without OpenAI API key - TTS disabled for '{word}'")
+            return jsonify({'success': False, 'error': 'TTS service unavailable'}), 503
+        
+        # Precedence for TTS instructions: request > per-language env OPENAI_TTS_INSTRUCTIONS_<LANG> > global OPENAI_TTS_INSTRUCTIONS
+        instr = (payload.get('instructions') or payload.get('tts_instructions') or '').strip()
+        
+        # Use context-aware TTS if sentence is provided
+        if sentence:
+            url_path = ensure_tts_for_word_with_context(word, language, sentence, instr or None)
+        else:
+            url_path = ensure_tts_for_word(word, language, instr or None)
+        
+        if not url_path:
+            print(f"❌ TTS generation failed for word '{word}' in language '{language}'")
+            return jsonify({'success': False, 'error': 'TTS generation failed'}), 500
+        
+        return jsonify({'success': True, 'audio_url': url_path})
     
-    # Use context-aware TTS if sentence is provided
-    if sentence:
-        url_path = ensure_tts_for_word_with_context(word, language, sentence, instr or None)
-    else:
-        url_path = ensure_tts_for_word(word, language, instr or None)
-    
-    if not url_path:
-        return jsonify({'success': False, 'error': 'TTS failed'}), 500
-    return jsonify({'success': True, 'audio_url': url_path})
+    except Exception as e:
+        print(f"❌ TTS API error: {e}")
+        return jsonify({'success': False, 'error': f'TTS service error: {str(e)}'}), 500
 
 
 @words_bp.post('/api/sentence/tts')
 def api_sentence_tts():
-    data = request.get_json(silent=True) or {}
-    text = (data.get('text') or '').strip()
-    lang = (data.get('language') or 'en').strip().lower()
-    if not text:
-        return jsonify({'success': False, 'error': 'no text'}), 400
-    # Precedence for TTS instructions: request > per-language env OPENAI_TTS_INSTRUCTIONS_<LANG> > global OPENAI_TTS_INSTRUCTIONS
-    instr = (data.get('instructions') or data.get('tts_instructions') or '').strip()
-    url = ensure_tts_for_sentence(text, lang, instr or None)
-    if not url:
-        return jsonify({'success': False})
-    return jsonify({'success': True, 'audio_url': url})
+    try:
+        data = request.get_json(silent=True) or {}
+        text = (data.get('text') or '').strip()
+        lang = (data.get('language') or 'en').strip().lower()
+        if not text:
+            return jsonify({'success': False, 'error': 'no text'}), 400
+        
+        # Check if we're in Railway environment and TTS is disabled
+        if os.environ.get('RAILWAY_ENVIRONMENT') and not os.environ.get('OPENAI_API_KEY'):
+            print(f"⚠️ Railway environment without OpenAI API key - TTS disabled for sentence")
+            return jsonify({'success': False, 'error': 'TTS service unavailable'}), 503
+        
+        # Precedence for TTS instructions: request > per-language env OPENAI_TTS_INSTRUCTIONS_<LANG> > global OPENAI_TTS_INSTRUCTIONS
+        instr = (data.get('instructions') or data.get('tts_instructions') or '').strip()
+        url = ensure_tts_for_sentence(text, lang, instr or None)
+        if not url:
+            print(f"❌ TTS generation failed for sentence in language '{lang}'")
+            return jsonify({'success': False, 'error': 'TTS generation failed'})
+        return jsonify({'success': True, 'audio_url': url})
+    
+    except Exception as e:
+        print(f"❌ Sentence TTS API error: {e}")
+        return jsonify({'success': False, 'error': f'TTS service error: {str(e)}'})
 
 # --- Alphabet API endpoints ---
 
@@ -699,10 +758,16 @@ def api_alphabet_tts():
         if not letter:
             return jsonify({'success': False, 'error': 'letter required'}), 400
         
+        # Check if we're in Railway environment and TTS is disabled
+        if os.environ.get('RAILWAY_ENVIRONMENT') and not os.environ.get('OPENAI_API_KEY'):
+            print(f"⚠️ Railway environment without OpenAI API key - TTS disabled for letter '{letter}'")
+            return jsonify({'success': False, 'error': 'TTS service unavailable'}), 503
+        
         # Generate audio with alphabet context
         audio_url = ensure_tts_for_alphabet_letter(letter, language)
         
         if not audio_url:
+            print(f"❌ TTS generation failed for letter '{letter}' in language '{language}'")
             return jsonify({'success': False, 'error': 'TTS generation failed'}), 500
         
         return jsonify({'success': True, 'audio_url': audio_url})

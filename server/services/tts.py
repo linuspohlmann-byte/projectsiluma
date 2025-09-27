@@ -279,6 +279,7 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         sentence_context: Optional sentence containing the word for pronunciation context
     """
     if not _openai_ready():
+        print(f"⚠️ OpenAI not ready - TTS unavailable for '{word}'")
         return None
     lang = (language or 'en').lower()
     subdir = os.path.join(MEDIA_DIR, 'tts', lang)
@@ -330,8 +331,14 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             print(f"[TTS] No per-language OpenAI voice for '{lang}'. Using OpenAI default '{voice}'. Accent may be wrong.")
         except Exception:
             pass
-    audio = _http_binary(f'{OPENAI_BASE}/audio/speech', payload, headers)
-    if not audio: return None
+    try:
+        audio = _http_binary(f'{OPENAI_BASE}/audio/speech', payload, headers)
+        if not audio: 
+            print(f"❌ OpenAI TTS API returned no audio for '{word}'")
+            return None
+    except Exception as e:
+        print(f"❌ OpenAI TTS API error for '{word}': {e}")
+        return None
     with open(fpath,'wb') as f: f.write(audio)
     # Write back URL
     try:
@@ -357,6 +364,7 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     Files: media/tts_sentences/<lang>/<sha1>.mp3
     """
     if not _openai_ready():
+        print(f"⚠️ OpenAI not ready - TTS unavailable for sentence")
         return None
     lang = (language or 'en').lower()
     subdir = os.path.join(MEDIA_DIR, 'tts_sentences', lang)
@@ -386,8 +394,13 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
             print(f"[TTS] No per-language OpenAI voice for '{lang}'. Using OpenAI default '{voice}'. Accent may be wrong.")
         except Exception:
             pass
-    audio = _http_binary(f'{OPENAI_BASE}/audio/speech', payload, headers)
-    if not audio:
+    try:
+        audio = _http_binary(f'{OPENAI_BASE}/audio/speech', payload, headers)
+        if not audio:
+            print(f"❌ OpenAI TTS API returned no audio for sentence")
+            return None
+    except Exception as e:
+        print(f"❌ OpenAI TTS API error for sentence: {e}")
         return None
     with open(fpath, 'wb') as f: f.write(audio)
     return url_path
