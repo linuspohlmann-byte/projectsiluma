@@ -29,6 +29,10 @@ class RailwayConfig:
     # CORS settings
     CORS_ORIGINS = ['*']  # Railway allows dynamic origins
     
+    # CORS headers for API access
+    CORS_HEADERS = ['Content-Type', 'Authorization', 'X-Requested-With']
+    CORS_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    
     # Logging
     LOG_LEVEL = 'INFO'
     

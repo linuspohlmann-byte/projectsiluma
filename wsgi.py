@@ -48,10 +48,18 @@ def periodic_sync():
 def start_background_sync():
     """Start background synchronization thread"""
     try:
+        # Initialize database first
+        print("🚀 Starting ProjectSiluma with database initialization...")
+        
+        # Initialize the main database
+        from server.db import init_db
+        init_db()
+        print("✅ Main database initialized")
+        
         # Run initial sync
         from server.database_sync import sync_databases_on_startup
-        print("🚀 Starting ProjectSiluma with background sync...")
         sync_databases_on_startup()
+        print("✅ Database sync completed")
         
         # Start periodic sync thread
         def sync_worker():
@@ -65,6 +73,13 @@ def start_background_sync():
         
     except Exception as e:
         print(f"Warning: Could not start background sync: {e}")
+        # Try to initialize database anyway
+        try:
+            from server.db import init_db
+            init_db()
+            print("✅ Database initialized as fallback")
+        except Exception as db_error:
+            print(f"❌ Database initialization failed: {db_error}")
 
 try:
     # Import the Flask app
@@ -78,6 +93,14 @@ try:
         print("✅ Railway configuration loaded")
     except Exception as config_error:
         print(f"⚠️  Warning: Could not load Railway config: {config_error}")
+    
+    # Add CORS support for Railway
+    @app.after_request
+    def after_request(response):
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        return response
     
     # Start background sync for Railway
     start_background_sync()
