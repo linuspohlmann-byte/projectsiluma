@@ -10,6 +10,7 @@ from datetime import datetime, UTC
 from typing import List, Dict
 from .llm import _http_binary, OPENAI_KEY, OPENAI_BASE
 from server.db import get_db
+from .cache import cached_tts
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MEDIA_DIR = os.path.join(APP_ROOT, 'media')
@@ -261,6 +262,7 @@ def _audio_url_to_path(url_path: str) -> str | None:
     lang, fname = parts[2], parts[3]
     return os.path.join(MEDIA_DIR, 'tts', lang, fname)
 
+@cached_tts(ttl=7200)  # Cache for 2 hours
 def ensure_tts_for_word(word: str, language: str, instructions: str | None = None, context: str = 'word', sentence_context: str | None = None) -> str | None:
     """
     Generate TTS for a word, saving to disk and returning URL.
@@ -352,6 +354,7 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
 
 from hashlib import sha1 as _sha1
 
+@cached_tts(ttl=7200)  # Cache for 2 hours
 def ensure_tts_for_sentence(text: str, language: str, instructions: str | None = None, context: str = 'sentence') -> str | None:
     """
     Create MP3 for a full sentence if missing. Return URL path or None.
@@ -422,7 +425,7 @@ def ensure_tts_for_word_with_context(word: str, language: str, sentence: str, in
 
 def batch_ensure_tts_for_sentences(sentences: List[str], language: str, instructions: str | None = None) -> Dict[str, str | None]:
     """
-    Batch generate TTS for multiple sentences.
+    Batch generate TTS for multiple sentences with async processing.
     Returns a dictionary mapping sentence -> audio_url (or None if failed).
     """
     if not _openai_ready() or not sentences:
@@ -452,26 +455,35 @@ def batch_ensure_tts_for_sentences(sentences: List[str], language: str, instruct
     if sentences_to_generate:
         print(f"🎵 Batch generating audio for {len(sentences_to_generate)} sentences...")
         
-        # Use OpenAI batch API if available, otherwise fall back to individual calls
-        try:
-            # For now, use individual calls but with better error handling
-            for sentence in sentences_to_generate:
-                try:
-                    audio_url = ensure_tts_for_sentence(sentence, language, instructions)
-                    existing_audio[sentence] = audio_url
-                    if audio_url:
-                        print(f"✅ Generated sentence audio: {sentence[:50]}...")
-                except Exception as e:
-                    print(f"⚠️ Failed to generate sentence audio for '{sentence[:50]}...': {e}")
-                    existing_audio[sentence] = None
-        except Exception as e:
-            print(f"Error in batch sentence audio generation: {e}")
+        # Use concurrent processing for better performance
+        import concurrent.futures
+        import threading
+        
+        def generate_single_sentence(sentence):
+            try:
+                audio_url = ensure_tts_for_sentence(sentence, language, instructions)
+                if audio_url:
+                    print(f"✅ Generated sentence audio: {sentence[:50]}...")
+                return sentence, audio_url
+            except Exception as e:
+                print(f"⚠️ Failed to generate sentence audio for '{sentence[:50]}...': {e}")
+                return sentence, None
+        
+        # Use ThreadPoolExecutor for concurrent TTS generation
+        max_workers = min(5, len(sentences_to_generate))  # Limit concurrent requests
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_sentence = {executor.submit(generate_single_sentence, sentence): sentence 
+                                for sentence in sentences_to_generate}
+            
+            for future in concurrent.futures.as_completed(future_to_sentence):
+                sentence, audio_url = future.result()
+                existing_audio[sentence] = audio_url
     
     return existing_audio
 
 def batch_ensure_tts_for_words(words: List[str], language: str, sentence_contexts: Dict[str, str] = None, instructions: str | None = None) -> Dict[str, str | None]:
     """
-    Batch generate TTS for multiple words.
+    Batch generate TTS for multiple words with concurrent processing.
     Returns a dictionary mapping word -> audio_url (or None if failed).
     """
     if not _openai_ready() or not words:
@@ -505,8 +517,10 @@ def batch_ensure_tts_for_words(words: List[str], language: str, sentence_context
     if words_to_generate:
         print(f"🎵 Batch generating audio for {len(words_to_generate)} words...")
         
-        # Use individual calls with better error handling
-        for word in words_to_generate:
+        # Use concurrent processing for better performance
+        import concurrent.futures
+        
+        def generate_single_word(word):
             try:
                 # Find sentence context for this word
                 sentence_context = None
@@ -520,14 +534,24 @@ def batch_ensure_tts_for_words(words: List[str], language: str, sentence_context
                     context='word',
                     sentence_context=sentence_context
                 )
-                existing_audio[word] = audio_url
                 if audio_url:
                     print(f"✅ Generated word audio: {word}")
+                return word, audio_url
             except Exception as e:
                 print(f"⚠️ Failed to generate word audio for '{word}': {e}")
                 # Railway fallback: try to generate on-demand or return None gracefully
                 if os.environ.get('RAILWAY_ENVIRONMENT'):
                     print(f"Railway environment detected - using fallback for '{word}'")
-                existing_audio[word] = None
+                return word, None
+        
+        # Use ThreadPoolExecutor for concurrent TTS generation
+        max_workers = min(5, len(words_to_generate))  # Limit concurrent requests
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_word = {executor.submit(generate_single_word, word): word 
+                            for word in words_to_generate}
+            
+            for future in concurrent.futures.as_completed(future_to_word):
+                word, audio_url = future.result()
+                existing_audio[word] = audio_url
     
     return existing_audio

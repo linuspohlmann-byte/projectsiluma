@@ -2478,24 +2478,29 @@ def api_words_adjust_familiarity():
 
 @words_bp.post('/api/word/enrich_batch')
 def api_word_enrich_batch():
-    """Enrich multiple words at once"""
+    """Enrich multiple words at once with optimized batch processing"""
     payload = request.get_json(force=True) or {}
     words = payload.get('words', [])
     language = (payload.get('language') or '').strip()
     native_language = (payload.get('native_language') or '').strip()
-    sentence_context = (payload.get('sentence_context') or '').strip()
-    sentence_native = (payload.get('sentence_native') or '').strip()
+    sentence_contexts = payload.get('sentence_contexts', {})
     
     if not words or not language:
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
     
     try:
-        # For now, just return success (no actual enrichment implemented yet)
-        # TODO: Implement actual batch enrichment
+        # Use optimized batch enrichment
+        from server.services.llm import llm_enrich_words_batch
+        enriched_results = llm_enrich_words_batch(words, language, native_language, sentence_contexts)
+        
+        enriched_count = len([w for w, data in enriched_results.items() if data and data.get('translation')])
+        
         return jsonify({
             'success': True,
             'message': 'Words enriched',
-            'enriched_count': len(words)
+            'enriched_count': enriched_count,
+            'total_words': len(words),
+            'results': enriched_results
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -1,5 +1,6 @@
 import os, json, math, urllib.request
 from typing import List, Dict
+from .cache import cached_enrichment
 OPENAI_KEY  = os.environ.get('OPENAI_API_KEY')
 OPENAI_BASE = os.environ.get('OPENAI_BASE', 'https://api.openai.com/v1')
 
@@ -691,6 +692,7 @@ def _extract_word_translation_from_context(word: str, sentence_context: str, sen
     
     return ''
 
+@cached_enrichment(ttl=3600)  # Cache for 1 hour
 def llm_enrich_word(word: str, language: str, native_language: str, sentence_context: str = '', sentence_native: str = '') -> dict:
     """Return normalized enrichment dict 'upd' for a word.
     Does LLM call if available, enforces schema, normalizes fields.
@@ -904,7 +906,7 @@ def similarity_score(a: str, b: str) -> float:
 
 def llm_enrich_words_batch(words: List[str], language: str, native_language: str, sentence_contexts: Dict[str, str] = None) -> Dict[str, dict]:
     """
-    Batch enrich multiple words with translations, POS, IPA, and other metadata.
+    Batch enrich multiple words with translations, POS, IPA, and other metadata using concurrent processing.
     Returns a dictionary mapping word -> enrichment_data (or empty dict if failed).
     """
     if not OPENAI_KEY or not words:
@@ -1013,16 +1015,18 @@ Return JSON format:
 }}'''
             }
             
-            response = _openai_client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[system_msg, user_msg],
-                temperature=0.1,
-                max_tokens=4000
-            )
+            payload = {
+                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+                'messages': [system_msg, user_msg],
+                'temperature': 0.1,
+                'max_tokens': 4000
+            }
+            headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
+            data = _http_json(f'{OPENAI_BASE}/chat/completions', payload, headers)
             
-            if response.choices and response.choices[0].message.content:
+            if data and 'choices' in data and data['choices'][0]['message']['content']:
                 try:
-                    batch_data = json.loads(response.choices[0].message.content)
+                    batch_data = json.loads(data['choices'][0]['message']['content'])
                     
                     for word in batch_words:
                         if word in batch_data:
