@@ -174,6 +174,78 @@ def debug_user_status():
             'authenticated': False
         }), 500
 
+@app.get('/api/debug/database-schema')
+def debug_database_schema():
+    """Debug endpoint to check database schema"""
+    try:
+        from server.db_config import get_database_config
+        from server.db import get_db
+        
+        config = get_database_config()
+        conn = get_db()
+        
+        # Get database type and connection info
+        db_info = {
+            'database_type': config['type'],
+            'database_path': config.get('path', 'N/A'),
+            'database_url': 'SET' if config.get('url') else 'NOT_SET'
+        }
+        
+        # Get table schemas
+        tables_info = {}
+        
+        # Get list of tables
+        if config['type'] == 'postgresql':
+            tables_query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            tables = [row[0] for row in conn.execute(tables_query).fetchall()]
+            
+            for table in tables:
+                schema_query = f"""
+                SELECT column_name, data_type, is_nullable, column_default 
+                FROM information_schema.columns 
+                WHERE table_name = '{table}' 
+                ORDER BY ordinal_position
+                """
+                columns = conn.execute(schema_query).fetchall()
+                tables_info[table] = [
+                    {
+                        'name': col[0],
+                        'type': col[1],
+                        'nullable': col[2],
+                        'default': col[3]
+                    } for col in columns
+                ]
+        else:
+            # SQLite
+            tables_query = "SELECT name FROM sqlite_master WHERE type='table'"
+            tables = [row[0] for row in conn.execute(tables_query).fetchall()]
+            
+            for table in tables:
+                schema_query = f"PRAGMA table_info({table})"
+                columns = conn.execute(schema_query).fetchall()
+                tables_info[table] = [
+                    {
+                        'name': col[1],
+                        'type': col[2],
+                        'nullable': not col[3],
+                        'default': col[4]
+                    } for col in columns
+                ]
+        
+        conn.close()
+        
+        return jsonify({
+            'database_info': db_info,
+            'tables': tables_info,
+            'success': True
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 ############################
 # Authentication API
 ############################
