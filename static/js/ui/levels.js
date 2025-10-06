@@ -553,9 +553,18 @@ async function loadFamiliarityData(levelElement, lvl) {
                 totalWords = progressData.total_words || 0;
                 console.log(`Custom level ${lvl} familiarity data: ${totalWords} words`);
                 
-                // Initialize familiarity counts with all words as unknown (level 0)
-                for (let familiarity = 0; familiarity <= 5; familiarity++) {
-                  familiarityCounts[familiarity] = familiarity === 0 ? totalWords : 0;
+                // Use real familiarity counts from progress API if available
+                if (progressData.fam_counts) {
+                  // Convert string keys to numbers and populate familiarityCounts
+                  for (let familiarity = 0; familiarity <= 5; familiarity++) {
+                    familiarityCounts[familiarity] = progressData.fam_counts[familiarity.toString()] || 0;
+                  }
+                  console.log(`Custom level ${lvl} real familiarity counts:`, familiarityCounts);
+                } else {
+                  // Fallback: Initialize familiarity counts with all words as unknown (level 0)
+                  for (let familiarity = 0; familiarity <= 5; familiarity++) {
+                    familiarityCounts[familiarity] = familiarity === 0 ? totalWords : 0;
+                  }
                 }
               }
             }
