@@ -525,10 +525,63 @@ async function loadFamiliarityData(levelElement, lvl) {
         }
       }
     } else {
-      // No cached data - use default values (no fallback API call)
-      console.log(`No cached data for level ${lvl} familiarity, using default values`);
+      // No cached data - try to get word count from level data
+      console.log(`No cached data for level ${lvl} familiarity, trying to get word count from level data`);
+      
+      // Check if this is a custom level
+      const isCustomLevel = levelElement.dataset.customGroupId || levelElement.classList.contains('custom-level');
+      
+      if (isCustomLevel) {
+        // For custom levels, try to get word count from the level content
+        try {
+          const groupId = levelElement.dataset.customGroupId;
+          if (groupId) {
+            const response = await fetch(`/api/custom-levels/${groupId}/${lvl}`);
+            if (response.ok) {
+              const levelData = await response.json();
+              if (levelData.success && levelData.content && levelData.content.items) {
+                // Count unique words from all items
+                const allWords = new Set();
+                levelData.content.items.forEach(item => {
+                  if (item.words && Array.isArray(item.words)) {
+                    item.words.forEach(word => {
+                      if (word && word.trim()) {
+                        allWords.add(word.trim().toLowerCase());
+                      }
+                    });
+                  }
+                });
+                totalWords = allWords.size;
+                console.log(`Custom level ${lvl} has ${totalWords} unique words for familiarity data`);
+              }
+            }
+          }
+        } catch (error) {
+          console.log('Error fetching custom level word count for familiarity:', error);
+        }
+      } else {
+        // For standard levels, try to get word count from level API
+        try {
+          const response = await fetch(`/api/level/${lvl}/words?language=${encodeURIComponent(targetLang)}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.words) {
+              totalWords = data.words.length;
+              console.log(`Standard level ${lvl} has ${totalWords} words for familiarity data`);
+            }
+          }
+        } catch (error) {
+          console.log('Error fetching standard level word count for familiarity:', error);
+        }
+      }
+      
+      // Set familiarity counts (all words start as unknown for new levels)
       for (let familiarity = 0; familiarity <= 5; familiarity++) {
-        familiarityCounts[familiarity] = 0;
+        if (familiarity === 0) {
+          familiarityCounts[familiarity] = totalWords; // All words start as unknown
+        } else {
+          familiarityCounts[familiarity] = 0;
+        }
       }
     }
     
@@ -575,10 +628,61 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
       }
     }
     
-    // No fallback API call - use cached data only
-    // If no cached data, use default values
+    // If no cached data or totalWords is 0, try to get word count from level data
+    if (totalWords === 0) {
+      console.log(`No cached data for level ${lvl}, trying to get word count from level data`);
+      
+      // Check if this is a custom level by looking at the level element
+      const isCustomLevel = levelElement.dataset.customGroupId || levelElement.classList.contains('custom-level');
+      
+      if (isCustomLevel) {
+        // For custom levels, try to get word count from the level content
+        try {
+          const groupId = levelElement.dataset.customGroupId;
+          if (groupId) {
+            const response = await fetch(`/api/custom-levels/${groupId}/${lvl}`);
+            if (response.ok) {
+              const levelData = await response.json();
+              if (levelData.success && levelData.content && levelData.content.items) {
+                // Count unique words from all items
+                const allWords = new Set();
+                levelData.content.items.forEach(item => {
+                  if (item.words && Array.isArray(item.words)) {
+                    item.words.forEach(word => {
+                      if (word && word.trim()) {
+                        allWords.add(word.trim().toLowerCase());
+                      }
+                    });
+                  }
+                });
+                totalWords = allWords.size;
+                console.log(`Custom level ${lvl} has ${totalWords} unique words`);
+              }
+            }
+          }
+        } catch (error) {
+          console.log('Error fetching custom level word count:', error);
+        }
+      } else {
+        // For standard levels, try to get word count from level API
+        try {
+          const response = await fetch(`/api/level/${lvl}/words?language=${encodeURIComponent(targetLang)}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.words) {
+              totalWords = data.words.length;
+              console.log(`Standard level ${lvl} has ${totalWords} words`);
+            }
+          }
+        } catch (error) {
+          console.log('Error fetching standard level word count:', error);
+        }
+      }
+    }
+    
+    // If still no data, use default values
     if (totalWords === 0 && completedWords === 0) {
-      console.log(`No cached data for level ${lvl}, using default values`);
+      console.log(`No word data found for level ${lvl}, using default values`);
     }
     
     // Calculate progress percentage for learned words (used for progress bar)
