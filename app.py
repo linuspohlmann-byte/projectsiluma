@@ -970,6 +970,44 @@ def api_level_finish():
 
     return jsonify({'success': True, 'run_id': run_id, 'fam_counts': fam_counts})
 
+@levels_bp.post('/api/level/submit_mc')
+def api_level_submit_mc():
+    """Submit multiple choice answer for a standard level"""
+    try:
+        # Get user context from middleware
+        user_context = get_user_context()
+        user_id = user_context['user_id']
+        is_authenticated = user_id is not None
+        
+        # If not authenticated via middleware, try to get user from Authorization header
+        if not is_authenticated:
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                session_token = auth_header[7:]
+                from server.db_multi_user import get_user_by_session_token
+                user = get_user_by_session_token(session_token)
+                if user:
+                    user_id = user['id']
+                    is_authenticated = True
+        
+        payload = request.get_json(force=True) or {}
+        run_id = payload.get('run_id')
+        idx = payload.get('idx')
+        word = payload.get('word')
+        correct = payload.get('correct', False)
+        
+        if not run_id:
+            return jsonify({'success': False, 'error': 'run_id required'}), 400
+        
+        # For standard levels, we don't need to do much - just return success
+        # The actual scoring is handled in the level finish endpoint
+        print(f"MC answer submitted for run {run_id}, word: {word}, correct: {correct}")
+        
+        return jsonify({'success': True, 'message': 'MC answer recorded'})
+        
+    except Exception as e:
+        print(f"Error in api_level_submit_mc: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Level Rating System removed - replaced with attractive evaluation display
 
@@ -2548,74 +2586,119 @@ def api_word_enrich():
     sentence_native = (payload.get('sentence_native') or '').strip()
     if not word or not language:
         return jsonify({'success': False, 'error': 'word and language required'}), 400
-    # Use service to enrich + normalize with context
-    upd = llm_enrich_word(word, language, native_language, sentence_context, sentence_native)
-    # Persist: overwrite existing fields when new non-empty values are available
-    conn = get_db(); cur = conn.cursor()
-    now = datetime.now(UTC).isoformat()
-    # Prepare JSON strings (keep None for empty to avoid overwriting with empties)
-    conj_json = json.dumps(upd['conj'], ensure_ascii=False) if upd.get('conj') else None
-    comp_json = json.dumps(upd['comp'], ensure_ascii=False) if upd.get('comp') else None
-    syn_json  = json.dumps(upd['synonyms'], ensure_ascii=False) if upd.get('synonyms') else None
-    col_json  = json.dumps(upd['collocations'], ensure_ascii=False) if upd.get('collocations') else None
-
-    sets = []
-    vals = []
-    def set_if_val(key, val):
-        if isinstance(val, str):
-            if val.strip():
-                sets.append(f"{key}=?"); vals.append(val.strip())
-        elif val is not None:
-            sets.append(f"{key}=?"); vals.append(val)
-    set_if_val('lemma', upd.get('lemma'))
-    set_if_val('pos', upd.get('pos'))
-    set_if_val('ipa', upd.get('ipa'))
-    set_if_val('gender', upd.get('gender'))
-    set_if_val('plural', upd.get('plural'))
-    set_if_val('cefr', upd.get('cefr'))
-    set_if_val('freq_rank', upd.get('freq_rank'))
-    set_if_val('example', upd.get('example'))
-    set_if_val('example_native', upd.get('example_native'))
-    set_if_val('translation', upd.get('translation'))
-    if conj_json: sets.append('conj=?'); vals.append(conj_json)
-    if comp_json: sets.append('comp=?'); vals.append(comp_json)
-    if syn_json:  sets.append('synonyms=?'); vals.append(syn_json)
-    if col_json:  sets.append('collocations=?'); vals.append(col_json)
-
-    if sets:
-        sets.append('updated_at=?'); vals.append(now)
-        vals.extend([word, language, language])
-        cur.execute(f'UPDATE words SET {", ".join(sets)} WHERE word=? AND (language=? OR ?="")', vals)
-        conn.commit()
-    # -- auto TTS if missing or file not found
+    
     try:
-        conn2 = get_db()
-        r2 = conn2.execute('SELECT audio_url FROM words WHERE word=? AND (language=? OR ?="")', (word, language, language)).fetchone()
-        conn2.close()
-        need_gen = True
-        if r2:
-            au = (r2['audio_url'] or '').strip()
-            if au:
-                # Check if it's an S3 URL or local file
-                if au.startswith('https://') and 's3' in au:
-                    # S3 URL - assume it exists (S3 is reliable)
-                    upd['audio_url'] = au
-                    need_gen = False
-                else:
-                    # Local file - check if it exists
-                    fpath = _audio_url_to_path(au)
-                    if fpath and os.path.isfile(fpath):
+        # Use service to enrich + normalize with context
+        upd = llm_enrich_word(word, language, native_language, sentence_context, sentence_native)
+        
+        # Persist: overwrite existing fields when new non-empty values are available
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        now = datetime.now(UTC).isoformat()
+        
+        # Prepare JSON strings (keep None for empty to avoid overwriting with empties)
+        conj_json = json.dumps(upd['conj'], ensure_ascii=False) if upd.get('conj') else None
+        comp_json = json.dumps(upd['comp'], ensure_ascii=False) if upd.get('comp') else None
+        syn_json  = json.dumps(upd['synonyms'], ensure_ascii=False) if upd.get('synonyms') else None
+        col_json  = json.dumps(upd['collocations'], ensure_ascii=False) if upd.get('collocations') else None
+
+        sets = []
+        vals = []
+        
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            def set_if_val(key, val):
+                if isinstance(val, str):
+                    if val.strip():
+                        sets.append(f"{key}=%s"); vals.append(val.strip())
+                elif val is not None:
+                    sets.append(f"{key}=%s"); vals.append(val)
+        else:
+            # SQLite syntax
+            def set_if_val(key, val):
+                if isinstance(val, str):
+                    if val.strip():
+                        sets.append(f"{key}=?"); vals.append(val.strip())
+                elif val is not None:
+                    sets.append(f"{key}=?"); vals.append(val)
+        
+        set_if_val('lemma', upd.get('lemma'))
+        set_if_val('pos', upd.get('pos'))
+        set_if_val('ipa', upd.get('ipa'))
+        set_if_val('gender', upd.get('gender'))
+        set_if_val('plural', upd.get('plural'))
+        set_if_val('cefr', upd.get('cefr'))
+        set_if_val('freq_rank', upd.get('freq_rank'))
+        set_if_val('example', upd.get('example'))
+        set_if_val('example_native', upd.get('example_native'))
+        set_if_val('translation', upd.get('translation'))
+        
+        if config['type'] == 'postgresql':
+            if conj_json: sets.append('conj=%s'); vals.append(conj_json)
+            if comp_json: sets.append('comp=%s'); vals.append(comp_json)
+            if syn_json:  sets.append('synonyms=%s'); vals.append(syn_json)
+            if col_json:  sets.append('collocations=%s'); vals.append(col_json)
+        else:
+            if conj_json: sets.append('conj=?'); vals.append(conj_json)
+            if comp_json: sets.append('comp=?'); vals.append(comp_json)
+            if syn_json:  sets.append('synonyms=?'); vals.append(syn_json)
+            if col_json:  sets.append('collocations=?'); vals.append(col_json)
+
+        if sets:
+            sets.append('updated_at=%s' if config['type'] == 'postgresql' else 'updated_at=?')
+            vals.append(now)
+            vals.extend([word, language, language])
+            
+            if config['type'] == 'postgresql':
+                where_clause = 'WHERE word=%s AND (language=%s OR %s=\'\')'
+            else:
+                where_clause = 'WHERE word=? AND (language=? OR ?="")'
+            
+            query = f'UPDATE words SET {", ".join(sets)} {where_clause}'
+            execute_query(conn, query, vals)
+            conn.commit()
+        conn.close()
+        # -- auto TTS if missing or file not found
+        try:
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, 'SELECT audio_url FROM words WHERE word=%s AND (language=%s OR %s=\'\')', (word, language, language))
+                r2 = result.fetchone()
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                r2 = cur.execute('SELECT audio_url FROM words WHERE word=? AND (language=? OR ?="")', (word, language, language)).fetchone()
+            
+            need_gen = True
+            if r2:
+                au = (r2['audio_url'] or '').strip()
+                if au:
+                    # Check if it's an S3 URL or local file
+                    if au.startswith('https://') and 's3' in au:
+                        # S3 URL - assume it exists (S3 is reliable)
                         upd['audio_url'] = au
                         need_gen = False
-        if need_gen:
-            au2 = ensure_tts_for_word(word, language)
-            if au2:
-                upd['audio_url'] = au2
-    except Exception:
-        pass
-    conn.close()
-
-    return jsonify({'success': True, 'data': upd})
+                    else:
+                        # Local file - check if it exists
+                        fpath = _audio_url_to_path(au)
+                        if fpath and os.path.isfile(fpath):
+                            upd['audio_url'] = au
+                            need_gen = False
+            if need_gen:
+                au2 = ensure_tts_for_word(word, language)
+                if au2:
+                    upd['audio_url'] = au2
+        except Exception as e:
+            print(f"❌ Error in enrich TTS: {e}")
+            pass
+        
+        return jsonify({'success': True, 'data': upd})
+        
+    except Exception as e:
+        print(f"❌ Error in enrich endpoint: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @levels_bp.post('/api/level/ensure_topic')

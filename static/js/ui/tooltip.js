@@ -158,6 +158,8 @@ export async function openTooltip(anchor, word){
     const lang = window.RUN?.target || 'en';
     const nat  = window.RUN?.native || 'de';
     
+    console.log('🔧 Tooltip opening for word:', w, 'language:', lang);
+    
     // Check if this is a custom level and try to get word data from custom level context
     let js1 = null;
     if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
@@ -189,14 +191,23 @@ export async function openTooltip(anchor, word){
     
     // If we don't have word data yet, try to fetch from global database
     if (!js1) {
+      console.log('🔧 Fetching word data for:', w);
       const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`);
       js1 = await r1.json();
+      console.log('🔧 Fetched word data:', js1);
+    }
+    
+    // Ensure the word in the data matches the requested word
+    if (js1 && js1.word !== w) {
+      console.log('⚠️ Word mismatch in tooltip data:', js1.word, 'vs requested:', w);
+      js1.word = w; // Fix the word
     }
     
     fill(js1);
     
     const missing = !(js1 && (js1.translation||'').trim());
     if(missing){
+      console.log('🔧 Word missing translation, enriching:', w);
       try{
         // Check if we're in a custom level context
         if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
@@ -213,6 +224,7 @@ export async function openTooltip(anchor, word){
           });
         } else {
           // Use standard enrichment API
+          console.log('🔧 Using standard enrich API for:', w);
           await fetch('/api/word/enrich', {
             method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({
@@ -226,12 +238,25 @@ export async function openTooltip(anchor, word){
         }
         
         // Try to fetch the enriched word data
+        console.log('🔧 Fetching enriched word data for:', w);
         const r2 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`);
         const js2 = await r2.json();
+        console.log('🔧 Fetched enriched word data:', js2);
+        
+        // Ensure the word in the enriched data matches the requested word
+        if (js2 && js2.word !== w) {
+          console.log('⚠️ Word mismatch in enriched tooltip data:', js2.word, 'vs requested:', w);
+          js2.word = w; // Fix the word
+        }
+        
         fill(js2);
-      }catch(_){ /* ignore */ }
+      }catch(e){ 
+        console.log('❌ Error enriching word:', e);
+      }
     }
-  }catch(_){ /* ignore */ }
+  }catch(e){ 
+    console.log('❌ Error in tooltip fetch:', e);
+  }
 }
 
 // --- Outside click handler ----------------------------------------------------
