@@ -23,27 +23,52 @@ def get_db():
 def get_user_native_language(user_id: int) -> str:
     """Get user's native language from native_language column or settings or default to 'en'"""
     try:
-        conn = get_db()
+        from .db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
         try:
-            cur = conn.cursor()
-            # First try to get from native_language column
-            cur.execute("SELECT native_language FROM users WHERE id = ?", (user_id,))
-            row = cur.fetchone()
-            
-            if row and row['native_language']:
-                return row['native_language']
-            
-            # Fallback to settings
-            cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
-            row = cur.fetchone()
-            
-            if row and row['settings']:
-                try:
-                    settings = json.loads(row['settings'])
-                    return settings.get('native_language', 'en')
-                except json.JSONDecodeError:
-                    print(f"Error parsing settings JSON for user {user_id}")
-                    return 'en'
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, "SELECT native_language FROM users WHERE id = %s", (user_id,))
+                row = result.fetchone()
+                
+                if row and row['native_language']:
+                    return row['native_language']
+                
+                # Fallback to settings
+                result = execute_query(conn, "SELECT settings FROM users WHERE id = %s", (user_id,))
+                row = result.fetchone()
+                
+                if row and row['settings']:
+                    try:
+                        settings = json.loads(row['settings'])
+                        return settings.get('native_language', 'en')
+                    except json.JSONDecodeError:
+                        print(f"Error parsing settings JSON for user {user_id}")
+                        return 'en'
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                # First try to get from native_language column
+                cur.execute("SELECT native_language FROM users WHERE id = ?", (user_id,))
+                row = cur.fetchone()
+                
+                if row and row['native_language']:
+                    return row['native_language']
+                
+                # Fallback to settings
+                cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
+                row = cur.fetchone()
+                
+                if row and row['settings']:
+                    try:
+                        settings = json.loads(row['settings'])
+                        return settings.get('native_language', 'en')
+                    except json.JSONDecodeError:
+                        print(f"Error parsing settings JSON for user {user_id}")
+                        return 'en'
             
             return 'en'  # Default to English
         finally:
@@ -54,30 +79,54 @@ def get_user_native_language(user_id: int) -> str:
 
 def update_user_native_language(user_id: int, native_language: str) -> bool:
     """Update user's native language in both settings and native_language column"""
-    conn = get_db()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
-        row = cur.fetchone()
+        from .db_config import get_database_config, get_db_connection, execute_query
         
-        if not row:
-            print(f"User {user_id} not found")
-            return False
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, "SELECT settings FROM users WHERE id = %s", (user_id,))
+                row = result.fetchone()
+                
+                if not row:
+                    print(f"User {user_id} not found")
+                    return False
+                    
+                settings = json.loads(row['settings']) if row['settings'] else {}
+                settings['native_language'] = native_language
+                
+                # Update both settings JSON and native_language column
+                execute_query(conn, "UPDATE users SET settings = %s, native_language = %s WHERE id = %s", 
+                           (json.dumps(settings), native_language, user_id))
+                conn.commit()
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                cur.execute("SELECT settings FROM users WHERE id = ?", (user_id,))
+                row = cur.fetchone()
+                
+                if not row:
+                    print(f"User {user_id} not found")
+                    return False
+                    
+                settings = json.loads(row['settings']) if row['settings'] else {}
+                settings['native_language'] = native_language
+                
+                # Update both settings JSON and native_language column
+                cur.execute("UPDATE users SET settings = ?, native_language = ? WHERE id = ?", 
+                           (json.dumps(settings), native_language, user_id))
+                conn.commit()
             
-        settings = json.loads(row['settings']) if row['settings'] else {}
-        settings['native_language'] = native_language
-        
-        # Update both settings JSON and native_language column
-        cur.execute("UPDATE users SET settings = ?, native_language = ? WHERE id = ?", 
-                   (json.dumps(settings), native_language, user_id))
-        conn.commit()
-        print(f"Successfully updated native language for user {user_id} to {native_language}")
-        return True
+            print(f"Successfully updated native language for user {user_id} to {native_language}")
+            return True
+        finally:
+            conn.close()
     except Exception as e:
         print(f"Error updating user native language: {e}")
         return False
-    finally:
-        conn.close()
 
 def ensure_user_databases(user_id: int, native_language: str = None):
     """Ensure user has databases for their native language"""
@@ -370,16 +419,28 @@ def get_user_level_stats(user_id: int, language: str, level: int) -> Dict[str, A
         level_data = get_level_words_with_familiarity(language, level, user_id)
         
         # Get level score from main database
-        conn = get_db()
+        from .db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
         level_score = 0.0
         try:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT score FROM user_progress 
-                WHERE user_id = ? AND language = ? AND level = ?
-            """, (user_id, language, level))
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, """
+                    SELECT score FROM user_progress 
+                    WHERE user_id = %s AND language = %s AND level = %s
+                """, (user_id, language, level))
+                row = result.fetchone()
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT score FROM user_progress 
+                    WHERE user_id = ? AND language = ? AND level = ?
+                """, (user_id, language, level))
+                row = cur.fetchone()
             
-            row = cur.fetchone()
             level_score = row['score'] if row and row['score'] else 0.0
         except Exception as e:
             print(f"Error getting user level score: {e}")
