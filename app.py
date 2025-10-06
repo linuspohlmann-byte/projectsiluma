@@ -280,6 +280,92 @@ def debug_tts_status():
             'success': False
         }), 500
 
+@app.post('/api/debug/migrate-data')
+def debug_migrate_data():
+    """Debug endpoint to migrate data to Railway PostgreSQL"""
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        from server.db import get_db
+        from datetime import datetime
+        
+        print("🚀 Starting Railway data migration via API...")
+        
+        # Check database type
+        config = get_database_config()
+        print(f"📊 Database type: {config['type']}")
+        
+        if config['type'] != 'postgresql':
+            return jsonify({
+                'error': 'This endpoint is for PostgreSQL migration only',
+                'success': False
+            }), 400
+        
+        # Get connection
+        conn = get_db_connection()
+        print("✅ Connected to Railway PostgreSQL database")
+        
+        # Check if we have any data
+        result = execute_query(conn, "SELECT COUNT(*) as count FROM words")
+        word_count = result.fetchone()['count']
+        print(f"📚 Current word count in Railway DB: {word_count}")
+        
+        if word_count > 0:
+            return jsonify({
+                'message': 'Railway database already has data - migration not needed',
+                'word_count': word_count,
+                'success': True
+            })
+        
+        # Create some sample data for testing
+        print("🔄 Creating sample data for testing...")
+        sample_words = [
+            ('hello', 'en', 'de', 'hallo', 'Hello world!', 'Hallo Welt!', 'hello', 'interjection', 'həˈloʊ', None, 'none', None, None, None, None, None, 'A1', 1, None, None, None, datetime.now().isoformat(), datetime.now().isoformat()),
+            ('world', 'en', 'de', 'Welt', 'Hello world!', 'Hallo Welt!', 'world', 'noun', 'wɜːrld', None, 'none', 'worlds', None, None, None, None, 'A1', 2, None, None, None, datetime.now().isoformat(), datetime.now().isoformat()),
+            ('test', 'en', 'de', 'Test', 'This is a test.', 'Das ist ein Test.', 'test', 'noun', 'test', None, 'none', 'tests', None, None, None, None, 'A1', 3, None, None, None, datetime.now().isoformat(), datetime.now().isoformat()),
+            ('მიყვარს', 'ka', 'de', 'ich liebe', 'მიყვარს მუსიკა', 'Ich liebe Musik', 'მიყვარს', 'verb', None, None, 'none', None, None, None, None, None, 'A1', 4, None, None, None, datetime.now().isoformat(), datetime.now().isoformat()),
+            ('კითხვა', 'ka', 'de', 'Frage', 'ეს კითხვაა', 'Das ist eine Frage', 'კითხვა', 'noun', None, None, 'none', None, None, None, None, None, 'A1', 5, None, None, None, datetime.now().isoformat(), datetime.now().isoformat())
+        ]
+        
+        migrated = 0
+        for word_data in sample_words:
+            try:
+                execute_query(conn, """
+                    INSERT INTO words (
+                        word, language, native_language, translation, example, example_native,
+                        lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                        collocations, cefr, freq_rank, tags, note, info, created_at, updated_at
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) ON CONFLICT (word, language) DO NOTHING
+                """, word_data)
+                migrated += 1
+            except Exception as e:
+                print(f"⚠️ Error creating sample word {word_data[0]}: {e}")
+        
+        print(f"✅ Created {migrated} sample words")
+        
+        # Check final count
+        result = execute_query(conn, "SELECT COUNT(*) as count FROM words")
+        final_count = result.fetchone()['count']
+        print(f"📚 Final word count in Railway DB: {final_count}")
+        
+        conn.close()
+        
+        return jsonify({
+            'message': f'Successfully created {migrated} sample words',
+            'word_count': final_count,
+            'success': True
+        })
+        
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 ############################
 # Authentication API
 ############################
