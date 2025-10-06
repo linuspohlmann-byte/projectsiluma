@@ -1384,7 +1384,7 @@ async function startCustomLevel(groupId, levelNumber) {
             throw new Error(data.error || 'Failed to load custom level');
         }
         
-        const level = data.level;
+        let level = data.level;
         console.log('📖 Custom level loaded:', level);
         
         // Check if level content is empty (ultra-lazy loading)
