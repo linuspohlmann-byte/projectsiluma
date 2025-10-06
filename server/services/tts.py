@@ -11,6 +11,7 @@ from typing import List, Dict
 from .llm import _http_binary, OPENAI_KEY, OPENAI_BASE
 from server.db import get_db
 from .cache import cached_tts
+from .s3_storage import upload_tts_audio, get_tts_audio_url, tts_audio_exists
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MEDIA_DIR = os.path.join(APP_ROOT, 'media')
@@ -252,6 +253,13 @@ def _pick_tts_instructions(lang_code: str, context: str = 'word') -> str:
 def _openai_ready() -> bool:
     return bool(OPENAI_KEY)
 
+# S3 readiness check
+def _s3_ready() -> bool:
+    """Check if S3 is configured and ready"""
+    return bool(os.environ.get('AWS_ACCESS_KEY_ID') and 
+                os.environ.get('AWS_SECRET_ACCESS_KEY') and 
+                os.environ.get('S3_BUCKET_NAME'))
+
 def _slug(s: str) -> str:
     return ''.join(c.lower() if c.isalnum() else '-' for c in s).strip('-') or 'word'
 
@@ -291,18 +299,34 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     sig = _hl.sha1(f"openai:{model}:{voice}".encode('utf-8')).hexdigest()[:6]
     fname = f"{_slug(word)}__{sig}.mp3"
     fpath = os.path.join(subdir, fname)
-    url_path = f'/media/tts/{lang}/{fname}'
-
-    if os.path.isfile(fpath):
-        # Ensure DB points to the current-version file even if generated earlier
-        try:
-            conn = get_db(); now = datetime.now(UTC).isoformat()
-            conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
-                         (url_path, now, word, lang, lang))
-            conn.commit(); conn.close()
-        except Exception:
-            pass
-        return url_path
+    
+    # Check if S3 is enabled
+    if _s3_ready():
+        # Check if file exists in S3 first
+        if tts_audio_exists(lang, fname, 'tts'):
+            s3_url = get_tts_audio_url(lang, fname, 'tts')
+            # Update DB with S3 URL
+            try:
+                conn = get_db(); now = datetime.now(UTC).isoformat()
+                conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
+                             (s3_url, now, word, lang, lang))
+                conn.commit(); conn.close()
+            except Exception:
+                pass
+            return s3_url
+    else:
+        # Fallback to local file system
+        url_path = f'/media/tts/{lang}/{fname}'
+        if os.path.isfile(fpath):
+            # Ensure DB points to the current-version file even if generated earlier
+            try:
+                conn = get_db(); now = datetime.now(UTC).isoformat()
+                conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
+                             (url_path, now, word, lang, lang))
+                conn.commit(); conn.close()
+            except Exception:
+                pass
+            return url_path
 
     # Determine instruction with correct precedence and always prefix with language reference.
     instr = _pick_tts_instructions(lang, context)
@@ -342,7 +366,30 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         print(f"❌ OpenAI TTS API error for '{word}': {e}")
         return None
     with open(fpath,'wb') as f: f.write(audio)
-    # Write back URL
+    
+    # Upload to S3 if enabled, otherwise use local URL
+    if _s3_ready():
+        s3_url = upload_tts_audio(fpath, lang, fname, 'tts')
+        if s3_url:
+            # Update DB with S3 URL
+            try:
+                conn = get_db(); now = datetime.now(UTC).isoformat()
+                conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
+                             (s3_url, now, word, lang, lang))
+                conn.commit(); conn.close()
+            except Exception:
+                pass
+            # Optionally remove local file to save space
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
+            return s3_url
+        else:
+            print(f"⚠️ S3 upload failed for '{word}', falling back to local file")
+    
+    # Fallback to local file system
+    url_path = f'/media/tts/{lang}/{fname}'
     try:
         conn = get_db(); now = datetime.now(UTC).isoformat()
         conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
@@ -375,9 +422,18 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     h = _sha1(f"{lang}:{text}".encode('utf-8')).hexdigest()
     fname = f"{h}.mp3"
     fpath = os.path.join(subdir, fname)
-    url_path = f"/media/tts_sentences/{lang}/{fname}"
-    if os.path.isfile(fpath):
-        return url_path
+    
+    # Check if S3 is enabled
+    if _s3_ready():
+        # Check if file exists in S3 first
+        if tts_audio_exists(lang, fname, 'tts_sentences'):
+            s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
+            return s3_url
+    else:
+        # Fallback to local file system
+        url_path = f"/media/tts_sentences/{lang}/{fname}"
+        if os.path.isfile(fpath):
+            return url_path
     model, voice, has_lang_voice = _pick_tts_config(lang)
     instr = _pick_tts_instructions(lang, context)
     if isinstance(instructions, str) and instructions.strip():
@@ -406,6 +462,22 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
         print(f"❌ OpenAI TTS API error for sentence: {e}")
         return None
     with open(fpath, 'wb') as f: f.write(audio)
+    
+    # Upload to S3 if enabled, otherwise use local URL
+    if _s3_ready():
+        s3_url = upload_tts_audio(fpath, lang, fname, 'tts_sentences')
+        if s3_url:
+            # Optionally remove local file to save space
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
+            return s3_url
+        else:
+            print(f"⚠️ S3 upload failed for sentence, falling back to local file")
+    
+    # Fallback to local file system
+    url_path = f"/media/tts_sentences/{lang}/{fname}"
     return url_path
 
 def ensure_tts_for_alphabet_letter(letter: str, language: str, instructions: str | None = None) -> str | None:
