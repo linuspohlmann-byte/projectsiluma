@@ -506,12 +506,55 @@ def api_get_user_settings():
             return jsonify({'success': False, 'error': 'Not authenticated'}), 401
         
         try:
-            settings = load_user_settings(user['id'])
-            return jsonify({'success': True, 'settings': settings})
+            # Try to get settings from database first
+            from server.db_config import get_database_config, get_db_connection, execute_query
+            
+            config = get_database_config()
+            conn = get_db_connection()
+            
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, "SELECT settings FROM users WHERE id = %s", (user['id'],))
+                row = result.fetchone()
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                row = cur.execute("SELECT settings FROM users WHERE id = ?", (user['id'],)).fetchone()
+            
+            conn.close()
+            
+            if row and row['settings']:
+                try:
+                    settings = json.loads(row['settings'])
+                    return jsonify({'success': True, 'settings': settings})
+                except json.JSONDecodeError:
+                    pass
+            
+            # Fallback to default settings
+            default_settings = {
+                'theme': 'light',
+                'language': 'en',
+                'notifications': True,
+                'sound_enabled': True,
+                'auto_play_audio': False,
+                'difficulty_preference': 'adaptive',
+                'native_language': 'de'
+            }
+            return jsonify({'success': True, 'settings': default_settings})
+            
         except Exception as settings_error:
             print(f"Error loading user settings for user {user['id']}: {settings_error}")
             # Return default settings if loading fails
-            return jsonify({'success': True, 'settings': {}})
+            default_settings = {
+                'theme': 'light',
+                'language': 'en',
+                'notifications': True,
+                'sound_enabled': True,
+                'auto_play_audio': False,
+                'difficulty_preference': 'adaptive',
+                'native_language': 'de'
+            }
+            return jsonify({'success': True, 'settings': default_settings})
         
     except Exception as e:
         print(f"Error in api_get_user_settings: {e}")
@@ -536,7 +579,29 @@ def api_update_user_settings():
             if not success:
                 return jsonify({'success': False, 'error': 'Failed to update native language'}), 500
         
-        save_user_settings(user['id'], data)
+        # Save settings to database instead of file system
+        try:
+            from server.db_config import get_database_config, get_db_connection, execute_query
+            
+            config = get_database_config()
+            conn = get_db_connection()
+            
+            settings_json = json.dumps(data, ensure_ascii=False)
+            
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                execute_query(conn, "UPDATE users SET settings = %s WHERE id = %s", (settings_json, user['id']))
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                cur.execute("UPDATE users SET settings = ? WHERE id = ?", (settings_json, user['id']))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as save_error:
+            print(f"Error saving user settings for user {user['id']}: {save_error}")
+            # Continue anyway - settings update is not critical
         
         # Add response header for frontend synchronization
         response = jsonify({'success': True, 'message': 'Settings updated successfully'})
@@ -545,6 +610,7 @@ def api_update_user_settings():
         return response
         
     except Exception as e:
+        print(f"Error in api_update_user_settings: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @user_bp.get('/api/user/stats')
