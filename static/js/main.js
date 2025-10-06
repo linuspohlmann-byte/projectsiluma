@@ -12,6 +12,7 @@ import { loadWords } from './ui/words.js';
 import './auth.js';
 import './settings.js';
 import './ui/marketplace.js';
+import './ui/custom-level-groups.js';
 
 // Initialize clickable statistics functionality
 function initClickableStats() {

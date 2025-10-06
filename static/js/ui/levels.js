@@ -1538,15 +1538,24 @@ async function showGroupsContainer(){
         await window.renderLevels();
       }
       
-      // Then load custom groups if user is authenticated
-      if (window.authManager && window.authManager.isAuthenticated()) {
-        if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
-          await window.showCustomLevelGroupsInLibrary();
-        }
-        if (typeof window.loadCustomLevelGroups === 'function') {
-          await window.loadCustomLevelGroups();
-        }
+    // Then load custom groups if user is authenticated
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      console.log('🔍 User is authenticated, loading custom groups...');
+      if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+        console.log('✅ showCustomLevelGroupsInLibrary function found, calling...');
+        await window.showCustomLevelGroupsInLibrary();
+      } else {
+        console.warn('❌ showCustomLevelGroupsInLibrary function not found');
       }
+      if (typeof window.loadCustomLevelGroups === 'function') {
+        console.log('✅ loadCustomLevelGroups function found, calling...');
+        await window.loadCustomLevelGroups();
+      } else {
+        console.warn('❌ loadCustomLevelGroups function not found');
+      }
+    } else {
+      console.log('🔍 User not authenticated, skipping custom groups');
+    }
       
       console.log('✅ Groups loading synchronized');
     } catch (error) {
@@ -3136,5 +3145,6 @@ if (typeof window !== 'undefined'){
   window.showLevelLockedMessage = showLevelLockedMessage;
   window.hideLevelLockedMessage = hideLevelLockedMessage;
   window.goToPreviousLevel = goToPreviousLevel;
+  window.renderLevels = renderLevels;
   // updateLevelCardBackData removed - no longer needed
 }

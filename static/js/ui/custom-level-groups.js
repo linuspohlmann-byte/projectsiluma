@@ -1027,15 +1027,24 @@ async function showGroupsContainer() {
         
         // Load standard groups first
         if (typeof window.renderLevels === 'function') {
+            console.log('✅ Custom groups: renderLevels function found, calling...');
             await window.renderLevels();
+        } else {
+            console.warn('❌ Custom groups: renderLevels function not found');
         }
         
         // Then load custom groups
         if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+            console.log('✅ Custom groups: showCustomLevelGroupsInLibrary function found, calling...');
             await window.showCustomLevelGroupsInLibrary();
+        } else {
+            console.warn('❌ Custom groups: showCustomLevelGroupsInLibrary function not found');
         }
         if (typeof window.loadCustomLevelGroups === 'function') {
+            console.log('✅ Custom groups: loadCustomLevelGroups function found, calling...');
             await window.loadCustomLevelGroups();
+        } else {
+            console.warn('❌ Custom groups: loadCustomLevelGroups function not found');
         }
         
         console.log('✅ Custom groups: Groups loading synchronized');
@@ -2388,5 +2397,8 @@ function handleCustomLevelStart(groupId, levelNumber) {
     }
 }
 
-// Export the function globally
+// Export the functions globally
 window.handleCustomLevelStart = handleCustomLevelStart;
+window.showCustomLevelGroupsInLibrary = showCustomLevelGroupsInLibrary;
+window.loadCustomLevelGroups = loadCustomLevelGroups;
+window.showGroupsContainer = showGroupsContainer;
