@@ -350,11 +350,40 @@ class MultiUserDBManager:
             
             values.append(word_hash)
             
+            # First try to update existing record
             cur.execute(f"""
                 UPDATE words_local 
                 SET {', '.join(updates)}
                 WHERE word_hash = ?
             """, values)
+            
+            # If no rows were affected, insert new record
+            if cur.rowcount == 0:
+                insert_values = [word_hash, familiarity, now]
+                insert_updates = ['word_hash', 'familiarity', 'created_at', 'updated_at']
+                
+                if seen_count is not None:
+                    insert_values.append(seen_count)
+                    insert_updates.append('seen_count')
+                else:
+                    insert_values.append(0)
+                    insert_updates.append('seen_count')
+                
+                if correct_count is not None:
+                    insert_values.append(correct_count)
+                    insert_updates.append('correct_count')
+                else:
+                    insert_values.append(0)
+                    insert_updates.append('correct_count')
+                
+                insert_values.append(now)  # unlocked_at
+                insert_updates.append('unlocked_at')
+                
+                placeholders = ','.join(['?' for _ in insert_values])
+                cur.execute(f"""
+                    INSERT INTO words_local ({', '.join(insert_updates)})
+                    VALUES ({placeholders})
+                """, insert_values)
             
             conn.commit()
             return True

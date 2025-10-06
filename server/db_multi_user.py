@@ -327,6 +327,65 @@ def update_word_familiarity(user_id: int, word: str, language: str,
         user_id, native_language, word_hash, familiarity, seen_count, correct_count
     )
 
+def get_user_familiarity_counts_for_words(user_id: int, words: List[str], language: str, native_language: str) -> Dict[str, int]:
+    """Get familiarity count distribution for specific words"""
+    
+    if not user_id or not words:
+        # Return empty counts for non-authenticated users or no words
+        return {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+    
+    # Ensure user databases exist
+    ensure_user_databases(user_id, native_language)
+    
+    # Get familiarity counts for specific words
+    db_path = db_manager.get_user_db_path(user_id, native_language)
+    
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Create word hashes for the given words
+        word_hashes = []
+        for word in words:
+            word_hash = db_manager.generate_word_hash(word, language, native_language)
+            word_hashes.append(word_hash)
+        
+        # Get familiarity counts for these specific words
+        placeholders = ','.join(['?' for _ in word_hashes])
+        query = f"""
+            SELECT familiarity, COUNT(*) as count
+            FROM words_local
+            WHERE word_hash IN ({placeholders})
+            GROUP BY familiarity
+        """
+        
+        cursor.execute(query, word_hashes)
+        results = cursor.fetchall()
+        
+        # Initialize counts
+        counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+        
+        # Fill in actual counts
+        for row in results:
+            familiarity = str(row['familiarity'])
+            count = row['count']
+            if familiarity in counts:
+                counts[familiarity] = count
+        
+        # If no words found in familiarity database, all words are unknown (level 0)
+        total_found = sum(counts.values())
+        if total_found == 0:
+            counts['0'] = len(words)  # All words are unknown
+        
+        conn.close()
+        return counts
+        
+    except Exception as e:
+        print(f"Error getting familiarity counts for words: {e}")
+        # Return all words as unknown (level 0)
+        return {'0': len(words), '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+
 def get_familiarity_counts_for_level(language: str, level: int, user_id: int = None) -> Dict[int, int]:
     """Get familiarity count distribution for specific level"""
     
