@@ -1350,27 +1350,9 @@ function renderCustomLevels(groupId, levels) {
             applyCustomLevelProgress(card, levelNumber, groupId);
         }, 100);
         
-        // Add click handlers for action buttons
-        const startBtn = card.querySelector('.level-btn.primary');
-        const practiceBtn = card.querySelector('.level-btn:not(.primary)');
-        
-        if (startBtn) {
-            startBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const groupId = card.dataset.customGroupId;
-                const levelNumber = parseInt(card.dataset.level);
-                startCustomLevel(groupId, levelNumber);
-            });
-        }
-        
-        if (practiceBtn) {
-            practiceBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const groupId = card.dataset.customGroupId;
-                const levelNumber = parseInt(card.dataset.level);
-                startCustomLevelPractice(groupId, levelNumber);
-            });
-        }
+        // Note: Click handlers are already set via HTML onclick attributes
+        // which include proper lock checking via handleCustomLevelStart()
+        // No need for additional JavaScript event listeners
     });
     
     console.log('✅ Custom levels rendered successfully');
