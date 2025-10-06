@@ -1168,7 +1168,7 @@ function renderCustomLevels(groupId, levels) {
         const levelTopic = level.topic || 'Custom Level';
         
         return `
-            <div class="level-card" data-level="${levelNumber}" data-custom-group="${groupId}">
+            <div class="level-card" data-level="${levelNumber}" data-custom-group-id="${groupId}">
                 <div class="level-card-inner">
                     <div class="level-card-front">
                         <div class="level-card-content">
@@ -1357,7 +1357,7 @@ function renderCustomLevels(groupId, levels) {
         if (startBtn) {
             startBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                const groupId = card.dataset.customGroup;
+                const groupId = card.dataset.customGroupId;
                 const levelNumber = parseInt(card.dataset.level);
                 startCustomLevel(groupId, levelNumber);
             });
@@ -1366,7 +1366,7 @@ function renderCustomLevels(groupId, levels) {
         if (practiceBtn) {
             practiceBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                const groupId = card.dataset.customGroup;
+                const groupId = card.dataset.customGroupId;
                 const levelNumber = parseInt(card.dataset.level);
                 startCustomLevelPractice(groupId, levelNumber);
             });
@@ -2113,7 +2113,7 @@ function handleCustomLevelStart(groupId, levelNumber) {
         console.log(`🎯 Handling custom level start: group ${groupId}, level ${levelNumber}`);
         
         // Find the level card element
-        const levelCard = document.querySelector(`[data-group-id="${groupId}"] .level-card[data-level="${levelNumber}"]`);
+        const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
         if (!levelCard) {
             console.error(`Level card not found for group ${groupId}, level ${levelNumber}`);
             return;
