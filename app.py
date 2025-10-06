@@ -1385,6 +1385,51 @@ def api_get_custom_level_progress(group_id, level_number):
         print(f"Error getting custom level progress: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@custom_levels_bp.get('/api/custom-levels/<int:group_id>/bulk-stats')
+@require_auth()
+def api_get_custom_level_bulk_stats(group_id):
+    """Get bulk progress stats for all levels in a custom group"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        # Get custom level group data
+        from server.services.custom_levels import get_custom_level_group
+        group_data = get_custom_level_group(group_id, user_id)
+        if not group_data:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+        
+        # Get all levels in the group (assuming 10 levels per group)
+        levels_data = {}
+        for level_num in range(1, 11):  # Assuming 10 levels per group
+            level_data = get_custom_level(group_id, level_num, user_id)
+            if level_data:
+                # For now, return basic data - TODO: implement actual progress tracking
+                levels_data[level_num] = {
+                    'success': True,
+                    'status': 'not_started',
+                    'last_score': 0.0,
+                    'fam_counts': {'0': 25, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0},  # Estimated word count
+                    'total_words': 25,
+                    'user_progress': {
+                        'status': 'not_started',
+                        'score': 0.0
+                    }
+                }
+        
+        return jsonify({
+            'success': True,
+            'levels': levels_data
+        })
+        
+    except Exception as e:
+        print(f"Error getting custom level bulk stats: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @custom_levels_bp.get('/api/custom-levels/<int:group_id>/<int:level_number>/familiarity')
 @require_auth()
 def api_get_custom_level_familiarity(group_id, level_number):

@@ -1208,10 +1208,10 @@ function renderCustomLevels(groupId, levels) {
                             
                             <!-- Actions section (same as standard levels) -->
                             <div class="level-actions">
-                                <button class="level-btn primary" onclick="startCustomLevel(${groupId}, ${levelNumber})">
+                                <button class="level-btn primary" onclick="handleCustomLevelStart(${groupId}, ${levelNumber})">
                                     Start
                                 </button>
-                                <button class="level-btn" onclick="startCustomLevel(${groupId}, ${levelNumber})">
+                                <button class="level-btn" onclick="handleCustomLevelStart(${groupId}, ${levelNumber})">
                                     Practice
                                 </button>
                             </div>
@@ -1319,8 +1319,8 @@ function renderCustomLevels(groupId, levels) {
     levelsContainer.querySelectorAll('.level-card').forEach(card => {
         const levelNumber = parseInt(card.dataset.level);
         
-        // Initialize as unlocked (custom levels are always available)
-        card.classList.add('unlocked');
+        // Apply user-specific level progression logic (same as standard levels)
+        applyCustomLevelProgression(card, levelNumber, groupId);
         
         // Add flip functionality (same as standard levels)
         card.addEventListener('click', function(e) {
@@ -1854,3 +1854,288 @@ function closeCreationProgressModal() {
 // Export progress modal functions
 window.showCreationProgressModal = showCreationProgressModal;
 window.closeCreationProgressModal = closeCreationProgressModal;
+
+// Apply user-specific level progression logic for custom levels
+async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
+    try {
+        console.log(`🔒 Applying custom level progression for level ${levelNumber} in group ${groupId}`);
+        
+        // Check if user is authenticated
+        const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+        
+        if (!isUserAuthenticated) {
+            // For unauthenticated users, only level 1 is available
+            if (levelNumber === 1) {
+                levelElement.classList.add('unlocked');
+                levelElement.dataset.allowStart = 'true';
+                console.log(`Level ${levelNumber} unlocked for unauthenticated user (Level 1)`);
+            } else {
+                levelElement.classList.add('locked');
+                console.log(`Level ${levelNumber} locked for unauthenticated user`);
+            }
+            return;
+        }
+        
+        // For authenticated users, fetch bulk stats to determine progression
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        const response = await fetch(`/api/custom-levels/${groupId}/bulk-stats`, {
+            headers: headers
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.levels) {
+                // Apply the same logic as standard levels
+                const levelData = data.levels[levelNumber];
+                if (levelData && levelData.success) {
+                    const userProgress = levelData.user_progress;
+                    const status = userProgress?.status || levelData.status;
+                    const score = userProgress?.score || levelData.last_score;
+                    
+                    let isUnlocked = false;
+                    
+                    if (status === 'completed' && Number(score || 0) > 0.6) {
+                        // Level completed with good score
+                        isUnlocked = true;
+                        levelElement.classList.add('done');
+                        console.log(`Custom level ${levelNumber} marked as completed (Score > 0.6)`);
+                    } else if (status === 'completed' && Number(score || 0) <= 0.6) {
+                        // Level completed but low score
+                        isUnlocked = true;
+                        levelElement.classList.add('unlocked');
+                        console.log(`Custom level ${levelNumber} marked as unlocked (completed but low score)`);
+                    } else if (levelNumber === 1) {
+                        // Level 1 is always available
+                        isUnlocked = true;
+                        levelElement.classList.add('unlocked');
+                        console.log(`Custom level ${levelNumber} marked as unlocked (Level 1)`);
+                    } else if (levelNumber > 1) {
+                        // Check if previous level is completed
+                        const prevLevel = levelNumber - 1;
+                        const prevLevelData = data.levels[prevLevel];
+                        if (prevLevelData && prevLevelData.success) {
+                            const prevUserProgress = prevLevelData.user_progress;
+                            const prevStatus = prevUserProgress?.status || prevLevelData.status;
+                            const prevScore = prevUserProgress?.score || prevLevelData.last_score;
+                            const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+                            
+                            if (isPrevCompleted) {
+                                isUnlocked = true;
+                                levelElement.classList.add('unlocked');
+                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} completed)`);
+                            } else {
+                                levelElement.classList.add('locked');
+                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} not completed)`);
+                            }
+                        } else {
+                            levelElement.classList.add('locked');
+                            console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} data not available)`);
+                        }
+                    } else {
+                        levelElement.classList.add('locked');
+                        console.log(`Custom level ${levelNumber} locked (fallback)`);
+                    }
+                    
+                    // Set allowStart flag for unlocked levels
+                    if (isUnlocked) {
+                        levelElement.dataset.allowStart = 'true';
+                    }
+                    
+                    // Cache the data for later use
+                    levelElement.dataset.bulkData = JSON.stringify(levelData);
+                } else {
+                    // Level data not found
+                    if (levelNumber === 1) {
+                        levelElement.classList.add('unlocked');
+                        levelElement.dataset.allowStart = 'true';
+                        console.log(`Custom level ${levelNumber} unlocked (Level 1 - no data fallback)`);
+                    } else {
+                        levelElement.classList.add('locked');
+                        console.log(`Custom level ${levelNumber} locked (no data)`);
+                    }
+                }
+            } else {
+                // API response not successful
+                if (levelNumber === 1) {
+                    levelElement.classList.add('unlocked');
+                    levelElement.dataset.allowStart = 'true';
+                    console.log(`Custom level ${levelNumber} unlocked (Level 1 - API error fallback)`);
+                } else {
+                    levelElement.classList.add('locked');
+                    console.log(`Custom level ${levelNumber} locked (API error)`);
+                }
+            }
+        } else {
+            // API request failed
+            if (levelNumber === 1) {
+                levelElement.classList.add('unlocked');
+                levelElement.dataset.allowStart = 'true';
+                console.log(`Custom level ${levelNumber} unlocked (Level 1 - request error fallback)`);
+            } else {
+                levelElement.classList.add('locked');
+                console.log(`Custom level ${levelNumber} locked (request error)`);
+            }
+        }
+        
+    } catch (error) {
+        console.error(`Error applying custom level progression for level ${levelNumber}:`, error);
+        // Fallback: only level 1 unlocked
+        if (levelNumber === 1) {
+            levelElement.classList.add('unlocked');
+            levelElement.dataset.allowStart = 'true';
+        } else {
+            levelElement.classList.add('locked');
+        }
+    }
+}
+
+// Export the function globally
+window.applyCustomLevelProgression = applyCustomLevelProgression;
+
+// Show custom level locked message (similar to standard levels)
+function showCustomLevelLockedMessage(level, prevLevel, prevScore) {
+    // Remove any existing message
+    hideCustomLevelLockedMessage();
+    
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'level-locked-overlay';
+    overlay.id = 'custom-level-locked-overlay';
+    
+    // Create message
+    const message = document.createElement('div');
+    message.className = 'level-locked-message';
+    message.id = 'custom-level-locked-message';
+    
+    const progressPercent = Math.round((prevScore || 0) * 100);
+    const neededPercent = 60;
+    
+    message.innerHTML = `
+        <div class="icon">🔒</div>
+        <div class="title">Level ${level} ist gesperrt</div>
+        <div class="message">
+            Du musst Level ${prevLevel} mit mindestens ${neededPercent}% abschließen, 
+            um Level ${level} freizuschalten.
+        </div>
+        <div class="progress-info">
+            <div class="progress-text">Level ${prevLevel} Fortschritt: ${progressPercent}%</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${Math.min(progressPercent, 100)}%"></div>
+            </div>
+            <div class="progress-text">Benötigt: ${neededPercent}%</div>
+        </div>
+        <div class="actions">
+            <button class="btn btn-primary" onclick="goToPreviousCustomLevel(${prevLevel})">
+                Level ${prevLevel} fortsetzen
+            </button>
+            <button class="btn btn-secondary" onclick="hideCustomLevelLockedMessage()">
+                Schließen
+            </button>
+        </div>
+    `;
+    
+    // Add to DOM
+    document.body.appendChild(overlay);
+    document.body.appendChild(message);
+    
+    // Close on overlay click
+    overlay.onclick = (e) => {
+        if (e.target === overlay) {
+            hideCustomLevelLockedMessage();
+        }
+    };
+    
+    // Close on Escape key
+    const handleEscape = (e) => {
+        if (e.key === 'Escape') {
+            hideCustomLevelLockedMessage();
+            document.removeEventListener('keydown', handleEscape);
+        }
+    };
+    document.addEventListener('keydown', handleEscape);
+}
+
+// Hide custom level locked message
+function hideCustomLevelLockedMessage() {
+    const overlay = document.getElementById('custom-level-locked-overlay');
+    const message = document.getElementById('custom-level-locked-message');
+    
+    if (overlay) overlay.remove();
+    if (message) message.remove();
+}
+
+// Go to previous custom level
+function goToPreviousCustomLevel(level) {
+    hideCustomLevelLockedMessage();
+    
+    // Find the current custom group context
+    const currentGroupElement = document.querySelector('.custom-level-group[data-group-id]');
+    if (currentGroupElement) {
+        const groupId = currentGroupElement.dataset.groupId;
+        if (groupId) {
+            // Start the previous level in the same group
+            if (typeof window.startCustomLevel === 'function') {
+                window.startCustomLevel(groupId, level);
+            }
+        }
+    }
+}
+
+// Export custom level locked message functions globally
+window.showCustomLevelLockedMessage = showCustomLevelLockedMessage;
+window.hideCustomLevelLockedMessage = hideCustomLevelLockedMessage;
+window.goToPreviousCustomLevel = goToPreviousCustomLevel;
+
+// Handle custom level start with lock checking
+function handleCustomLevelStart(groupId, levelNumber) {
+    try {
+        console.log(`🎯 Handling custom level start: group ${groupId}, level ${levelNumber}`);
+        
+        // Find the level card element
+        const levelCard = document.querySelector(`[data-group-id="${groupId}"] .level-card[data-level="${levelNumber}"]`);
+        if (!levelCard) {
+            console.error(`Level card not found for group ${groupId}, level ${levelNumber}`);
+            return;
+        }
+        
+        // Check if level is locked
+        if (levelCard.classList.contains('locked')) {
+            console.log(`Level ${levelNumber} is locked, showing locked message`);
+            
+            // Get previous level data to show progress
+            const prevLevel = levelNumber - 1;
+            let prevScore = 0;
+            
+            // Try to get previous level score from cached data
+            const prevLevelCard = document.querySelector(`[data-group-id="${groupId}"] .level-card[data-level="${prevLevel}"]`);
+            if (prevLevelCard && prevLevelCard.dataset.bulkData) {
+                try {
+                    const prevData = JSON.parse(prevLevelCard.dataset.bulkData);
+                    prevScore = prevData.user_progress?.score || prevData.last_score || 0;
+                } catch (error) {
+                    console.log('Error parsing previous level data:', error);
+                }
+            }
+            
+            // Show locked message
+            showCustomLevelLockedMessage(levelNumber, prevLevel, prevScore);
+            return;
+        }
+        
+        // Level is unlocked, proceed with starting
+        console.log(`Level ${levelNumber} is unlocked, starting level`);
+        startCustomLevel(groupId, levelNumber);
+        
+    } catch (error) {
+        console.error(`Error handling custom level start:`, error);
+        // Fallback: try to start the level anyway
+        startCustomLevel(groupId, levelNumber);
+    }
+}
+
+// Export the function globally
+window.handleCustomLevelStart = handleCustomLevelStart;
