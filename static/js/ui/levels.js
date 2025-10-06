@@ -1,4 +1,5 @@
 // import { normalizeCounts, fetchStatusCounts } from './evaluation.js';
+// Cache invalidation timestamp: 2025-10-06 23:00
 // local DOM helpers used in this module
 const $ = (sel)=> document.querySelector(sel);
 const $$ = (sel)=> Array.from(document.querySelectorAll(sel));
