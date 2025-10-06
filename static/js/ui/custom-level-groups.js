@@ -788,12 +788,17 @@ async function deleteCustomGroup(groupId) {
                 }
             });
             
-            // Navigate to levels tab immediately
+            // Navigate to levels tab and show level groups overview immediately
             if (window.showTab) {
                 window.showTab('levels');
                 // Also ensure the levels are rendered
                 if (typeof window.renderLevels === 'function') {
                     window.renderLevels();
+                }
+                
+                // Show level groups overview (not individual levels)
+                if (typeof window.showLevelGroupsHome === 'function') {
+                    window.showLevelGroupsHome();
                 }
                 
                 // Force focus to the levels tab
