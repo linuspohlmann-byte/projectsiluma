@@ -2659,7 +2659,7 @@ def api_word_enrich():
             query = f'UPDATE words SET {", ".join(sets)} {where_clause}'
             execute_query(conn, query, vals)
             conn.commit()
-        conn.close()
+        
         # -- auto TTS if missing or file not found
         try:
             if config['type'] == 'postgresql':
@@ -2693,6 +2693,8 @@ def api_word_enrich():
         except Exception as e:
             print(f"❌ Error in enrich TTS: {e}")
             pass
+        finally:
+            conn.close()
         
         return jsonify({'success': True, 'data': upd})
         
