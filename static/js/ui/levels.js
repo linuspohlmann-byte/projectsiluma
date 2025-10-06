@@ -539,20 +539,31 @@ async function loadFamiliarityData(levelElement, lvl) {
             const response = await fetch(`/api/custom-levels/${groupId}/${lvl}`);
             if (response.ok) {
               const levelData = await response.json();
-              if (levelData.success && levelData.content && levelData.content.items) {
-                // Count unique words from all items
-                const allWords = new Set();
-                levelData.content.items.forEach(item => {
-                  if (item.words && Array.isArray(item.words)) {
-                    item.words.forEach(word => {
-                      if (word && word.trim()) {
-                        allWords.add(word.trim().toLowerCase());
-                      }
-                    });
-                  }
-                });
-                totalWords = allWords.size;
-                console.log(`Custom level ${lvl} has ${totalWords} unique words for familiarity data`);
+              if (levelData.success && levelData.content) {
+                // Check if this is ultra-lazy loading (no sentences generated yet)
+                if (levelData.content.ultra_lazy_loading && !levelData.content.sentences_generated) {
+                  // For ultra-lazy levels, show estimated word count
+                  totalWords = 25; // Estimated 5 sentences × 5 words average
+                  console.log(`Ultra-lazy custom level ${lvl} - estimated ${totalWords} words for familiarity data`);
+                } else if (levelData.content.items && levelData.content.items.length > 0) {
+                  // Count unique words from all items
+                  const allWords = new Set();
+                  levelData.content.items.forEach(item => {
+                    if (item.words && Array.isArray(item.words)) {
+                      item.words.forEach(word => {
+                        if (word && word.trim()) {
+                          allWords.add(word.trim().toLowerCase());
+                        }
+                      });
+                    }
+                  });
+                  totalWords = allWords.size;
+                  console.log(`Custom level ${lvl} has ${totalWords} unique words for familiarity data`);
+                } else {
+                  // Fallback for levels with no items yet
+                  totalWords = 25; // Estimated word count
+                  console.log(`Custom level ${lvl} - fallback estimated ${totalWords} words for familiarity data`);
+                }
               }
             }
           }
@@ -643,20 +654,31 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
             const response = await fetch(`/api/custom-levels/${groupId}/${lvl}`);
             if (response.ok) {
               const levelData = await response.json();
-              if (levelData.success && levelData.content && levelData.content.items) {
-                // Count unique words from all items
-                const allWords = new Set();
-                levelData.content.items.forEach(item => {
-                  if (item.words && Array.isArray(item.words)) {
-                    item.words.forEach(word => {
-                      if (word && word.trim()) {
-                        allWords.add(word.trim().toLowerCase());
-                      }
-                    });
-                  }
-                });
-                totalWords = allWords.size;
-                console.log(`Custom level ${lvl} has ${totalWords} unique words`);
+              if (levelData.success && levelData.content) {
+                // Check if this is ultra-lazy loading (no sentences generated yet)
+                if (levelData.content.ultra_lazy_loading && !levelData.content.sentences_generated) {
+                  // For ultra-lazy levels, show estimated word count based on topic
+                  totalWords = 25; // Estimated 5 sentences × 5 words average
+                  console.log(`Ultra-lazy custom level ${lvl} - estimated ${totalWords} words (sentences not generated yet)`);
+                } else if (levelData.content.items && levelData.content.items.length > 0) {
+                  // Count unique words from all items
+                  const allWords = new Set();
+                  levelData.content.items.forEach(item => {
+                    if (item.words && Array.isArray(item.words)) {
+                      item.words.forEach(word => {
+                        if (word && word.trim()) {
+                          allWords.add(word.trim().toLowerCase());
+                        }
+                      });
+                    }
+                  });
+                  totalWords = allWords.size;
+                  console.log(`Custom level ${lvl} has ${totalWords} unique words`);
+                } else {
+                  // Fallback for levels with no items yet
+                  totalWords = 25; // Estimated word count
+                  console.log(`Custom level ${lvl} - fallback estimated ${totalWords} words`);
+                }
                 
                 // Update the cached data with the correct word count
                 if (cachedData) {
