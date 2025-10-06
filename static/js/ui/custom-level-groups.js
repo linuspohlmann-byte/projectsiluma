@@ -813,10 +813,44 @@ async function deleteCustomGroup(groupId) {
             
             // Update the library section in the background (after navigation)
             setTimeout(async () => {
+                console.log('🔄 Starting comprehensive refresh after group deletion...');
+                
+                // Force reload of custom level groups data
                 await loadCustomLevelGroups();
+                
+                // Refresh the library section to show updated data
                 if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
                     window.showCustomLevelGroupsInLibrary();
                 }
+                
+                // Also refresh the main levels view to ensure consistency
+                if (typeof window.renderLevels === 'function') {
+                    window.renderLevels();
+                }
+                
+                // Force refresh of any cached data
+                if (typeof window.refreshAllLevelColors === 'function') {
+                    window.refreshAllLevelColors();
+                }
+                
+                // Force refresh of header stats to update word counts
+                if (window.headerStats && window.headerStats.refresh) {
+                    window.headerStats.refresh();
+                }
+                
+                // Clear any cached data that might show the deleted group
+                if (typeof window.clearLevelCache === 'function') {
+                    window.clearLevelCache();
+                }
+                
+                // Force a complete re-render of the levels tab
+                const levelsHost = document.getElementById('levels');
+                if (levelsHost) {
+                    // Trigger a custom event to force re-render
+                    levelsHost.dispatchEvent(new CustomEvent('forceRefresh'));
+                }
+                
+                console.log('✅ Homepage and library completely refreshed after group deletion');
             }, 100);
         } else {
             showNotification(result.error || 'Fehler beim Löschen der Level-Gruppe', 'error');
