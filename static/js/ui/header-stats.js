@@ -160,7 +160,17 @@ export async function updateFromWordsData() {
     headers['X-Native-Language'] = nativeLanguage;
     
     // Add language parameter as required by the API
-    const response = await fetch(`/api/words?language=${encodeURIComponent(currentLanguage)}`, { headers });
+    // Use a timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    const response = await fetch(`/api/words?language=${encodeURIComponent(currentLanguage)}`, { 
+      headers,
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       console.error('Failed to fetch words data for stats:', response.status, response.statusText);
       return;
@@ -193,7 +203,15 @@ export async function updateFromWordsData() {
     
     console.log('📊 Header stats updated from words data:', { totalWords, learnedWords });
   } catch (error) {
-    console.error('Error updating header stats from words data:', error);
+    if (error.name === 'AbortError') {
+      console.log('⏱️ Header stats update timed out - using fallback data');
+      // Fallback to bulk data if words API is too slow
+      if (window.headerStats && window.headerStats.updateFromBulkData) {
+        window.headerStats.updateFromBulkData({ total_words: 0, memorized_words: 0 });
+      }
+    } else {
+      console.error('Error updating header stats from words data:', error);
+    }
   }
 }
 

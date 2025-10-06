@@ -1036,13 +1036,16 @@ function computeWordStatsForLevels(levels, levelDataMap){
 
 async function updateHeaderStatsForLevelSet(levels){
   if(!Array.isArray(levels) || !levels.length){
-    // For authenticated users, use the more accurate words data
-    if (window.authManager && window.authManager.isAuthenticated()) {
+  // For authenticated users, use the more accurate words data (async, non-blocking)
+  if (window.authManager && window.authManager.isAuthenticated()) {
+    // Load header stats in background without blocking level rendering
+    setTimeout(() => {
       window.headerStats?.updateFromWordsData?.();
-    } else {
-      // For unauthenticated users, use bulk data
-      window.headerStats?.updateFromBulkData?.({ total_words: 0, memorized_words: 0 });
-    }
+    }, 0);
+  } else {
+    // For unauthenticated users, use bulk data
+    window.headerStats?.updateFromBulkData?.({ total_words: 0, memorized_words: 0 });
+  }
     CURRENT_VIEW_WORD_MAP = new Map();
     updatePracticeButtonState();
     return;
@@ -1407,13 +1410,16 @@ async function renderLevelGroupsView(byLevel){
   if(allLevels.length){
     await updateHeaderStatsForLevelSet(allLevels);
   }else{
-    // For authenticated users, use the more accurate words data
-    if (window.authManager && window.authManager.isAuthenticated()) {
+  // For authenticated users, use the more accurate words data (async, non-blocking)
+  if (window.authManager && window.authManager.isAuthenticated()) {
+    // Load header stats in background without blocking level rendering
+    setTimeout(() => {
       window.headerStats?.updateFromWordsData?.();
-    } else {
-      // For unauthenticated users, use bulk data
-      window.headerStats?.updateFromBulkData?.({ total_words: 0, memorized_words: 0 });
-    }
+    }, 0);
+  } else {
+    // For unauthenticated users, use bulk data
+    window.headerStats?.updateFromBulkData?.({ total_words: 0, memorized_words: 0 });
+  }
     CURRENT_VIEW_WORD_MAP = new Map();
     updatePracticeButtonState();
   }
