@@ -1679,7 +1679,7 @@ def api_import_marketplace_custom_level_group(group_id):
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/<int:level_number>/start')
 @require_auth(optional=True)
 def api_start_custom_level(group_id, level_number):
-    """Start a custom level lesson"""
+    """Start a custom level lesson with lazy loading word enrichment"""
     try:
         # Get user from Flask's g object (set by require_auth decorator)
         user = g.current_user
@@ -1692,6 +1692,29 @@ def api_start_custom_level(group_id, level_number):
         level_data = get_custom_level(group_id, level_number, user_id)
         if not level_data:
             return jsonify({'success': False, 'error': 'Level not found'}), 404
+        
+        # Check if this level needs lazy loading word enrichment
+        content = level_data.get('content', {})
+        if content.get('lazy_loading', False):
+            print(f"🚀 Triggering lazy loading word enrichment for custom level {group_id}/{level_number}")
+            
+            # Get group info for language context
+            from server.services.custom_levels import get_custom_level_group
+            group_data = get_custom_level_group(group_id, user_id)
+            if group_data:
+                language = group_data.get('language', 'en')
+                native_language = group_data.get('native_language', 'de')
+                
+                # Trigger word enrichment for this level
+                from server.services.custom_levels import enrich_custom_level_words_on_demand
+                success = enrich_custom_level_words_on_demand(group_id, level_number, language, native_language)
+                
+                if success:
+                    print(f"✅ Lazy loading word enrichment completed for level {group_id}/{level_number}")
+                    # Reload the level data with enriched content
+                    level_data = get_custom_level(group_id, level_number, user_id)
+                else:
+                    print(f"⚠️ Lazy loading word enrichment failed for level {group_id}/{level_number}, continuing with basic content")
         
         # Create a run_id for this custom level session
         import uuid

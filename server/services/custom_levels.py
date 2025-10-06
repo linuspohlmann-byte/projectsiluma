@@ -59,19 +59,15 @@ def create_custom_level_group(user_id: int, language: str, native_language: str,
 
 def generate_custom_levels(group_id: int, language: str, native_language: str, 
                           context_description: str, cefr_level: str, num_levels: int) -> bool:
-    """Generate AI-powered levels for a custom level group with full content pre-loading"""
+    """Generate AI-powered levels for a custom level group with LAZY LOADING - fast creation, enrichment on demand"""
     try:
-        print(f"🎯 Starting enhanced level generation for group {group_id} with {num_levels} levels")
+        print(f"🚀 Starting LAZY LOADING level generation for group {group_id} with {num_levels} levels")
+        print("⚡ Fast creation: Topics + Titles + Sentences only, word enrichment on demand")
         
-        # Ultra-fast generation with maximum batch optimization
-        print("⚡ Using ultra-fast batch generation...")
-        
-        # Step 1: Generate topics sequentially for story progression, then titles in parallel
+        # Step 1: Generate topics sequentially for story progression
         print("📚 Generating topics sequentially for story progression...")
         topics = []
-        titles = []
         
-        # Generate topics sequentially to build story progression
         for i in range(1, num_levels + 1):
             # Get previous topics for story context
             previous_topics = [topic for _, topic in topics]
@@ -80,8 +76,9 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
             topics.append((i, topic))
             print(f"✅ Generated topic for level {i}: {topic}")
         
-        # Generate titles sequentially for story progression
+        # Step 2: Generate titles sequentially for story progression
         print("📝 Generating titles sequentially for story progression...")
+        titles = []
         
         for i, topic in topics:
             # Get all topics and previous titles for story context in title generation
@@ -95,10 +92,9 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
         topics.sort(key=lambda x: x[0])
         titles.sort(key=lambda x: x[0])
         
-        # Step 2: Generate all sentences in parallel
+        # Step 3: Generate all sentences in parallel
         print("📝 Generating all sentences in parallel...")
         all_sentences = []
-        all_words = set()
         
         with ThreadPoolExecutor(max_workers=5) as executor:
             sentence_futures = {}
@@ -107,41 +103,31 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                 future = executor.submit(llm_generate_sentences, language, native_language, 5, topic, cefr_level, f"Level {level_num}")
                 sentence_futures[future] = level_num
             
-            # Collect sentences and extract words
+            # Collect sentences
             for future in as_completed(sentence_futures):
                 level_num = sentence_futures[future]
                 sentences = future.result()
                 if sentences:
                     all_sentences.append((level_num, sentences))
                     print(f"✅ Generated {len(sentences)} sentences for level {level_num}")
-                    
-                    # Extract words for batch enrichment
-                    for sentence_data in sentences:
-                        if isinstance(sentence_data, dict):
-                            words = sentence_data.get('words', [])
-                            for word in words:
-                                if word and word.strip():
-                                    all_words.add(word.strip().lower())
         
         # Sort sentences by level
         all_sentences.sort(key=lambda x: x[0])
         
-        # Step 3: Batch enrich all words at once
-        print(f"📚 Batch enriching {len(all_words)} unique words...")
-        word_hashes = batch_enrich_words_for_custom_levels(list(all_words), language, native_language, [])
-        
-        # Step 4: Create and save all levels
-        print("💾 Creating all levels...")
+        # Step 4: Create and save all levels WITHOUT word enrichment (lazy loading)
+        print("💾 Creating all levels with lazy loading (no word enrichment yet)...")
         for i, (level_num, sentences) in enumerate(all_sentences):
-            level_content = create_level_content(
+            # Create level content WITHOUT word hashes - they will be generated on demand
+            level_content = create_level_content_lazy(
                 level_num, titles[i][1], topics[i][1], 
-                sentences, context_description, word_hashes, language, native_language
+                sentences, context_description, language, native_language
             )
             
             save_custom_level(group_id, level_num, titles[i][1], topics[i][1], level_content)
-            print(f"✅ Saved level {level_num} to database")
+            print(f"✅ Saved level {level_num} to database (lazy loading)")
         
-        print(f"🎉 Ultra-fast generation complete: {num_levels} levels!")
+        print(f"🎉 LAZY LOADING generation complete: {num_levels} levels created in ~10-15 seconds!")
+        print("📝 Word enrichment will happen when users start individual levels")
         return True
         
     except Exception as e:
@@ -1106,3 +1092,158 @@ def create_level_content(level_number: int, title: str, topic: str, sentences: L
                 level_content["word_hashes"][word] = word_hashes[word]
     
     return level_content
+
+def create_level_content_lazy(level_number: int, title: str, topic: str, sentences: List[Dict], 
+                            context_description: str, language: str = "", native_language: str = "") -> Dict[str, Any]:
+    """Helper function to create level content structure WITHOUT word enrichment (lazy loading)"""
+    
+    level_content = {
+        "items": [],
+        "meta": {
+            "level": level_number,
+            "section": context_description,
+            "theme": topic,
+            "title": title
+        },
+        "language": language,
+        "level": level_number,
+        "title": title,
+        "section": context_description,
+        "topic": topic,
+        "runs": [],
+        "fam_counts": {
+            "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0
+        },
+        "word_hashes": {},  # Empty - will be populated on demand
+        "lazy_loading": True  # Flag to indicate this level needs word enrichment
+    }
+    
+    # Process sentences into items
+    for idx, sentence_data in enumerate(sentences, 1):
+        if isinstance(sentence_data, dict):
+            text_target = sentence_data.get('sentence', '')
+            text_native_ref = sentence_data.get('translation', '')
+            words = sentence_data.get('words', [])
+        else:
+            text_target = str(sentence_data)
+            text_native_ref = ""
+            words = text_target.split()
+        
+        # Generate translation if missing
+        if not text_native_ref and text_target:
+            try:
+                from server.services.llm import llm_translate_batch
+                # Use the correct native language and source language
+                translations = llm_translate_batch([text_target], native_language, language)
+                if translations and len(translations) > 0:
+                    text_native_ref = translations[0]
+                    print(f"Translated '{text_target}' to '{text_native_ref}' (from {language} to {native_language})")
+            except Exception as e:
+                print(f"Error generating translation for '{text_target}': {e}")
+        
+        item = {
+            "idx": idx,
+            "text_target": text_target,
+            "text_native_ref": text_native_ref,
+            "words": words
+        }
+        level_content["items"].append(item)
+    
+    # Count total words for display purposes (without enrichment)
+    total_words = 0
+    for item in level_content["items"]:
+        if item.get("words"):
+            total_words += len(item["words"])
+    
+    # Set initial fam_counts with total words as unknown (0)
+    level_content["fam_counts"]["0"] = total_words
+    
+    print(f"📝 Created lazy level content for level {level_number} with {total_words} words (enrichment on demand)")
+    return level_content
+
+def enrich_custom_level_words_on_demand(group_id: int, level_number: int, language: str, native_language: str) -> bool:
+    """Enrich words for a specific custom level on demand (lazy loading)"""
+    try:
+        print(f"🚀 Starting on-demand word enrichment for custom level {group_id}/{level_number}")
+        
+        # Get the current level data
+        level_data = get_custom_level(group_id, level_number, None)
+        if not level_data or not level_data.get('content'):
+            print(f"❌ Level data not found for {group_id}/{level_number}")
+            return False
+        
+        content = level_data['content']
+        if not content.get('lazy_loading', False):
+            print(f"ℹ️ Level {group_id}/{level_number} is not in lazy loading mode")
+            return True  # Already enriched
+        
+        # Extract all words from the level
+        all_words = set()
+        sentence_contexts = []
+        
+        for item in content.get('items', []):
+            words = item.get('words', [])
+            text_target = item.get('text_target', '')
+            
+            for word in words:
+                if word and word.strip():
+                    all_words.add(word.strip().lower())
+            
+            if text_target:
+                sentence_contexts.append(text_target)
+        
+        if not all_words:
+            print(f"⚠️ No words found in level {group_id}/{level_number}")
+            return True
+        
+        print(f"📚 Found {len(all_words)} unique words to enrich for level {group_id}/{level_number}")
+        
+        # Enrich words using batch processing
+        word_hashes = batch_enrich_words_for_custom_levels(list(all_words), language, native_language, sentence_contexts)
+        
+        # Update the level content with word hashes
+        content['word_hashes'] = word_hashes
+        content['lazy_loading'] = False  # Mark as no longer lazy loading
+        
+        # Update fam_counts with actual word counts
+        total_words = len(all_words)
+        content['fam_counts'] = {
+            "0": total_words,  # All words start as unknown
+            "1": 0, "2": 0, "3": 0, "4": 0, "5": 0
+        }
+        
+        # Save the updated level content
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        import json
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        try:
+            content_json = json.dumps(content, ensure_ascii=False)
+            
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                execute_query(conn, """
+                    UPDATE custom_levels 
+                    SET content = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE group_id = %s AND level_number = %s
+                """, (content_json, group_id, level_number))
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                cur.execute("""
+                    UPDATE custom_levels 
+                    SET content = ?, updated_at = ?
+                    WHERE group_id = ? AND level_number = ?
+                """, (content_json, datetime.now(UTC).isoformat(), group_id, level_number))
+            
+            conn.commit()
+            print(f"✅ Updated level {group_id}/{level_number} with enriched word data")
+            return True
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Error in on-demand word enrichment for level {group_id}/{level_number}: {e}")
+        return False
