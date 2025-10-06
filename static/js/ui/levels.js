@@ -657,6 +657,22 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
                 });
                 totalWords = allWords.size;
                 console.log(`Custom level ${lvl} has ${totalWords} unique words`);
+                
+                // Update the cached data with the correct word count
+                if (cachedData) {
+                  try {
+                    const data = JSON.parse(cachedData);
+                    data.total_words = totalWords;
+                    // Create default fam_counts if not present
+                    if (!data.fam_counts) {
+                      data.fam_counts = {0: totalWords, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                    }
+                    levelElement.dataset.bulkData = JSON.stringify(data);
+                    console.log(`Updated cached data for custom level ${lvl} with ${totalWords} words`);
+                  } catch (error) {
+                    console.log('Error updating cached data:', error);
+                  }
+                }
               }
             }
           }

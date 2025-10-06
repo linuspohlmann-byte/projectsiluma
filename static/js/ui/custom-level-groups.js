@@ -536,6 +536,16 @@ async function createCustomGroup() {
             if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
                 window.showCustomLevelGroupsInLibrary();
             }
+            
+            // Force refresh of level colors and word counts for the new group
+            setTimeout(async () => {
+                if (typeof window.refreshAllLevelColors === 'function') {
+                    await window.refreshAllLevelColors();
+                }
+                if (typeof window.renderLevels === 'function') {
+                    await window.renderLevels();
+                }
+            }, 1000); // Wait 1 second for the group to be fully loaded
         } else {
             let errorMessage = result.error || 'Fehler beim Erstellen der Level-Gruppe';
             
