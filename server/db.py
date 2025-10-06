@@ -5,9 +5,17 @@ from datetime import datetime, UTC
 from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE
 
 def latest_run_id_for_level(level: int) -> int | None:
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        r = conn.execute('SELECT id FROM level_runs WHERE level=? ORDER BY id DESC LIMIT 1', (level,)).fetchone()
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, 'SELECT id FROM level_runs WHERE level=%s ORDER BY id DESC LIMIT 1', (level,))
+            r = result.fetchone()
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            r = cur.execute('SELECT id FROM level_runs WHERE level=? ORDER BY id DESC LIMIT 1', (level,)).fetchone()
         return int(r['id']) if r else None
     finally:
         conn.close()
@@ -16,31 +24,54 @@ def latest_run_id_for_level(level: int) -> int | None:
 def ensure_words_exist(words: list[str], target_lang: str, native_lang: str) -> None:
     if not words:
         return
-    conn = get_db(); cur = conn.cursor()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
         now = datetime.now(UTC).isoformat()
         for w in words:
-            cur.execute('SELECT 1 FROM words WHERE word=? AND (language=? OR ?="")', (w, target_lang, target_lang))
-            if not cur.fetchone():
-                cur.execute(
-                    'INSERT INTO words (word, language, native_language, created_at, updated_at) VALUES (?,?,?,?,?)',
-                    (w, target_lang, native_lang, now, now)
-                )
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, 'SELECT 1 FROM words WHERE word=%s AND (language=%s OR %s=\'\')', (w, target_lang, target_lang))
+                if not result.fetchone():
+                    execute_query(conn, '''
+                        INSERT INTO words (word, language, native_language, created_at, updated_at) 
+                        VALUES (%s, %s, %s, %s, %s)
+                    ''', (w, target_lang, native_lang, now, now))
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                cur.execute('SELECT 1 FROM words WHERE word=? AND (language=? OR ?="")', (w, target_lang, target_lang))
+                if not cur.fetchone():
+                    cur.execute(
+                        'INSERT INTO words (word, language, native_language, created_at, updated_at) VALUES (?,?,?,?,?)',
+                        (w, target_lang, native_lang, now, now)
+                    )
         conn.commit()
     finally:
         conn.close()
 
 
 def create_level_run(level: int, items: list, topic: str, target_lang: str = None, native_lang: str = None) -> int:
-    conn = get_db(); cur = conn.cursor()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        cur.execute(
-            'INSERT INTO level_runs (level, items, user_translations, score, topic, target_lang, native_lang, created_at) VALUES (?,?,?,?,?,?,?,?)',
-            (level, _json.dumps(items, ensure_ascii=False), _json.dumps({}, ensure_ascii=False), None, topic, target_lang, native_lang, datetime.now(UTC).isoformat())
-        )
-        rid = cur.lastrowid
-        conn.commit()
-        return int(rid)
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                INSERT INTO level_runs (level, items, user_translations, score, topic, target_lang, native_lang, created_at) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            ''', (level, _json.dumps(items, ensure_ascii=False), _json.dumps({}, ensure_ascii=False), None, topic, target_lang, native_lang, datetime.now(UTC).isoformat()))
+            return int(result.fetchone()['id'])
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            cur.execute(
+                'INSERT INTO level_runs (level, items, user_translations, score, topic, target_lang, native_lang, created_at) VALUES (?,?,?,?,?,?,?,?)',
+                (level, _json.dumps(items, ensure_ascii=False), _json.dumps({}, ensure_ascii=False), None, topic, target_lang, native_lang, datetime.now(UTC).isoformat())
+            )
+            rid = cur.lastrowid
+            conn.commit()
+            return int(rid)
     finally:
         conn.close()
 
@@ -159,14 +190,27 @@ def submit_level_rating(user_id: int, level: int, language: str, rating: int) ->
     if rating not in [1, -1]:
         return False
     
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
         now = datetime.now(UTC).isoformat()
-        conn.execute('''
-            INSERT OR REPLACE INTO level_ratings 
-            (user_id, level, language, rating, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, level, language, rating, now, now))
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax - use ON CONFLICT
+            execute_query(conn, '''
+                INSERT INTO level_ratings 
+                (user_id, level, language, rating, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, level, language) 
+                DO UPDATE SET rating = EXCLUDED.rating, updated_at = EXCLUDED.updated_at
+            ''', (user_id, level, language, rating, now, now))
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            cur.execute('''
+                INSERT OR REPLACE INTO level_ratings 
+                (user_id, level, language, rating, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, level, language, rating, now, now))
         conn.commit()
         return True
     except Exception as e:
@@ -177,17 +221,30 @@ def submit_level_rating(user_id: int, level: int, language: str, rating: int) ->
 
 def get_level_rating_stats(level: int, language: str) -> dict:
     """Get rating statistics for a level"""
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        # Get total ratings and positive ratings
-        result = conn.execute('''
-            SELECT 
-                COUNT(*) as total_ratings,
-                SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as positive_ratings,
-                SUM(CASE WHEN rating = -1 THEN 1 ELSE 0 END) as negative_ratings
-            FROM level_ratings 
-            WHERE level = ? AND language = ?
-        ''', (level, language)).fetchone()
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                SELECT 
+                    COUNT(*) as total_ratings,
+                    SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as positive_ratings,
+                    SUM(CASE WHEN rating = -1 THEN 1 ELSE 0 END) as negative_ratings
+                FROM level_ratings 
+                WHERE level = %s AND language = %s
+            ''', (level, language)).fetchone()
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            result = cur.execute('''
+                SELECT 
+                    COUNT(*) as total_ratings,
+                    SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as positive_ratings,
+                    SUM(CASE WHEN rating = -1 THEN 1 ELSE 0 END) as negative_ratings
+                FROM level_ratings 
+                WHERE level = ? AND language = ?
+            ''', (level, language)).fetchone()
         
         total = result['total_ratings'] or 0
         positive = result['positive_ratings'] or 0
@@ -204,12 +261,22 @@ def get_level_rating_stats(level: int, language: str) -> dict:
 
 def get_user_level_rating(user_id: int, level: int, language: str) -> int | None:
     """Get user's rating for a specific level (1, -1, or None if not rated)"""
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        result = conn.execute('''
-            SELECT rating FROM level_ratings 
-            WHERE user_id = ? AND level = ? AND language = ?
-        ''', (user_id, level, language)).fetchone()
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                SELECT rating FROM level_ratings 
+                WHERE user_id = %s AND level = %s AND language = %s
+            ''', (user_id, level, language)).fetchone()
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            result = cur.execute('''
+                SELECT rating FROM level_ratings 
+                WHERE user_id = ? AND level = ? AND language = ?
+            ''', (user_id, level, language)).fetchone()
         
         return result['rating'] if result else None
     finally:
@@ -220,15 +287,28 @@ def fam_counts_for_words(words: set[str], language: str = None) -> dict:
     fam_counts = {0:0,1:0,2:0,3:0,4:0,5:0}
     if not words:
         return fam_counts
-    conn = get_db()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        qmarks = ','.join('?' for _ in words)
-        if language:
-            # Query with language filter
-            rows = conn.execute(f'SELECT 0 as fam FROM words WHERE (language=? OR ?="") AND word IN ({qmarks})', (language, language, *words)).fetchall()
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            if language:
+                # Query with language filter
+                result = execute_query(conn, f'SELECT 0 as fam FROM words WHERE (language=%s OR %s=\'\') AND word = ANY(%s)', (language, language, list(words)))
+            else:
+                # Query without language filter (backward compatibility)
+                result = execute_query(conn, f'SELECT 0 as fam FROM words WHERE word = ANY(%s)', (list(words),))
+            rows = result.fetchall()
         else:
-            # Query without language filter (backward compatibility)
-            rows = conn.execute(f'SELECT 0 as fam FROM words WHERE word IN ({qmarks})', tuple(words)).fetchall()
+            # SQLite syntax
+            cur = conn.cursor()
+            qmarks = ','.join('?' for _ in words)
+            if language:
+                # Query with language filter
+                rows = cur.execute(f'SELECT 0 as fam FROM words WHERE (language=? OR ?="") AND word IN ({qmarks})', (language, language, *words)).fetchall()
+            else:
+                # Query without language filter (backward compatibility)
+                rows = cur.execute(f'SELECT 0 as fam FROM words WHERE word IN ({qmarks})', tuple(words)).fetchall()
         for rr in rows:
             f = int(rr['fam']) if rr['fam'] is not None else 0
             f = max(0, min(5, f))
@@ -240,31 +320,48 @@ def fam_counts_for_words(words: set[str], language: str = None) -> dict:
 # --- Practice helpers moved from app ---
 
 def migrate_practice():
-    conn = get_db(); cur = conn.cursor()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS practice_runs (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              level INTEGER,
-              words TEXT,
-              todo  TEXT,
-              seen_count INTEGER,
-              created_at TEXT
-            )
-        ''')
-        cols = {r['name'] for r in cur.execute('PRAGMA table_info(practice_runs)').fetchall()}
-        if 'level' not in cols:
-            cur.execute('ALTER TABLE practice_runs ADD COLUMN level INTEGER')
-        if 'words' not in cols:
-            cur.execute('ALTER TABLE practice_runs ADD COLUMN words TEXT')
-        if 'todo' not in cols:
-            cur.execute('ALTER TABLE practice_runs ADD COLUMN todo TEXT')
-        if 'seen_count' not in cols:
-            cur.execute('ALTER TABLE practice_runs ADD COLUMN seen_count INTEGER')
-        if 'created_at' not in cols:
-            cur.execute('ALTER TABLE practice_runs ADD COLUMN created_at TEXT')
-        if 'bad_counts' not in cols:
-            cur.execute('ALTER TABLE practice_runs ADD COLUMN bad_counts TEXT')
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            execute_query(conn, '''
+                CREATE TABLE IF NOT EXISTS practice_runs (
+                  id SERIAL PRIMARY KEY,
+                  level INTEGER,
+                  words TEXT,
+                  todo TEXT,
+                  seen_count INTEGER,
+                  created_at TEXT,
+                  bad_counts TEXT
+                )
+            ''')
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS practice_runs (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  level INTEGER,
+                  words TEXT,
+                  todo  TEXT,
+                  seen_count INTEGER,
+                  created_at TEXT
+                )
+            ''')
+            cols = {r['name'] for r in cur.execute('PRAGMA table_info(practice_runs)').fetchall()}
+            if 'level' not in cols:
+                cur.execute('ALTER TABLE practice_runs ADD COLUMN level INTEGER')
+            if 'words' not in cols:
+                cur.execute('ALTER TABLE practice_runs ADD COLUMN words TEXT')
+            if 'todo' not in cols:
+                cur.execute('ALTER TABLE practice_runs ADD COLUMN todo TEXT')
+            if 'seen_count' not in cols:
+                cur.execute('ALTER TABLE practice_runs ADD COLUMN seen_count INTEGER')
+            if 'created_at' not in cols:
+                cur.execute('ALTER TABLE practice_runs ADD COLUMN created_at TEXT')
+            if 'bad_counts' not in cols:
+                cur.execute('ALTER TABLE practice_runs ADD COLUMN bad_counts TEXT')
         conn.commit()
     finally:
         conn.close()
@@ -282,9 +379,20 @@ def json_load(s, fallback):
 def pick_words_by_run(run_id: int, limit: int = 10) -> list[str]:
     if not run_id:
         return []
-    conn = get_db()
-    row = conn.execute('SELECT items FROM level_runs WHERE id=?', (run_id,)).fetchone()
-    conn.close()
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, 'SELECT items FROM level_runs WHERE id=%s', (run_id,))
+            row = result.fetchone()
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            row = cur.execute('SELECT items FROM level_runs WHERE id=?', (run_id,)).fetchone()
+    finally:
+        conn.close()
+    
     if not row:
         return []
     try:
