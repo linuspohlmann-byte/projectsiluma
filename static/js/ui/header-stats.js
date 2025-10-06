@@ -10,6 +10,7 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 let currentLanguage = 'en';
 let isUserAuthenticated = false;
 let lastStatsUpdate = 0;
+let statsUpdatePending = false;
 const STATS_UPDATE_THROTTLE = 2000; // Minimum 2 seconds between updates
 
 // Elements
@@ -70,10 +71,16 @@ export function initHeaderStats() {
 }
 
 /**
- * Update all header statistics with throttling
+ * Update all header statistics with intelligent batching
  */
 export async function updateStats(force = false) {
   if (!currentLanguage) return;
+  
+  // Batch multiple update requests
+  if (!force && statsUpdatePending) {
+    console.log('📊 Stats update batched - combining with pending update');
+    return;
+  }
   
   // Throttle updates to prevent excessive API calls
   const now = Date.now();
@@ -81,8 +88,11 @@ export async function updateStats(force = false) {
     console.log('📊 Stats update throttled - too frequent');
     return;
   }
+  
+  statsUpdatePending = true;
   lastStatsUpdate = now;
   
+  // Batch all stats updates in a single operation
   try {
     if (isUserAuthenticated) {
       // For authenticated users, use the more accurate words data
@@ -95,6 +105,8 @@ export async function updateStats(force = false) {
     await updateLearningProgress();
   } catch (error) {
     console.error('Error updating header stats:', error);
+  } finally {
+    statsUpdatePending = false;
   }
 }
 

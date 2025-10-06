@@ -329,6 +329,25 @@ async function loadTranslations(locale) {
       }
     }
     
+    // Preload common languages to improve UX
+    if (locale !== 'en') {
+      const commonLanguages = ['de', 'fr', 'es', 'it', 'pt'];
+      commonLanguages.forEach(lang => {
+        if (lang !== locale && !translationCache.has(lang)) {
+          // Preload in background without blocking
+          fetch(`/api/localization/${lang}`).then(response => response.json())
+            .then(data => {
+              if (data.success && data.localization) {
+                const preloadTranslations = { ...(defaultTranslations['en'] || {}), ...data.localization };
+                translationCache.set(lang, preloadTranslations);
+                translationCacheExpiry.set(lang, Date.now());
+                console.log(`🚀 Preloaded translations for: ${lang}`);
+              }
+            }).catch(() => {}); // Silent fail for preloading
+        }
+      });
+    }
+    
     // First try to load from CSV-based API
     const response = await fetch(`/api/localization/${locale}`);
     const data = await response.json();

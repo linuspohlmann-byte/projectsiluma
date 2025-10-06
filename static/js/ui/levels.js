@@ -22,6 +22,8 @@ let SELECTED_LEVEL_GROUP = null;
 let LEVEL_GROUP_DEFS = null;
 let LATEST_BULK_RESULT = { language: null, levels: {}, fetchedLevels: new Set() };
 let CURRENT_VIEW_WORD_MAP = new Map();
+let BULK_STATS_LAST_FETCH = 0;
+let BULK_STATS_FETCH_THROTTLE = 2000; // 2 seconds throttle
 
 // Function to show elegant level locked message
 function showLevelLockedMessage(level, prevLevel, prevScore) {
@@ -1100,15 +1102,41 @@ async function ensureBulkDataForLevels(levels){
     return LATEST_BULK_RESULT;
   }
 
+  // Throttle bulk-stats requests to prevent excessive API calls
+  const now = Date.now();
+  if (now - BULK_STATS_LAST_FETCH < BULK_STATS_FETCH_THROTTLE) {
+    console.log('🕐 Throttling bulk-stats request to prevent excessive API calls');
+    return LATEST_BULK_RESULT;
+  }
+  BULK_STATS_LAST_FETCH = now;
+
   try{
     const qs = pending.sort((a,b)=>a-b).join(',');
-    const response = await fetch(`/api/levels/bulk-stats?language=${encodeURIComponent(lang)}&levels=${qs}`);
+    const response = await fetch(`/api/levels/bulk-stats?language=${encodeURIComponent(lang)}&levels=${qs}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn(`Bulk-stats API returned ${response.status}: ${response.statusText}`);
+      return LATEST_BULK_RESULT;
+    }
+    
     const data = await response.json();
     if(data && data.success && data.levels){
       mergeBulkLevels(lang, data.levels);
+    } else {
+      console.warn('Bulk-stats API returned invalid data:', data);
     }
   }catch(error){
     console.warn('ensureBulkDataForLevels failed:', error);
+    // Don't spam the console with repeated errors
+    if (!LATEST_BULK_RESULT._errorLogged) {
+      console.error('Bulk-stats API error details:', error.message);
+      LATEST_BULK_RESULT._errorLogged = true;
+    }
   }
 
   return LATEST_BULK_RESULT;

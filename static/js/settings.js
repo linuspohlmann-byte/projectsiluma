@@ -643,17 +643,24 @@ class SettingsManager {
     }
     
     updateAllUIElements() {
-        // Update all elements that might need language updates
-        try {
-            console.log('🌍 Updating all UI elements for new language...');
-            
-            // Batch DOM updates to reduce reflows
-            requestAnimationFrame(() => {
-                this.performBatchUIUpdates();
-            });
-        } catch (error) {
-            console.warn('Error updating UI elements:', error);
+        // Debounce UI updates to prevent redundant calls
+        if (this._uiUpdateTimeout) {
+            clearTimeout(this._uiUpdateTimeout);
         }
+        
+        this._uiUpdateTimeout = setTimeout(() => {
+            // Update all elements that might need language updates
+            try {
+                console.log('🌍 Updating all UI elements for new language...');
+                
+                // Batch DOM updates to reduce reflows
+                requestAnimationFrame(() => {
+                    this.performBatchUIUpdates();
+                });
+            } catch (error) {
+                console.warn('Error updating UI elements:', error);
+            }
+        }, 300); // 300ms debounce - prevents rapid successive calls
     }
     
     performBatchUIUpdates() {

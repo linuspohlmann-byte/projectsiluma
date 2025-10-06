@@ -81,7 +81,7 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 
 # Configure CORS to allow all origins for development and production
-CORS(app, origins=["*"], allow_headers=["Content-Type", "Authorization", "X-Native-Language"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+CORS(app, origins=["*"], allow_headers=["Content-Type", "Authorization", "X-Native-Language", "X-Requested-With"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], supports_credentials=True)
 
 from pathlib import Path
 import tempfile
@@ -3870,9 +3870,12 @@ def api_levels_bulk_stats():
         user_context = get_user_context()
         user_id = user_context['user_id']
         
+        print(f"🔍 Bulk-stats request: lang={lang}, levels={levels_param}, user_id={user_id}")
+        
         # Handle unauthenticated users - return empty stats instead of error
         if user_id is None:
-            return jsonify({'success': True, 'stats': {}})
+            print("📊 Returning empty stats for unauthenticated user")
+            return jsonify({'success': True, 'stats': {}, 'levels': {}})
         
         try:
             # Parse levels parameter
