@@ -1430,6 +1430,51 @@ def api_get_custom_level_bulk_stats(group_id):
         print(f"Error getting custom level bulk stats: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@custom_levels_bp.post('/api/custom-levels/<int:group_id>/<int:level_number>/generate-content')
+@require_auth(optional=True)
+def api_generate_custom_level_content(group_id, level_number):
+    """Generate content for a custom level (sentences and word enrichment)"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        # For custom level content generation, authentication is optional
+        # This allows the feature to work even without login
+        
+        # Get custom level data
+        level_data = get_custom_level(group_id, level_number, user_id)
+        if not level_data:
+            return jsonify({'success': False, 'error': 'Level not found'}), 404
+        
+        content = level_data.get('content', {})
+        
+        # Check if content generation is needed
+        if not content.get('ultra_lazy_loading', False) or content.get('sentences_generated', False):
+            return jsonify({'success': True, 'message': 'Content already generated'})
+        
+        # Get group info for language context
+        from server.services.custom_levels import get_custom_level_group
+        group_data = get_custom_level_group(group_id, user_id)
+        if not group_data:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+        
+        language = group_data.get('language', 'en')
+        native_language = group_data.get('native_language', 'de')
+        
+        # Trigger content generation
+        from server.services.custom_levels import enrich_custom_level_words_on_demand
+        success = enrich_custom_level_words_on_demand(group_id, level_number, language, native_language)
+        
+        if success:
+            return jsonify({'success': True, 'message': 'Content generated successfully'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to generate content'}), 500
+        
+    except Exception as e:
+        print(f"Error generating custom level content: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @custom_levels_bp.get('/api/custom-levels/<int:group_id>/<int:level_number>/familiarity')
 @require_auth()
 def api_get_custom_level_familiarity(group_id, level_number):
