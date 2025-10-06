@@ -256,9 +256,12 @@ def _openai_ready() -> bool:
 # S3 readiness check
 def _s3_ready() -> bool:
     """Check if S3 is configured and ready"""
-    return bool(os.environ.get('AWS_ACCESS_KEY_ID') and 
-                os.environ.get('AWS_SECRET_ACCESS_KEY') and 
-                os.environ.get('S3_BUCKET_NAME'))
+    try:
+        from .s3_storage import s3_storage
+        return s3_storage.s3_client is not None
+    except Exception as e:
+        print(f"⚠️ S3 readiness check failed: {e}")
+        return False
 
 def _slug(s: str) -> str:
     return ''.join(c.lower() if c.isalnum() else '-' for c in s).strip('-') or 'word'

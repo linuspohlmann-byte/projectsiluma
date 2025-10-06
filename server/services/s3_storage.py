@@ -17,12 +17,21 @@ class S3AudioStorage:
         self.bucket_name = os.environ.get('S3_BUCKET_NAME', 'siluma-audio-files')
         self.region = os.environ.get('AWS_DEFAULT_REGION', 'eu-central-1')
         
+        # Check if S3 credentials are available
+        aws_key = os.environ.get('AWS_ACCESS_KEY_ID')
+        aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY')
+        
+        if not aws_key or not aws_secret:
+            logger.warning("AWS credentials not found. S3 integration disabled. Using local file storage.")
+            self.s3_client = None
+            return
+        
         # Initialize S3 client
         try:
             self.s3_client = boto3.client(
                 's3',
-                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                aws_access_key_id=aws_key,
+                aws_secret_access_key=aws_secret,
                 region_name=self.region
             )
             logger.info(f"S3 client initialized for bucket: {self.bucket_name}")
