@@ -2261,22 +2261,44 @@ def api_words_get_many():
     words = [str(w).strip() for w in words if str(w).strip()]
     if not words:
         return jsonify({'success': True, 'data': []})
-    conn = get_db(); cur = conn.cursor()
-    placeholders = ','.join('?' for _ in words)
-    rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND (language=? OR ?="")', (*words, language, language)).fetchall()
-    conn.close()
-    out = []
-    for row in rows:
-        d = dict(row)
-        if d.get('info'):
-            try: d['info'] = json.loads(d['info'])
-            except Exception: pass
-        for k in ('conj','comp','synonyms','collocations','tags'):
-            if d.get(k):
-                try: d[k] = json.loads(d[k])
+    
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                SELECT * FROM words 
+                WHERE word = ANY(%s) AND (language = %s OR %s = '')
+            ''', (words, language, language))
+            rows = result.fetchall()
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            placeholders = ','.join('?' for _ in words)
+            rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND (language=? OR ?="")', (*words, language, language)).fetchall()
+        
+        conn.close()
+        
+        out = []
+        for row in rows:
+            d = dict(row)
+            if d.get('info'):
+                try: d['info'] = json.loads(d['info'])
                 except Exception: pass
-        out.append(d)
-    return jsonify({'success': True, 'data': out})
+            for k in ('conj','comp','synonyms','collocations','tags'):
+                if d.get(k):
+                    try: d[k] = json.loads(d[k])
+                    except Exception: pass
+            out.append(d)
+        return jsonify({'success': True, 'data': out})
+        
+    except Exception as e:
+        print(f"❌ Error in get_many: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @words_bp.post('/api/word/upsert')

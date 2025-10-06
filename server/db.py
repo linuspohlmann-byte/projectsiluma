@@ -973,18 +973,62 @@ def upsert_word_row(payload: dict) -> None:
     except Exception:
         freq_rank = None
     now = datetime.now(UTC).isoformat()
-    conn = get_db(); cur = conn.cursor()
-    cur.execute(
-        'UPDATE words SET language=COALESCE(?, language), native_language=COALESCE(?, native_language), translation=COALESCE(?, translation), example=COALESCE(?, example), example_native=COALESCE(?, example_native), lemma=COALESCE(?, lemma), pos=COALESCE(?, pos), ipa=COALESCE(?, ipa), audio_url=COALESCE(?, audio_url), gender=COALESCE(?, gender), plural=COALESCE(?, plural), conj=COALESCE(?, conj), comp=COALESCE(?, comp), synonyms=COALESCE(?, synonyms), collocations=COALESCE(?, collocations), cefr=COALESCE(?, cefr), freq_rank=COALESCE(?, freq_rank), tags=COALESCE(?, tags), note=COALESCE(?, note), info=COALESCE(?, info), updated_at=? WHERE word=? AND (language=? OR ?="")',
-        (language or None, native_language or None, translation or None, example or None, example_native or None,
-         lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, word, language, language)
-    )
-    if cur.rowcount == 0:
-        cur.execute(
-            'INSERT INTO words (word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            (word, language or None, native_language or None, translation or None, example or None, example_native or None, lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, now)
-        )
-    conn.commit(); conn.close()
+    
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            # Try UPDATE first
+            result = execute_query(conn, '''
+                UPDATE words SET 
+                    language=COALESCE(%s, language), 
+                    native_language=COALESCE(%s, native_language), 
+                    translation=COALESCE(%s, translation), 
+                    example=COALESCE(%s, example), 
+                    example_native=COALESCE(%s, example_native), 
+                    lemma=COALESCE(%s, lemma), 
+                    pos=COALESCE(%s, pos), 
+                    ipa=COALESCE(%s, ipa), 
+                    audio_url=COALESCE(%s, audio_url), 
+                    gender=COALESCE(%s, gender), 
+                    plural=COALESCE(%s, plural), 
+                    conj=COALESCE(%s, conj), 
+                    comp=COALESCE(%s, comp), 
+                    synonyms=COALESCE(%s, synonyms), 
+                    collocations=COALESCE(%s, collocations), 
+                    cefr=COALESCE(%s, cefr), 
+                    freq_rank=COALESCE(%s, freq_rank), 
+                    tags=COALESCE(%s, tags), 
+                    note=COALESCE(%s, note), 
+                    info=COALESCE(%s, info), 
+                    updated_at=%s 
+                WHERE word=%s AND (language=%s OR %s='')
+            ''', (language or None, native_language or None, translation or None, example or None, example_native or None,
+                 lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, word, language, language))
+            
+            # If no rows updated, insert new row
+            if result.rowcount == 0:
+                execute_query(conn, '''
+                    INSERT INTO words (word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, created_at, updated_at) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (word, language or None, native_language or None, translation or None, example or None, example_native or None, lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, now))
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            cur.execute(
+                'UPDATE words SET language=COALESCE(?, language), native_language=COALESCE(?, native_language), translation=COALESCE(?, translation), example=COALESCE(?, example), example_native=COALESCE(?, example_native), lemma=COALESCE(?, lemma), pos=COALESCE(?, pos), ipa=COALESCE(?, ipa), audio_url=COALESCE(?, audio_url), gender=COALESCE(?, gender), plural=COALESCE(?, plural), conj=COALESCE(?, conj), comp=COALESCE(?, comp), synonyms=COALESCE(?, synonyms), collocations=COALESCE(?, collocations), cefr=COALESCE(?, cefr), freq_rank=COALESCE(?, freq_rank), tags=COALESCE(?, tags), note=COALESCE(?, note), info=COALESCE(?, info), updated_at=? WHERE word=? AND (language=? OR ?="")',
+                (language or None, native_language or None, translation or None, example or None, example_native or None,
+                 lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, word, language, language)
+            )
+            if cur.rowcount == 0:
+                cur.execute(
+                    'INSERT INTO words (word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (word, language or None, native_language or None, translation or None, example or None, example_native or None, lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, now)
+                )
+        conn.commit()
+    finally:
+        conn.close()
 
 # --- Localization helpers ---
 
@@ -1063,17 +1107,44 @@ def upsert_localization_entry(payload: dict) -> None:
     
     now = datetime.now(UTC).isoformat()
     
-    conn = get_db(); cur = conn.cursor()
+    config = get_database_config()
+    conn = get_db_connection()
     try:
-        cur.execute(
-            'UPDATE localization SET description=COALESCE(?, description), german=COALESCE(?, german), english=COALESCE(?, english), french=COALESCE(?, french), italian=COALESCE(?, italian), spanish=COALESCE(?, spanish), portuguese=COALESCE(?, portuguese), russian=COALESCE(?, russian), turkish=COALESCE(?, turkish), georgian=COALESCE(?, georgian), updated_at=? WHERE reference_key=?',
-            (description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, reference_key)
-        )
-        if cur.rowcount == 0:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                UPDATE localization SET 
+                    description=COALESCE(%s, description), 
+                    german=COALESCE(%s, german), 
+                    english=COALESCE(%s, english), 
+                    french=COALESCE(%s, french), 
+                    italian=COALESCE(%s, italian), 
+                    spanish=COALESCE(%s, spanish), 
+                    portuguese=COALESCE(%s, portuguese), 
+                    russian=COALESCE(%s, russian), 
+                    turkish=COALESCE(%s, turkish), 
+                    georgian=COALESCE(%s, georgian), 
+                    updated_at=%s 
+                WHERE reference_key=%s
+            ''', (description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, reference_key))
+            
+            if result.rowcount == 0:
+                execute_query(conn, '''
+                    INSERT INTO localization (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, created_at, updated_at) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (reference_key, description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, now))
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
             cur.execute(
-                'INSERT INTO localization (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                (reference_key, description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, now)
+                'UPDATE localization SET description=COALESCE(?, description), german=COALESCE(?, german), english=COALESCE(?, english), french=COALESCE(?, french), italian=COALESCE(?, italian), spanish=COALESCE(?, spanish), portuguese=COALESCE(?, portuguese), russian=COALESCE(?, russian), turkish=COALESCE(?, turkish), georgian=COALESCE(?, georgian), updated_at=? WHERE reference_key=?',
+                (description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, reference_key)
             )
+            if cur.rowcount == 0:
+                cur.execute(
+                    'INSERT INTO localization (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (reference_key, description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, now)
+                )
         conn.commit()
     finally:
         conn.close()
