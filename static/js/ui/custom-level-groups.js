@@ -1805,95 +1805,42 @@ function showCreationProgressModal() {
     
     const modalHtml = `
         <div class="modal-overlay" id="creation-progress-modal">
-            <div class="modal-content creation-progress-modal">
-                <div class="modal-header">
-                    <h2>🎯 Level-Gruppe wird erstellt</h2>
-                </div>
+            <div class="modal-content creation-progress-modal" style="max-width: 400px; text-align: center;">
                 <div class="modal-body">
-                    <div class="progress-container">
-                        <div class="progress-steps">
-                            <div class="progress-step active" id="step-topics">
-                                <div class="step-icon">📝</div>
-                                <div class="step-text">Themen generieren</div>
-                            </div>
-                            <div class="progress-step" id="step-sentences">
-                                <div class="step-icon">📖</div>
-                                <div class="step-text">Sätze erstellen</div>
-                            </div>
-                            <div class="progress-step" id="step-audio">
-                                <div class="step-icon">🎵</div>
-                                <div class="step-text">Audio generieren</div>
-                            </div>
-                            <div class="progress-step" id="step-words">
-                                <div class="step-icon">📚</div>
-                                <div class="step-text">Wörter anreichern</div>
-                            </div>
-                            <div class="progress-step" id="step-save">
-                                <div class="step-icon">💾</div>
-                                <div class="step-text">Speichern</div>
-                            </div>
+                    <div style="padding: 2rem;">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">🎯</div>
+                        <h2 style="margin-bottom: 1rem; color: #333;">Level werden erstellt...</h2>
+                        <div style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">
+                            Das dauert nur wenige Sekunden
                         </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progress-fill"></div>
-                        </div>
-                        <div class="progress-text" id="progress-text">
-                            Bereite Level-Gruppe vor...
-                        </div>
+                        <div class="simple-spinner" style="
+                            width: 40px; 
+                            height: 40px; 
+                            border: 4px solid #f3f3f3; 
+                            border-top: 4px solid #007bff; 
+                            border-radius: 50%; 
+                            animation: spin 1s linear infinite;
+                            margin: 0 auto;
+                        "></div>
                     </div>
                 </div>
             </div>
         </div>
+        <style>
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        </style>
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
-    // Start progress animation
-    startProgressAnimation();
 }
 
-// Start progress animation
+// Simple progress animation (no longer needed with ultra-lazy loading)
 function startProgressAnimation() {
-    const steps = ['step-topics', 'step-sentences', 'step-audio', 'step-words', 'step-save'];
-    const stepTexts = [
-        'Generiere Themen für alle Level...',
-        'Erstelle Sätze mit AI...',
-        'Generiere Audio für alle Sätze und Wörter...',
-        'Reichere Wörter mit Übersetzungen und Metadaten an...',
-        'Speichere Level-Gruppe in der Datenbank...'
-    ];
-    
-    let currentStep = 0;
-    const progressFill = document.getElementById('progress-fill');
-    const progressText = document.getElementById('progress-text');
-    
-    const updateProgress = () => {
-        if (currentStep < steps.length) {
-            // Update current step
-            const currentStepEl = document.getElementById(steps[currentStep]);
-            if (currentStepEl) {
-                currentStepEl.classList.add('active');
-            }
-            
-            // Update progress bar
-            const progressPercent = ((currentStep + 1) / steps.length) * 100;
-            if (progressFill) {
-                progressFill.style.width = `${progressPercent}%`;
-            }
-            
-            // Update progress text
-            if (progressText) {
-                progressText.textContent = stepTexts[currentStep];
-            }
-            
-            currentStep++;
-            
-            // Continue to next step after a delay
-            setTimeout(updateProgress, 2000 + Math.random() * 3000); // 2-5 seconds per step
-        }
-    };
-    
-    // Start the animation
-    setTimeout(updateProgress, 500);
+    // Animation removed - ultra-lazy loading is so fast that complex progress tracking is unnecessary
+    // The simple spinner in the modal is sufficient
 }
 
 // Close creation progress modal
