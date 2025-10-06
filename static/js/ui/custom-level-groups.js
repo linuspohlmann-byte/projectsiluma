@@ -1006,7 +1006,7 @@ function showLevelsContainer() {
 }
 
 // Show groups container (same as standard groups)
-function showGroupsContainer() {
+async function showGroupsContainer() {
     const groupsEl = document.getElementById('level-groups');
     const levelsEl = document.getElementById('levels');
     const headerEl = document.getElementById('levels-group-header');
@@ -1020,6 +1020,28 @@ function showGroupsContainer() {
     // Show custom and standard groups sections
     if (customGroupsSection) customGroupsSection.style.display = '';
     if (standardGroupsSection) standardGroupsSection.style.display = '';
+    
+    // Ensure both groups are loaded synchronously to prevent race conditions
+    try {
+        console.log('🔄 Custom groups: Synchronizing groups loading...');
+        
+        // Load standard groups first
+        if (typeof window.renderLevels === 'function') {
+            await window.renderLevels();
+        }
+        
+        // Then load custom groups
+        if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+            await window.showCustomLevelGroupsInLibrary();
+        }
+        if (typeof window.loadCustomLevelGroups === 'function') {
+            await window.loadCustomLevelGroups();
+        }
+        
+        console.log('✅ Custom groups: Groups loading synchronized');
+    } catch (error) {
+        console.warn('Custom groups: Error synchronizing groups loading:', error);
+    }
     
     // Remove group management buttons from quick access
     removeGroupManagementFromQuickAccess();

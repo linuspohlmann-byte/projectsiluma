@@ -24,6 +24,7 @@ let LATEST_BULK_RESULT = { language: null, levels: {}, fetchedLevels: new Set() 
 let CURRENT_VIEW_WORD_MAP = new Map();
 let BULK_STATS_LAST_FETCH = 0;
 let BULK_STATS_FETCH_THROTTLE = 2000; // 2 seconds throttle
+let GROUPS_LOADING_LOCK = false; // Prevent race conditions in groups loading
 
 // Function to show elegant level locked message
 function showLevelLockedMessage(level, prevLevel, prevScore) {
@@ -1504,27 +1505,63 @@ async function updateGroupStatsInOverview() {
   }
 }
 
-function showGroupsContainer(){
-  const groupsEl = document.getElementById('level-groups');
-  const levelsEl = document.getElementById('levels');
-  const headerEl = document.getElementById('levels-group-header');
-  const customGroupsSection = document.getElementById('custom-level-groups-section');
-  const standardGroupsSection = document.getElementById('standard-level-groups-section');
+async function showGroupsContainer(){
+  // Prevent race conditions with loading lock
+  if (GROUPS_LOADING_LOCK) {
+    console.log('🔄 Groups loading already in progress, skipping...');
+    return;
+  }
   
-  if(groupsEl) groupsEl.style.display = '';
-  if(levelsEl) levelsEl.style.display = 'none';
-  if(headerEl) headerEl.style.display = 'none';
+  GROUPS_LOADING_LOCK = true;
   
-  // Show both custom and standard level groups sections when showing groups
-  if(customGroupsSection) customGroupsSection.style.display = '';
-  if(standardGroupsSection) standardGroupsSection.style.display = '';
-  
-  // Remove group management buttons from quick access (if function exists)
-  if (typeof window.removeGroupManagementFromQuickAccess === 'function') {
-    console.log('🔄 Calling removeGroupManagementFromQuickAccess from levels.js');
-    window.removeGroupManagementFromQuickAccess();
-  } else {
-    console.log('⚠️ removeGroupManagementFromQuickAccess function not available');
+  try {
+    const groupsEl = document.getElementById('level-groups');
+    const levelsEl = document.getElementById('levels');
+    const headerEl = document.getElementById('levels-group-header');
+    const customGroupsSection = document.getElementById('custom-level-groups-section');
+    const standardGroupsSection = document.getElementById('standard-level-groups-section');
+    
+    if(groupsEl) groupsEl.style.display = '';
+    if(levelsEl) levelsEl.style.display = 'none';
+    if(headerEl) headerEl.style.display = 'none';
+    
+    // Show both custom and standard level groups sections when showing groups
+    if(customGroupsSection) customGroupsSection.style.display = '';
+    if(standardGroupsSection) standardGroupsSection.style.display = '';
+    
+    // Ensure both standard and custom groups are loaded synchronously
+    try {
+      console.log('🔄 Synchronizing groups loading...');
+      
+      // Load standard groups first
+      if (typeof window.renderLevels === 'function') {
+        await window.renderLevels();
+      }
+      
+      // Then load custom groups if user is authenticated
+      if (window.authManager && window.authManager.isAuthenticated()) {
+        if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+          await window.showCustomLevelGroupsInLibrary();
+        }
+        if (typeof window.loadCustomLevelGroups === 'function') {
+          await window.loadCustomLevelGroups();
+        }
+      }
+      
+      console.log('✅ Groups loading synchronized');
+    } catch (error) {
+      console.warn('Error synchronizing groups loading:', error);
+    }
+    
+    // Remove group management buttons from quick access (if function exists)
+    if (typeof window.removeGroupManagementFromQuickAccess === 'function') {
+      console.log('🔄 Calling removeGroupManagementFromQuickAccess from levels.js');
+      window.removeGroupManagementFromQuickAccess();
+    } else {
+      console.log('⚠️ removeGroupManagementFromQuickAccess function not available');
+    }
+  } finally {
+    GROUPS_LOADING_LOCK = false;
   }
 }
 
