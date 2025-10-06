@@ -12,6 +12,8 @@ from .llm import _http_binary, OPENAI_KEY, OPENAI_BASE
 from server.db import get_db
 from .cache import cached_tts
 from .s3_storage import upload_tts_audio, get_tts_audio_url, tts_audio_exists
+import concurrent.futures
+import threading
 
 APP_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MEDIA_DIR = os.path.join(APP_ROOT, 'media')
@@ -273,7 +275,7 @@ def _audio_url_to_path(url_path: str) -> str | None:
     lang, fname = parts[2], parts[3]
     return os.path.join(MEDIA_DIR, 'tts', lang, fname)
 
-@cached_tts(ttl=7200)  # Cache for 2 hours
+@cached_tts(ttl=86400)  # Cache for 24 hours (audio files don't change)
 def ensure_tts_for_word(word: str, language: str, instructions: str | None = None, context: str = 'word', sentence_context: str | None = None) -> str | None:
     """
     Generate TTS for a word, saving to disk and returning URL.
@@ -402,9 +404,42 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         pass
     return url_path
 
+def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3) -> Dict[str, str]:
+    """
+    Generate TTS for multiple words in parallel for better performance.
+    Returns a dictionary mapping words to their audio URLs.
+    """
+    if not _openai_ready():
+        print(f"⚠️ OpenAI not ready - batch TTS unavailable")
+        return {}
+    
+    results = {}
+    
+    def process_word(word: str) -> tuple[str, str | None]:
+        """Process a single word and return (word, audio_url)"""
+        try:
+            audio_url = ensure_tts_for_word(word, language)
+            return word, audio_url
+        except Exception as e:
+            print(f"❌ Error processing word '{word}': {e}")
+            return word, None
+    
+    # Use ThreadPoolExecutor for parallel processing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all words for processing
+        future_to_word = {executor.submit(process_word, word): word for word in words}
+        
+        # Collect results as they complete
+        for future in concurrent.futures.as_completed(future_to_word):
+            word, audio_url = future.result()
+            if audio_url:
+                results[word] = audio_url
+    
+    return results
+
 from hashlib import sha1 as _sha1
 
-@cached_tts(ttl=7200)  # Cache for 2 hours
+@cached_tts(ttl=86400)  # Cache for 24 hours (audio files don't change)
 def ensure_tts_for_sentence(text: str, language: str, instructions: str | None = None, context: str = 'sentence') -> str | None:
     """
     Create MP3 for a full sentence if missing. Return URL path or None.

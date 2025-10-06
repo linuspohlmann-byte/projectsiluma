@@ -2478,12 +2478,13 @@ def api_words_adjust_familiarity():
 
 @words_bp.post('/api/word/enrich_batch')
 def api_word_enrich_batch():
-    """Enrich multiple words at once with optimized batch processing"""
+    """Enrich multiple words at once with optimized batch processing and TTS"""
     payload = request.get_json(force=True) or {}
     words = payload.get('words', [])
     language = (payload.get('language') or '').strip()
     native_language = (payload.get('native_language') or '').strip()
     sentence_contexts = payload.get('sentence_contexts', {})
+    generate_audio = payload.get('generate_audio', True)  # New parameter
     
     if not words or not language:
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
@@ -2492,6 +2493,16 @@ def api_word_enrich_batch():
         # Use optimized batch enrichment
         from server.services.llm import llm_enrich_words_batch
         enriched_results = llm_enrich_words_batch(words, language, native_language, sentence_contexts)
+        
+        # Generate TTS for all words in parallel if requested
+        if generate_audio:
+            from server.services.tts import ensure_tts_for_words_batch
+            audio_results = ensure_tts_for_words_batch(words, language, max_workers=3)
+            
+            # Merge audio URLs into enriched results
+            for word, audio_url in audio_results.items():
+                if word in enriched_results and enriched_results[word]:
+                    enriched_results[word]['audio_url'] = audio_url
         
         enriched_count = len([w for w, data in enriched_results.items() if data and data.get('translation')])
         
@@ -2563,10 +2574,17 @@ def api_word_enrich():
         if r2:
             au = (r2['audio_url'] or '').strip()
             if au:
-                fpath = _audio_url_to_path(au)
-                if fpath and os.path.isfile(fpath):
+                # Check if it's an S3 URL or local file
+                if au.startswith('https://') and 's3' in au:
+                    # S3 URL - assume it exists (S3 is reliable)
                     upd['audio_url'] = au
                     need_gen = False
+                else:
+                    # Local file - check if it exists
+                    fpath = _audio_url_to_path(au)
+                    if fpath and os.path.isfile(fpath):
+                        upd['audio_url'] = au
+                        need_gen = False
         if need_gen:
             au2 = ensure_tts_for_word(word, language)
             if au2:
