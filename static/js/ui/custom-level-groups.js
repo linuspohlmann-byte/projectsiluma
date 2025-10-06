@@ -1315,12 +1315,12 @@ function renderCustomLevels(groupId, levels) {
         backBtn.dataset.bound = 'true';
     }
     
+    // Apply user-specific level progression logic for all levels at once (performance optimization)
+    applyCustomLevelProgressionBulk(levelsContainer, groupId);
+    
     // Add click handlers for level cards (same as standard levels)
     levelsContainer.querySelectorAll('.level-card').forEach(card => {
         const levelNumber = parseInt(card.dataset.level);
-        
-        // Apply user-specific level progression logic (same as standard levels)
-        applyCustomLevelProgression(card, levelNumber, groupId);
         
         // Add flip functionality (same as standard levels)
         card.addEventListener('click', function(e) {
@@ -2013,6 +2013,174 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
 // Export the function globally
 window.applyCustomLevelProgression = applyCustomLevelProgression;
 
+// Bulk apply custom level progression (performance optimized)
+async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
+    try {
+        console.log(`🔒 Applying bulk custom level progression for group ${groupId}`);
+        
+        // Check if user is authenticated
+        const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+        
+        if (!isUserAuthenticated) {
+            // For unauthenticated users, only level 1 is available
+            const levelCards = levelsContainer.querySelectorAll('.level-card');
+            levelCards.forEach(card => {
+                const levelNumber = parseInt(card.dataset.level);
+                if (levelNumber === 1) {
+                    card.classList.add('unlocked');
+                    card.classList.remove('locked', 'done');
+                    card.dataset.allowStart = 'true';
+                } else {
+                    card.classList.add('locked');
+                    card.classList.remove('unlocked', 'done');
+                }
+            });
+            console.log(`Applied bulk progression for unauthenticated user - only level 1 unlocked`);
+            return;
+        }
+        
+        // For authenticated users, fetch bulk stats once for all levels
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        const response = await fetch(`/api/custom-levels/${groupId}/bulk-stats`, {
+            headers: headers
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.levels) {
+                // Apply progression logic to all levels
+                const levelCards = levelsContainer.querySelectorAll('.level-card');
+                levelCards.forEach(card => {
+                    const levelNumber = parseInt(card.dataset.level);
+                    const levelData = data.levels[levelNumber];
+                    
+                    if (levelData && levelData.success) {
+                        const userProgress = levelData.user_progress;
+                        const status = userProgress?.status || levelData.status;
+                        const score = userProgress?.score || levelData.last_score;
+                        
+                        let isUnlocked = false;
+                        
+                        if (status === 'completed' && Number(score || 0) > 0.6) {
+                            // Level completed with good score
+                            isUnlocked = true;
+                            card.classList.add('done');
+                            card.classList.remove('locked', 'unlocked');
+                        } else if (status === 'completed' && Number(score || 0) <= 0.6) {
+                            // Level completed but low score
+                            isUnlocked = true;
+                            card.classList.add('unlocked');
+                            card.classList.remove('locked', 'done');
+                        } else if (levelNumber === 1) {
+                            // Level 1 is always available
+                            isUnlocked = true;
+                            card.classList.add('unlocked');
+                            card.classList.remove('locked', 'done');
+                        } else if (levelNumber > 1) {
+                            // Check if previous level is completed
+                            const prevLevel = levelNumber - 1;
+                            const prevLevelData = data.levels[prevLevel];
+                            if (prevLevelData && prevLevelData.success) {
+                                const prevUserProgress = prevLevelData.user_progress;
+                                const prevStatus = prevUserProgress?.status || prevLevelData.status;
+                                const prevScore = prevUserProgress?.score || prevLevelData.last_score;
+                                const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+                                
+                                if (isPrevCompleted) {
+                                    isUnlocked = true;
+                                    card.classList.add('unlocked');
+                                    card.classList.remove('locked', 'done');
+                                } else {
+                                    card.classList.add('locked');
+                                    card.classList.remove('unlocked', 'done');
+                                }
+                            } else {
+                                card.classList.add('locked');
+                                card.classList.remove('unlocked', 'done');
+                            }
+                        } else {
+                            card.classList.add('locked');
+                            card.classList.remove('unlocked', 'done');
+                        }
+                        
+                        // Set allowStart flag for unlocked levels
+                        if (isUnlocked) {
+                            card.dataset.allowStart = 'true';
+                        }
+                        
+                        // Cache the data for later use
+                        card.dataset.bulkData = JSON.stringify(levelData);
+                    } else {
+                        // Level data not found
+                        if (levelNumber === 1) {
+                            card.classList.add('unlocked');
+                            card.classList.remove('locked', 'done');
+                            card.dataset.allowStart = 'true';
+                        } else {
+                            card.classList.add('locked');
+                            card.classList.remove('unlocked', 'done');
+                        }
+                    }
+                });
+                console.log(`Applied bulk progression for ${levelCards.length} levels`);
+            } else {
+                // API response not successful - fallback
+                const levelCards = levelsContainer.querySelectorAll('.level-card');
+                levelCards.forEach(card => {
+                    const levelNumber = parseInt(card.dataset.level);
+                    if (levelNumber === 1) {
+                        card.classList.add('unlocked');
+                        card.classList.remove('locked', 'done');
+                        card.dataset.allowStart = 'true';
+                    } else {
+                        card.classList.add('locked');
+                        card.classList.remove('unlocked', 'done');
+                    }
+                });
+                console.log(`Applied bulk progression fallback - only level 1 unlocked`);
+            }
+        } else {
+            // API request failed - fallback
+            const levelCards = levelsContainer.querySelectorAll('.level-card');
+            levelCards.forEach(card => {
+                const levelNumber = parseInt(card.dataset.level);
+                if (levelNumber === 1) {
+                    card.classList.add('unlocked');
+                    card.classList.remove('locked', 'done');
+                    card.dataset.allowStart = 'true';
+                } else {
+                    card.classList.add('locked');
+                    card.classList.remove('unlocked', 'done');
+                }
+            });
+            console.log(`Applied bulk progression fallback - only level 1 unlocked`);
+        }
+        
+    } catch (error) {
+        console.error(`Error applying bulk custom level progression:`, error);
+        // Fallback: only level 1 unlocked
+        const levelCards = levelsContainer.querySelectorAll('.level-card');
+        levelCards.forEach(card => {
+            const levelNumber = parseInt(card.dataset.level);
+            if (levelNumber === 1) {
+                card.classList.add('unlocked');
+                card.classList.remove('locked', 'done');
+                card.dataset.allowStart = 'true';
+            } else {
+                card.classList.add('locked');
+                card.classList.remove('unlocked', 'done');
+            }
+        });
+    }
+}
+
+// Export the bulk function globally
+window.applyCustomLevelProgressionBulk = applyCustomLevelProgressionBulk;
+
 // Show custom level locked message (similar to standard levels)
 function showCustomLevelLockedMessage(level, prevLevel, prevScore) {
     // Remove any existing message
@@ -2128,7 +2296,7 @@ function handleCustomLevelStart(groupId, levelNumber) {
             let prevScore = 0;
             
             // Try to get previous level score from cached data
-            const prevLevelCard = document.querySelector(`[data-group-id="${groupId}"] .level-card[data-level="${prevLevel}"]`);
+            const prevLevelCard = document.querySelector(`.level-card[data-level="${prevLevel}"][data-custom-group-id="${groupId}"]`);
             if (prevLevelCard && prevLevelCard.dataset.bulkData) {
                 try {
                     const prevData = JSON.parse(prevLevelCard.dataset.bulkData);
