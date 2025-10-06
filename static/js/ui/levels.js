@@ -1420,36 +1420,35 @@ async function recomputeLevelGroupStats(byLevel){
       
       const data = await response.json();
       if (data.success && data.levels) {
-          // Use the same logic as applyLevelStates to determine completion
-          groups.forEach(group => {
-            const label = (typeof window !== 'undefined' && typeof window.tSection === 'function')
-              ? window.tSection(group.name, group.name)
-              : group.name;
-            group.label = label && !String(label).startsWith('[') ? label : group.name;
-            let completed = 0;
-            for(let lvl = group.start; lvl <= group.end; lvl += 1){
-              const payload = data.levels[lvl] || data.levels[String(lvl)];
-              if (payload) {
-                const status = payload.user_progress?.status ?? payload.status;
-                const score = payload.user_progress?.score ?? payload.last_score ?? payload.score;
-                const isCompleted = status === 'completed' && (score === null || score === undefined || Number(score || 0) >= 0.0);
-                if (isCompleted) {
-                  completed += 1;
-                  // Reduced logging - only log summary
-                } else {
-                  // Reduced logging - only log summary
-                }
+        // Use the same logic as applyLevelStates to determine completion
+        groups.forEach(group => {
+          const label = (typeof window !== 'undefined' && typeof window.tSection === 'function')
+            ? window.tSection(group.name, group.name)
+            : group.name;
+          group.label = label && !String(label).startsWith('[') ? label : group.name;
+          let completed = 0;
+          for(let lvl = group.start; lvl <= group.end; lvl += 1){
+            const payload = data.levels[lvl] || data.levels[String(lvl)];
+            if (payload) {
+              const status = payload.user_progress?.status ?? payload.status;
+              const score = payload.user_progress?.score ?? payload.last_score ?? payload.score;
+              const isCompleted = status === 'completed' && (score === null || score === undefined || Number(score || 0) >= 0.0);
+              if (isCompleted) {
+                completed += 1;
+                // Reduced logging - only log summary
               } else {
                 // Reduced logging - only log summary
               }
+            } else {
+              // Reduced logging - only log summary
             }
-            group.completed = completed;
-            group.total = Math.max(0, group.end - group.start + 1);
-            console.log(`📊 Group ${group.name}: ${completed}/${group.total} completed`);
-          });
-        } else {
-          console.warn('Bulk-stats API returned invalid data:', data);
-        }
+          }
+          group.completed = completed;
+          group.total = Math.max(0, group.end - group.start + 1);
+          console.log(`📊 Group ${group.name}: ${completed}/${group.total} completed`);
+        });
+      } else {
+        console.warn('Bulk-stats API returned invalid data:', data);
       }
     } catch (error) {
       console.warn('Failed to fetch bulk data for group stats:', error);
