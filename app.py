@@ -1378,6 +1378,10 @@ def api_get_custom_level_progress(group_id, level_number):
                         all_words.add(word.strip().lower())
             total_words = len(all_words)
         
+        # If no content yet (ultra-lazy loading), use estimated values
+        if total_words == 0:
+            total_words = 25  # Estimated for ultra-lazy levels
+        
         # For now, return default progress (no progress tracking implemented yet)
         # TODO: Implement actual progress tracking for custom levels
         return jsonify({
