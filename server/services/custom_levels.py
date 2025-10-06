@@ -17,18 +17,38 @@ def create_custom_level_group(user_id: int, language: str, native_language: str,
                             group_name: str, context_description: str, 
                             cefr_level: str = 'A1', num_levels: int = 10) -> Optional[int]:
     """Create a new custom level group"""
-    conn = get_db()
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    
+    config = get_database_config()
+    conn = get_db_connection()
     try:
         now = datetime.now(UTC).isoformat()
-        cursor = conn.execute('''
-            INSERT INTO custom_level_groups 
-            (user_id, language, native_language, group_name, context_description, 
-             cefr_level, num_levels, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, language, native_language, group_name, context_description, 
-              cefr_level, num_levels, now, now))
         
-        group_id = cursor.lastrowid
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                INSERT INTO custom_level_groups 
+                (user_id, language, native_language, group_name, context_description, 
+                 cefr_level, num_levels, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            ''', (user_id, language, native_language, group_name, context_description, 
+                  cefr_level, num_levels, now, now))
+            
+            row = result.fetchone()
+            group_id = row['id'] if row else None
+        else:
+            # SQLite syntax
+            cursor = conn.execute('''
+                INSERT INTO custom_level_groups 
+                (user_id, language, native_language, group_name, context_description, 
+                 cefr_level, num_levels, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (user_id, language, native_language, group_name, context_description, 
+                  cefr_level, num_levels, now, now))
+            
+            group_id = cursor.lastrowid
+        
         conn.commit()
         return group_id
     except Exception as e:
@@ -666,8 +686,20 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
         conn.row_factory = sqlite3.Row
         
         # Get all custom level groups
-        cursor = conn.execute("SELECT * FROM custom_level_groups ORDER BY id")
-        groups = cursor.fetchall()
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        conn.row_factory = sqlite3.Row
+        
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, "SELECT * FROM custom_level_groups ORDER BY id")
+            groups = result.fetchall()
+        else:
+            # SQLite syntax
+            cursor = conn.execute("SELECT * FROM custom_level_groups ORDER BY id")
+            groups = cursor.fetchall()
         
         migration_stats = {
             'groups_processed': 0,
@@ -685,8 +717,14 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
                 print(f"📁 Processing custom level group {group_id}: {group['group_name']} ({language} -> {native_language})")
                 
                 # Get all levels for this group
-                cursor = conn.execute("SELECT * FROM custom_levels WHERE group_id = ? ORDER BY level_number", (group_id,))
-                levels = cursor.fetchall()
+                if config['type'] == 'postgresql':
+                    # PostgreSQL syntax
+                    result = execute_query(conn, "SELECT * FROM custom_levels WHERE group_id = %s ORDER BY level_number", (group_id,))
+                    levels = result.fetchall()
+                else:
+                    # SQLite syntax
+                    cursor = conn.execute("SELECT * FROM custom_levels WHERE group_id = ? ORDER BY level_number", (group_id,))
+                    levels = cursor.fetchall()
                 
                 all_words = set()
                 
