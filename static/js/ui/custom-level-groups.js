@@ -1812,7 +1812,7 @@ function showCreationProgressModal() {
                         <h2 style="margin-bottom: 1rem; color: #333;">Level werden erstellt...</h2>
                         <div style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">
                             Das dauert nur wenige Sekunden
-                        </div>
+                            </div>
                         <div class="simple-spinner" style="
                             width: 40px; 
                             height: 40px; 
@@ -1822,10 +1822,10 @@ function showCreationProgressModal() {
                             animation: spin 1s linear infinite;
                             margin: 0 auto;
                         "></div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                            </div>
+                            </div>
+                            </div>
+                            </div>
         <style>
             @keyframes spin {
                 0% { transform: rotate(0deg); }
@@ -1867,10 +1867,12 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
             // For unauthenticated users, only level 1 is available
             if (levelNumber === 1) {
                 levelElement.classList.add('unlocked');
+                levelElement.classList.remove('locked', 'done');
                 levelElement.dataset.allowStart = 'true';
                 console.log(`Level ${levelNumber} unlocked for unauthenticated user (Level 1)`);
             } else {
                 levelElement.classList.add('locked');
+                levelElement.classList.remove('unlocked', 'done');
                 console.log(`Level ${levelNumber} locked for unauthenticated user`);
             }
             return;
@@ -1902,16 +1904,19 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                         // Level completed with good score
                         isUnlocked = true;
                         levelElement.classList.add('done');
+                        levelElement.classList.remove('locked', 'unlocked');
                         console.log(`Custom level ${levelNumber} marked as completed (Score > 0.6)`);
                     } else if (status === 'completed' && Number(score || 0) <= 0.6) {
                         // Level completed but low score
                         isUnlocked = true;
                         levelElement.classList.add('unlocked');
+                        levelElement.classList.remove('locked', 'done');
                         console.log(`Custom level ${levelNumber} marked as unlocked (completed but low score)`);
                     } else if (levelNumber === 1) {
                         // Level 1 is always available
                         isUnlocked = true;
                         levelElement.classList.add('unlocked');
+                        levelElement.classList.remove('locked', 'done');
                         console.log(`Custom level ${levelNumber} marked as unlocked (Level 1)`);
                     } else if (levelNumber > 1) {
                         // Check if previous level is completed
@@ -1926,17 +1931,21 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                             if (isPrevCompleted) {
                                 isUnlocked = true;
                                 levelElement.classList.add('unlocked');
+                                levelElement.classList.remove('locked', 'done');
                                 console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} completed)`);
                             } else {
                                 levelElement.classList.add('locked');
+                                levelElement.classList.remove('unlocked', 'done');
                                 console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} not completed)`);
                             }
                         } else {
                             levelElement.classList.add('locked');
+                            levelElement.classList.remove('unlocked', 'done');
                             console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} data not available)`);
                         }
                     } else {
                         levelElement.classList.add('locked');
+                        levelElement.classList.remove('unlocked', 'done');
                         console.log(`Custom level ${levelNumber} locked (fallback)`);
                     }
                     
@@ -1951,10 +1960,12 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                     // Level data not found
                     if (levelNumber === 1) {
                         levelElement.classList.add('unlocked');
+                        levelElement.classList.remove('locked', 'done');
                         levelElement.dataset.allowStart = 'true';
                         console.log(`Custom level ${levelNumber} unlocked (Level 1 - no data fallback)`);
                     } else {
                         levelElement.classList.add('locked');
+                        levelElement.classList.remove('unlocked', 'done');
                         console.log(`Custom level ${levelNumber} locked (no data)`);
                     }
                 }
@@ -1962,10 +1973,12 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                 // API response not successful
                 if (levelNumber === 1) {
                     levelElement.classList.add('unlocked');
+                    levelElement.classList.remove('locked', 'done');
                     levelElement.dataset.allowStart = 'true';
                     console.log(`Custom level ${levelNumber} unlocked (Level 1 - API error fallback)`);
                 } else {
                     levelElement.classList.add('locked');
+                    levelElement.classList.remove('unlocked', 'done');
                     console.log(`Custom level ${levelNumber} locked (API error)`);
                 }
             }
@@ -1973,10 +1986,12 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
             // API request failed
             if (levelNumber === 1) {
                 levelElement.classList.add('unlocked');
+                levelElement.classList.remove('locked', 'done');
                 levelElement.dataset.allowStart = 'true';
                 console.log(`Custom level ${levelNumber} unlocked (Level 1 - request error fallback)`);
             } else {
                 levelElement.classList.add('locked');
+                levelElement.classList.remove('unlocked', 'done');
                 console.log(`Custom level ${levelNumber} locked (request error)`);
             }
         }
@@ -1986,9 +2001,11 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
         // Fallback: only level 1 unlocked
         if (levelNumber === 1) {
             levelElement.classList.add('unlocked');
+            levelElement.classList.remove('locked', 'done');
             levelElement.dataset.allowStart = 'true';
         } else {
             levelElement.classList.add('locked');
+            levelElement.classList.remove('unlocked', 'done');
         }
     }
 }
@@ -2020,14 +2037,14 @@ function showCustomLevelLockedMessage(level, prevLevel, prevScore) {
         <div class="message">
             Du musst Level ${prevLevel} mit mindestens ${neededPercent}% abschließen, 
             um Level ${level} freizuschalten.
-        </div>
+                        </div>
         <div class="progress-info">
             <div class="progress-text">Level ${prevLevel} Fortschritt: ${progressPercent}%</div>
-            <div class="progress-bar">
+                        <div class="progress-bar">
                 <div class="progress-fill" style="width: ${Math.min(progressPercent, 100)}%"></div>
-            </div>
+                        </div>
             <div class="progress-text">Benötigt: ${neededPercent}%</div>
-        </div>
+                        </div>
         <div class="actions">
             <button class="btn btn-primary" onclick="goToPreviousCustomLevel(${prevLevel})">
                 Level ${prevLevel} fortsetzen
