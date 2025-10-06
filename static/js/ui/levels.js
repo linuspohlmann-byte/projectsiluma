@@ -1406,12 +1406,20 @@ async function recomputeLevelGroupStats(byLevel){
       const levelsParam = sortedLevels.join(',');
       
       const response = await fetch(`/api/levels/bulk-stats?levels=${levelsParam}&language=${encodeURIComponent(targetLang)}`, {
-        headers
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.levels) {
+      if (!response.ok) {
+        console.warn(`Bulk-stats API returned ${response.status}: ${response.statusText}`);
+        return groups; // Return groups with default values
+      }
+      
+      const data = await response.json();
+      if (data.success && data.levels) {
           // Use the same logic as applyLevelStates to determine completion
           groups.forEach(group => {
             const label = (typeof window !== 'undefined' && typeof window.tSection === 'function')
@@ -1439,10 +1447,17 @@ async function recomputeLevelGroupStats(byLevel){
             group.total = Math.max(0, group.end - group.start + 1);
             console.log(`📊 Group ${group.name}: ${completed}/${group.total} completed`);
           });
+        } else {
+          console.warn('Bulk-stats API returned invalid data:', data);
         }
       }
     } catch (error) {
       console.warn('Failed to fetch bulk data for group stats:', error);
+      // Don't spam the console with repeated errors
+      if (!groups._errorLogged) {
+        console.error('Bulk-stats API error details:', error.message);
+        groups._errorLogged = true;
+      }
     }
   }
   
