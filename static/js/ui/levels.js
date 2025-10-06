@@ -504,35 +504,40 @@ async function loadFamiliarityData(levelElement, lvl) {
     let totalWords = 0;
     const familiarityCounts = {};
     
-    // Check if we have cached data from bulk API
-    const cachedData = levelElement.dataset.bulkData;
-    if (cachedData) {
-      try {
-        const data = JSON.parse(cachedData);
-        if (data.fam_counts) {
-          // Copy the fam_counts to familiarityCounts
-          Object.assign(familiarityCounts, data.fam_counts);
-          // Sum all familiarity counts to get total words
-          totalWords = Object.values(data.fam_counts).reduce((sum, count) => sum + count, 0);
-        } else {
+    // Check if this is a custom level first
+    const isCustomLevel = levelElement.dataset.customGroupId || levelElement.classList.contains('custom-level');
+    
+    // For custom levels, always use Progress API instead of cached data
+    if (!isCustomLevel) {
+      // Check if we have cached data from bulk API (only for standard levels)
+      const cachedData = levelElement.dataset.bulkData;
+      if (cachedData) {
+        try {
+          const data = JSON.parse(cachedData);
+          if (data.fam_counts) {
+            // Copy the fam_counts to familiarityCounts
+            Object.assign(familiarityCounts, data.fam_counts);
+            // Sum all familiarity counts to get total words
+            totalWords = Object.values(data.fam_counts).reduce((sum, count) => sum + count, 0);
+          } else {
+            // Fallback: set all counts to 0
+            for (let familiarity = 0; familiarity <= 5; familiarity++) {
+              familiarityCounts[familiarity] = 0;
+            }
+          }
+        } catch (error) {
+          console.log('Error parsing cached bulk data for familiarity:', error);
           // Fallback: set all counts to 0
           for (let familiarity = 0; familiarity <= 5; familiarity++) {
             familiarityCounts[familiarity] = 0;
           }
         }
-      } catch (error) {
-        console.log('Error parsing cached bulk data for familiarity:', error);
-        // Fallback: set all counts to 0
-        for (let familiarity = 0; familiarity <= 5; familiarity++) {
-          familiarityCounts[familiarity] = 0;
-        }
       }
-    } else {
-      // No cached data - try to get word count from level data
-      console.log(`No cached data for level ${lvl} familiarity, trying to get word count from level data`);
-      
-      // Check if this is a custom level
-      const isCustomLevel = levelElement.dataset.customGroupId || levelElement.classList.contains('custom-level');
+    }
+    
+    // If no data loaded yet (either no cached data for standard levels, or custom levels), fetch from API
+    if (Object.keys(familiarityCounts).length === 0) {
+      console.log(`Fetching familiarity data from API for level ${lvl}`);
       
       if (isCustomLevel) {
         // For custom levels, use the progress API to get accurate word counts
@@ -588,12 +593,14 @@ async function loadFamiliarityData(levelElement, lvl) {
         }
       }
       
-      // Set familiarity counts (all words start as unknown for new levels)
-      for (let familiarity = 0; familiarity <= 5; familiarity++) {
-        if (familiarity === 0) {
-          familiarityCounts[familiarity] = totalWords; // All words start as unknown
-        } else {
-          familiarityCounts[familiarity] = 0;
+      // Fallback: Set familiarity counts only if not already set from Progress API
+      if (Object.keys(familiarityCounts).length === 0) {
+        for (let familiarity = 0; familiarity <= 5; familiarity++) {
+          if (familiarity === 0) {
+            familiarityCounts[familiarity] = totalWords; // All words start as unknown
+          } else {
+            familiarityCounts[familiarity] = 0;
+          }
         }
       }
     }
