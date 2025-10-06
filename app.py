@@ -1369,7 +1369,14 @@ def api_get_custom_level_progress(group_id, level_number):
         # Extract content length for total words
         total_words = 0
         if level_data.get('content') and level_data['content'].get('items'):
-            total_words = len(level_data['content']['items'])
+            # Count unique words from all items, not just number of items
+            all_words = set()
+            for item in level_data['content']['items']:
+                words = item.get('words', [])
+                for word in words:
+                    if word and word.strip():
+                        all_words.add(word.strip().lower())
+            total_words = len(all_words)
         
         # For now, return default progress (no progress tracking implemented yet)
         # TODO: Implement actual progress tracking for custom levels
@@ -1408,13 +1415,41 @@ def api_get_custom_level_bulk_stats(group_id):
         for level_num in range(1, 11):  # Assuming 10 levels per group
             level_data = get_custom_level(group_id, level_num, user_id)
             if level_data:
-                # For now, return basic data - TODO: implement actual progress tracking
+                # Calculate actual word count from level content
+                total_words = 0
+                fam_counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+                
+                if level_data.get('content'):
+                    content = level_data['content']
+                    
+                    # Get actual word count from content
+                    if content.get('items'):
+                        all_words = set()
+                        for item in content['items']:
+                            words = item.get('words', [])
+                            for word in words:
+                                if word and word.strip():
+                                    all_words.add(word.strip().lower())
+                        total_words = len(all_words)
+                    
+                    # Get actual fam_counts from content
+                    if content.get('fam_counts'):
+                        fam_counts = content['fam_counts']
+                    elif total_words > 0:
+                        # If no fam_counts but has words, initialize with all words as unknown
+                        fam_counts = {'0': total_words, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+                
+                # If no content yet (ultra-lazy loading), use estimated values
+                if total_words == 0:
+                    total_words = 25  # Estimated for ultra-lazy levels
+                    fam_counts = {'0': 25, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+                
                 levels_data[level_num] = {
                     'success': True,
                     'status': 'not_started',
                     'last_score': 0.0,
-                    'fam_counts': {'0': 25, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0},  # Estimated word count
-                    'total_words': 25,
+                    'fam_counts': fam_counts,
+                    'total_words': total_words,
                     'user_progress': {
                         'status': 'not_started',
                         'score': 0.0
