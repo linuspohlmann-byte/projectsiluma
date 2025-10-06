@@ -3089,8 +3089,20 @@ export async function refreshAllLevelColors() {
     if (level && !isNaN(level)) {
       // Reset color protection
       card.dataset.colorSet = 'false';
-      // Re-apply colors
-      await _setLevelColorBasedOnLearnedWords(card, level);
+      
+      // Check if this is a custom level
+      const isCustomLevel = card.dataset.customGroupId || card.classList.contains('custom-level');
+      
+      if (isCustomLevel) {
+        // For custom levels, use the custom level progress function
+        const groupId = card.dataset.customGroupId;
+        if (groupId && typeof window.applyCustomLevelProgress === 'function') {
+          await window.applyCustomLevelProgress(card, level, groupId);
+        }
+      } else {
+        // For standard levels, use the standard function
+        await _setLevelColorBasedOnLearnedWords(card, level);
+      }
     }
   }
 }

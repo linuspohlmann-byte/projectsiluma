@@ -1647,8 +1647,8 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         const level = window.currentCustomGroup?.levels?.find(l => l.level_number === levelNumber);
         if (!level) return;
         
-        // Get word counts from level content
-        const totalWords = level.content ? level.content.length : 0;
+        // Initialize word counts
+        let totalWords = 0;
         let completedWords = 0;
         let levelScore = 0;
         
@@ -1667,6 +1667,7 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
             if (response.ok) {
                 const progressData = await response.json();
                 if (progressData.success) {
+                    totalWords = progressData.total_words || 0;
                     completedWords = progressData.completed_words || 0;
                     levelScore = progressData.level_score || 0;
                     console.log('✅ Custom level progress loaded:', progressData);
@@ -1678,6 +1679,11 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
             }
         } catch (error) {
             console.log('⚠️ No progress data available for custom level, using defaults:', error.message);
+        }
+        
+        // Fallback: if no progress data, try to get word count from level content
+        if (totalWords === 0 && level.content) {
+            totalWords = level.content.length || 0;
         }
         
         // Calculate progress percentage
