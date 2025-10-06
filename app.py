@@ -1,5 +1,6 @@
 import os, json, sqlite3
 from flask import Flask, request, jsonify, send_from_directory, Blueprint, g
+from flask_cors import CORS
 from datetime import datetime, UTC
 
 from server.db import (
@@ -78,6 +79,9 @@ from server.services.tts import ensure_tts_for_alphabet_letter, ensure_tts_for_w
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__)
+
+# Configure CORS to allow all origins for development and production
+CORS(app, origins=["*"], allow_headers=["Content-Type", "Authorization", "X-Native-Language"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
 from pathlib import Path
 import tempfile
@@ -2000,7 +2004,7 @@ def api_level_stats():
     })
 
 @words_bp.get('/api/words')
-@require_auth()
+@require_auth(optional=True)
 def api_words_list():
     # Get language filter from request
     language = request.args.get('language', '')
