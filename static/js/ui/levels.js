@@ -535,43 +535,33 @@ async function loadFamiliarityData(levelElement, lvl) {
       const isCustomLevel = levelElement.dataset.customGroupId || levelElement.classList.contains('custom-level');
       
       if (isCustomLevel) {
-        // For custom levels, try to get word count from the level content
+        // For custom levels, use the progress API to get accurate word counts
         try {
           const groupId = levelElement.dataset.customGroupId;
           if (groupId) {
-            const response = await fetch(`/api/custom-levels/${groupId}/${lvl}`);
+            const headers = {};
+            if (window.authManager && window.authManager.isAuthenticated()) {
+              Object.assign(headers, window.authManager.getAuthHeaders());
+            }
+            
+            const response = await fetch(`/api/custom-levels/${groupId}/${lvl}/progress`, {
+              headers: headers
+            });
             if (response.ok) {
-              const levelData = await response.json();
-              if (levelData.success && levelData.content) {
-                // Check if this is ultra-lazy loading (no sentences generated yet)
-                if (levelData.content.ultra_lazy_loading && !levelData.content.sentences_generated) {
-                  // For ultra-lazy levels, show estimated word count
-                  totalWords = 25; // Estimated 5 sentences × 5 words average
-                  console.log(`Ultra-lazy custom level ${lvl} - estimated ${totalWords} words for familiarity data`);
-                } else if (levelData.content.items && levelData.content.items.length > 0) {
-                  // Count unique words from all items
-                  const allWords = new Set();
-                  levelData.content.items.forEach(item => {
-                    if (item.words && Array.isArray(item.words)) {
-                      item.words.forEach(word => {
-                        if (word && word.trim()) {
-                          allWords.add(word.trim().toLowerCase());
-                        }
-                      });
-                    }
-                  });
-                  totalWords = allWords.size;
-                  console.log(`Custom level ${lvl} has ${totalWords} unique words for familiarity data`);
-                } else {
-                  // Fallback for levels with no items yet
-                  totalWords = 25; // Estimated word count
-                  console.log(`Custom level ${lvl} - fallback estimated ${totalWords} words for familiarity data`);
+              const progressData = await response.json();
+              if (progressData.success) {
+                totalWords = progressData.total_words || 0;
+                console.log(`Custom level ${lvl} familiarity data: ${totalWords} words`);
+                
+                // Initialize familiarity counts with all words as unknown (level 0)
+                for (let familiarity = 0; familiarity <= 5; familiarity++) {
+                  familiarityCounts[familiarity] = familiarity === 0 ? totalWords : 0;
                 }
               }
             }
           }
         } catch (error) {
-          console.log('Error fetching custom level word count for familiarity:', error);
+          console.log('Error fetching custom level progress for familiarity:', error);
         }
       } else {
         // For standard levels, try to get word count from level API
@@ -650,59 +640,39 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
       const isCustomLevel = levelElement.dataset.customGroupId || levelElement.classList.contains('custom-level');
       
       if (isCustomLevel) {
-        // For custom levels, try to get word count from the level content
+        // For custom levels, use the progress API to get accurate word counts
         try {
           const groupId = levelElement.dataset.customGroupId;
           if (groupId) {
-            const response = await fetch(`/api/custom-levels/${groupId}/${lvl}`);
+            const headers = {};
+            if (window.authManager && window.authManager.isAuthenticated()) {
+              Object.assign(headers, window.authManager.getAuthHeaders());
+            }
+            
+            const response = await fetch(`/api/custom-levels/${groupId}/${lvl}/progress`, {
+              headers: headers
+            });
             if (response.ok) {
-              const levelData = await response.json();
-              if (levelData.success && levelData.content) {
-                // Check if this is ultra-lazy loading (no sentences generated yet)
-                if (levelData.content.ultra_lazy_loading && !levelData.content.sentences_generated) {
-                  // For ultra-lazy levels, show estimated word count based on topic
-                  totalWords = 25; // Estimated 5 sentences × 5 words average
-                  console.log(`Ultra-lazy custom level ${lvl} - estimated ${totalWords} words (sentences not generated yet)`);
-                } else if (levelData.content.items && levelData.content.items.length > 0) {
-                  // Count unique words from all items
-                  const allWords = new Set();
-                  levelData.content.items.forEach(item => {
-                    if (item.words && Array.isArray(item.words)) {
-                      item.words.forEach(word => {
-                        if (word && word.trim()) {
-                          allWords.add(word.trim().toLowerCase());
-                        }
-                      });
-                    }
-                  });
-                  totalWords = allWords.size;
-                  console.log(`Custom level ${lvl} has ${totalWords} unique words`);
-                } else {
-                  // Fallback for levels with no items yet
-                  totalWords = 25; // Estimated word count
-                  console.log(`Custom level ${lvl} - fallback estimated ${totalWords} words`);
-                }
+              const progressData = await response.json();
+              if (progressData.success) {
+                totalWords = progressData.total_words || 0;
+                completedWords = progressData.completed_words || 0;
+                console.log(`Custom level ${lvl} progress: ${completedWords}/${totalWords} words`);
                 
-                // Update the cached data with the correct word count
-                if (cachedData) {
-                  try {
-                    const data = JSON.parse(cachedData);
-                    data.total_words = totalWords;
-                    // Create default fam_counts if not present
-                    if (!data.fam_counts) {
-                      data.fam_counts = {0: totalWords, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-                    }
-                    levelElement.dataset.bulkData = JSON.stringify(data);
-                    console.log(`Updated cached data for custom level ${lvl} with ${totalWords} words`);
-                  } catch (error) {
-                    console.log('Error updating cached data:', error);
-                  }
-                }
+                // Create and cache the progress data
+                const progressCache = {
+                  fam_counts: {0: totalWords, 1: 0, 2: 0, 3: 0, 4: 0, 5: completedWords},
+                  status: progressData.status || 'not_started',
+                  last_score: progressData.level_score || 0,
+                  total_words: totalWords
+                };
+                levelElement.dataset.bulkData = JSON.stringify(progressCache);
+                console.log(`Cached custom level ${lvl} progress data:`, progressCache);
               }
             }
           }
         } catch (error) {
-          console.log('Error fetching custom level word count:', error);
+          console.log(`Error fetching custom level progress for ${lvl}:`, error);
         }
       } else {
         // For standard levels, try to get word count from level API
