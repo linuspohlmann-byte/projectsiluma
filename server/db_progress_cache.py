@@ -148,6 +148,7 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
                     familiarity_counts.get(5, 0),
                     now, now
                 ))
+                conn.commit()
             else:
                 cursor = conn.cursor()
                 cursor.execute("""
