@@ -455,18 +455,95 @@ def debug_check_progress_cache_table():
 def debug_create_progress_cache_table():
     """Create custom_level_progress table for caching familiarity data"""
     try:
-        from server.db_progress_cache import create_custom_level_progress_table
+        from server.db_config import get_database_config, get_db_connection
         
-        # Create the progress cache table
-        create_custom_level_progress_table()
+        config = get_database_config()
+        conn = get_db_connection()
         
-        return jsonify({
-            'success': True,
-            'message': 'Custom level progress cache table created successfully'
-        })
+        try:
+            if config['type'] == 'postgresql':
+                cursor = conn.cursor()
+                
+                # Drop table if exists (for clean recreation)
+                cursor.execute("DROP TABLE IF EXISTS custom_level_progress CASCADE;")
+                
+                # Create table with explicit schema
+                cursor.execute("""
+                    CREATE TABLE custom_level_progress (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        group_id INTEGER NOT NULL,
+                        level_number INTEGER NOT NULL,
+                        total_words INTEGER DEFAULT 0,
+                        familiarity_0 INTEGER DEFAULT 0,
+                        familiarity_1 INTEGER DEFAULT 0,
+                        familiarity_2 INTEGER DEFAULT 0,
+                        familiarity_3 INTEGER DEFAULT 0,
+                        familiarity_4 INTEGER DEFAULT 0,
+                        familiarity_5 INTEGER DEFAULT 0,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, group_id, level_number)
+                    );
+                """)
+                
+                # Create indexes
+                cursor.execute("""
+                    CREATE INDEX idx_custom_level_progress_user_group 
+                    ON custom_level_progress(user_id, group_id);
+                """)
+                
+                cursor.execute("""
+                    CREATE INDEX idx_custom_level_progress_last_updated 
+                    ON custom_level_progress(last_updated);
+                """)
+                
+                conn.commit()
+                print("✅ Custom level progress table created successfully in PostgreSQL")
+                
+            else:
+                # SQLite fallback
+                cursor = conn.cursor()
+                cursor.execute("DROP TABLE IF EXISTS custom_level_progress;")
+                cursor.execute("""
+                    CREATE TABLE custom_level_progress (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        group_id INTEGER NOT NULL,
+                        level_number INTEGER NOT NULL,
+                        total_words INTEGER DEFAULT 0,
+                        familiarity_0 INTEGER DEFAULT 0,
+                        familiarity_1 INTEGER DEFAULT 0,
+                        familiarity_2 INTEGER DEFAULT 0,
+                        familiarity_3 INTEGER DEFAULT 0,
+                        familiarity_4 INTEGER DEFAULT 0,
+                        familiarity_5 INTEGER DEFAULT 0,
+                        last_updated TEXT DEFAULT CURRENT_TIMESTAMP,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, group_id, level_number)
+                    );
+                """)
+                conn.commit()
+                print("✅ Custom level progress table created successfully in SQLite")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Custom level progress cache table created successfully'
+            })
+            
+        except Exception as e:
+            print(f"❌ Error creating table: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'error': str(e),
+                'success': False
+            }), 500
+        finally:
+            conn.close()
         
     except Exception as e:
-        print(f"❌ Error creating progress cache table: {e}")
+        print(f"❌ Error in debug endpoint: {e}")
         return jsonify({
             'error': str(e),
             'success': False
