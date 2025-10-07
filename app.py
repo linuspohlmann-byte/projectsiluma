@@ -7278,3 +7278,55 @@ def debug_add_user_comment_column():
             
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/debug/check-word-familiarity", methods=["GET"])
+def debug_check_word_familiarity():
+    """Debug endpoint to check familiarity for a specific word and user"""
+    try:
+        word = request.args.get('word', '').strip()
+        user_id = request.args.get('user_id', '').strip()
+        language = request.args.get('language', 'ka').strip()
+        native_language = request.args.get('native_language', 'de').strip()
+        
+        if not word or not user_id:
+            return jsonify({"success": False, "error": "word and user_id required"}), 400
+        
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            return jsonify({"success": False, "error": "user_id must be a number"}), 400
+        
+        from server.db import get_user_word_familiarity_by_word
+        
+        # Get familiarity data
+        familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
+        
+        if familiarity_data:
+            return jsonify({
+                "success": True,
+                "word": word,
+                "user_id": user_id,
+                "language": language,
+                "native_language": native_language,
+                "familiarity": familiarity_data['familiarity'],
+                "seen_count": familiarity_data['seen_count'],
+                "correct_count": familiarity_data['correct_count'],
+                "user_comment": familiarity_data['user_comment'] or '',
+                "found": True
+            })
+        else:
+            return jsonify({
+                "success": True,
+                "word": word,
+                "user_id": user_id,
+                "language": language,
+                "native_language": native_language,
+                "familiarity": 0,
+                "seen_count": 0,
+                "correct_count": 0,
+                "user_comment": '',
+                "found": False
+            })
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
