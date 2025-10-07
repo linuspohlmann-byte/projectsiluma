@@ -101,8 +101,15 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                 context_description, language, native_language
             )
             
-            save_custom_level(group_id, level_num, titles[i][1], topic, level_content)
-            print(f"✅ Saved level {level_num} to database (ultra-lazy loading)")
+            # Save level to database
+            success = save_custom_level(group_id, level_num, titles[i][1], topic, level_content)
+            if success:
+                # Update word count after saving (for ultra-lazy levels, this will be 0)
+                update_word_count_for_level(group_id, level_num, level_content)
+                print(f"✅ Saved level {level_num} to database (ultra-lazy loading)")
+            else:
+                print(f"❌ Failed to save level {level_num}")
+                return False
         
         print(f"🎉 ULTRA-LAZY LOADING generation complete: {num_levels} levels created in ~5-10 seconds!")
         print("📝 Sentences and word enrichment will happen when users start individual levels")
@@ -250,37 +257,58 @@ def calculate_word_count_from_content(content: Dict[str, Any]) -> int:
     
     return len(all_words)
 
+def update_word_count_for_level(group_id: int, level_number: int, content: Dict[str, Any]) -> bool:
+    """Update word count for a specific level in the database"""
+    try:
+        word_count = calculate_word_count_from_content(content)
+        
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                execute_query(conn, '''
+                    UPDATE custom_levels 
+                    SET word_count = %s, updated_at = %s
+                    WHERE group_id = %s AND level_number = %s
+                ''', (word_count, datetime.now(UTC).isoformat(), group_id, level_number))
+            else:
+                # SQLite syntax
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE custom_levels 
+                    SET word_count = ?, updated_at = ?
+                    WHERE group_id = ? AND level_number = ?
+                ''', (word_count, datetime.now(UTC).isoformat(), group_id, level_number))
+                conn.commit()
+            
+            print(f"✅ Updated word count for level {group_id}/{level_number}: {word_count}")
+            return True
+            
+        except Exception as e:
+            print(f"Error updating word count for level {group_id}/{level_number}: {e}")
+            return False
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in update_word_count_for_level: {e}")
+        return False
+
 def save_custom_level(group_id: int, level_number: int, title: str, topic: str, content: Dict[str, Any]) -> bool:
-    """Save a custom level to the database with word count"""
-    from server.db_config import get_database_config, get_db_connection, execute_query
-    
-    # Calculate word count from content
-    word_count = calculate_word_count_from_content(content)
-    
-    config = get_database_config()
-    conn = get_db_connection()
+    """Save a custom level to the database"""
+    conn = get_db()
     try:
         now = datetime.now(UTC).isoformat()
-        content_json = json.dumps(content, ensure_ascii=False)
+        conn.execute('''
+            INSERT INTO custom_levels 
+            (group_id, level_number, title, topic, content, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (group_id, level_number, title, topic, json.dumps(content, ensure_ascii=False), now, now))
         
-        if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            execute_query(conn, '''
-                INSERT INTO custom_levels 
-                (group_id, level_number, title, topic, content, word_count, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ''', (group_id, level_number, title, topic, content_json, word_count, now, now))
-        else:
-            # SQLite syntax
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO custom_levels 
-                (group_id, level_number, title, topic, content, word_count, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (group_id, level_number, title, topic, content_json, word_count, now, now))
-            conn.commit()
-        
-        print(f"✅ Saved level {group_id}/{level_number} with word count: {word_count}")
+        conn.commit()
         return True
     except Exception as e:
         print(f"Error saving custom level: {e}")
