@@ -1,10 +1,6 @@
--- PostgreSQL Database Schema Fix
+-- PostgreSQL Database Schema Fix for Railway
 -- Fix database schema for user_word_familiarity table
 -- This script should be run on Railway PostgreSQL to fix the missing word_hash column
--- Database: PostgreSQL (Railway)
--- 
--- NOTE: This is PostgreSQL syntax, not SQL Server syntax
--- If your editor shows syntax errors, it's because it's using the wrong SQL dialect
 
 -- First, check if the table exists and what columns it has
 SELECT column_name, data_type, is_nullable 
@@ -16,7 +12,7 @@ ORDER BY ordinal_position;
 DROP TABLE IF EXISTS user_word_familiarity CASCADE;
 
 -- Create the user_word_familiarity table with the correct schema
-CREATE TABLE IF NOT EXISTS user_word_familiarity (
+CREATE TABLE user_word_familiarity (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     word_hash VARCHAR(32) NOT NULL,
@@ -31,13 +27,13 @@ CREATE TABLE IF NOT EXISTS user_word_familiarity (
 );
 
 -- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_user_hash 
+CREATE INDEX idx_user_word_familiarity_user_hash 
 ON user_word_familiarity(user_id, word_hash);
 
-CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_native_lang 
+CREATE INDEX idx_user_word_familiarity_native_lang 
 ON user_word_familiarity(native_language);
 
-CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_familiarity 
+CREATE INDEX idx_user_word_familiarity_familiarity 
 ON user_word_familiarity(familiarity);
 
 -- Verify the table was created correctly
@@ -46,5 +42,5 @@ FROM information_schema.columns
 WHERE table_name = 'user_word_familiarity' 
 ORDER BY ordinal_position;
 
--- Show the table structure
+-- Show the table structure (PostgreSQL specific)
 \d user_word_familiarity;
