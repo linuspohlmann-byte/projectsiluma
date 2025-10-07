@@ -284,6 +284,58 @@ def debug_tts_status():
             'success': False
         }), 500
 
+@app.route('/fix-database', methods=['GET', 'POST'])
+def fix_database_endpoint():
+    """Simple endpoint to fix database schema"""
+    try:
+        print("🚨 Database fix endpoint called")
+        from emergency_fix import emergency_database_fix
+        success = emergency_database_fix()
+        if success:
+            return f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0;">
+                <div style="background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto;">
+                    <h1 style="color: #059669;">✅ Database Fix Successful!</h1>
+                    <p>The database schema has been fixed successfully.</p>
+                    <p><strong>Fixed issues:</strong></p>
+                    <ul>
+                        <li>Added missing <code>word_hash</code> column</li>
+                        <li>Added missing <code>native_language</code> column</li>
+                        <li>Created proper indexes</li>
+                    </ul>
+                    <p>The custom level group word familiarity functionality should now work properly.</p>
+                    <a href="/" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to App</a>
+                </div>
+            </body>
+            </html>
+            """
+        else:
+            return f"""
+            <html>
+            <body style="font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0;">
+                <div style="background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto;">
+                    <h1 style="color: #ea580c;">❌ Database Fix Failed</h1>
+                    <p>The database fix encountered an error.</p>
+                    <a href="/" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to App</a>
+                </div>
+            </body>
+            </html>
+            """
+    except Exception as e:
+        return f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0;">
+            <div style="background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #dc2626;">❌ Database Fix Error</h1>
+                <p>Error: {str(e)}</p>
+                <a href="/" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to App</a>
+            </div>
+        </body>
+        </html>
+        """
+
+@app.get('/api/debug/fix-database-schema')
 @app.post('/api/debug/fix-database-schema')
 def debug_fix_database_schema():
     """Emergency endpoint to fix database schema issues"""
