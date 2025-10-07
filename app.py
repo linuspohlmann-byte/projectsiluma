@@ -449,6 +449,55 @@ def debug_cleanup_duplicate_words():
             'success': False
         }), 500
 
+@app.get('/api/debug/list-georgian-words')
+def debug_list_georgian_words():
+    """List Georgian words in the database"""
+    try:
+        import os
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        
+        # Get database connection
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL environment variable not set'
+            }), 500
+        
+        conn = psycopg2.connect(database_url)
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Get Georgian words
+            cursor.execute("""
+                SELECT word, language, native_language, translation, example
+                FROM words 
+                WHERE language = 'ka'
+                ORDER BY word
+                LIMIT 20;
+            """)
+            words = cursor.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'words': [dict(word) for word in words],
+                'count': len(words)
+            })
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Failed to list Georgian words: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/add-words-unique-constraint')
 def debug_add_words_unique_constraint():
     """Add UNIQUE constraint to words table for (word, language, native_language)"""
