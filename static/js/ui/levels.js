@@ -26,6 +26,9 @@ let BULK_STATS_LAST_FETCH = 0;
 let BULK_STATS_FETCH_THROTTLE = 2000; // 2 seconds throttle
 let GROUPS_LOADING_LOCK = false; // Prevent race conditions in groups loading
 
+// Configuration: Disable standard level groups (they won't be loaded in library)
+const DISABLE_STANDARD_LEVEL_GROUPS = true; // Set to false to re-enable standard groups
+
 // Function to show elegant level locked message
 function showLevelLockedMessage(level, prevLevel, prevScore) {
   // Remove any existing message
@@ -1131,6 +1134,14 @@ function ensureLevelGroups(){
   if(Array.isArray(LEVEL_GROUP_DEFS) && LEVEL_GROUP_DEFS.length){
     return LEVEL_GROUP_DEFS;
   }
+  
+  // If standard groups are disabled, return empty array
+  if (DISABLE_STANDARD_LEVEL_GROUPS) {
+    console.log('🚫 Standard level groups are disabled - only custom groups will be shown');
+    LEVEL_GROUP_DEFS = [];
+    return LEVEL_GROUP_DEFS;
+  }
+  
   const spec = readCurriculum() || {};
   const icons = ['🎯','🎬','🧭','🌍','🏛️','🚀','📚'];
   LEVEL_GROUP_DEFS = (spec.sections || []).map((section, idx) => {
@@ -1773,9 +1784,11 @@ async function renderLevelGroupsView(byLevel){
     }
   });
 
-  // Load bulk data for all levels first
+  // Load bulk data for all levels first (only if there are standard levels)
   if(allLevels.length){
     await ensureBulkDataForLevels(allLevels);
+  } else {
+    console.log('📝 No standard level groups to load - only custom groups will be displayed');
   }
   
   // Now recompute group stats with the loaded data
@@ -1935,6 +1948,16 @@ export function showLevelGroupsHome(){
     console.log('🔄 Rendering levels after timeout');
     renderLevels();
   }, 0);
+  
+  // If standard groups are disabled and user is authenticated, ensure custom groups are loaded
+  if (DISABLE_STANDARD_LEVEL_GROUPS && window.authManager && window.authManager.isAuthenticated()) {
+    setTimeout(() => {
+      if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+        console.log('🔄 Loading custom groups for authenticated user');
+        window.showCustomLevelGroupsInLibrary();
+      }
+    }, 100);
+  }
   
   try{
     window.scrollTo({ top: 0, behavior: 'smooth' });
