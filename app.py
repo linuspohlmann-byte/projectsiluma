@@ -3963,19 +3963,15 @@ def api_word_get():
         data['correct_count'] = 0
         data['user_comment'] = ''
     
+    # Always include familiarity fields in response
     # Keep user-specific familiarity data for authenticated users
-    # Only remove global familiarity data if it exists and we have user-specific data
-    if is_authenticated:
-        # Keep user-specific familiarity data
-        pass
-    else:
-        # Remove familiarity from global data if it exists
-        if 'familiarity' in data:
-            del data['familiarity']
-        if 'seen_count' in data:
-            del data['seen_count']
-        if 'correct_count' in data:
-            del data['correct_count']
+    # For unauthenticated users, return default values
+    if not is_authenticated:
+        # Ensure default values are set for unauthenticated users
+        data['familiarity'] = 0
+        data['seen_count'] = 0
+        data['correct_count'] = 0
+        data['user_comment'] = ''
     
     if data.get('info'):
         try:
