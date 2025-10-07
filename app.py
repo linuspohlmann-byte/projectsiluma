@@ -4075,10 +4075,10 @@ def api_word_upsert():
     user_id = user_context['user_id']
     is_authenticated = user_id is not None
     
-    # For testing, use user_id = 1
-    # if not user_id:
-    #     user_id = 1
-    #     is_authenticated = True
+    # For testing, use user_id from payload if provided
+    if not user_id and payload.get('user_id'):
+        user_id = payload.get('user_id')
+        is_authenticated = True
     
     # Only save word familiarity updates if user is authenticated
     if is_authenticated:
