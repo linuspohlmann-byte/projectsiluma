@@ -1961,7 +1961,10 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         const wordsText = levelElement.querySelector('.words-text');
         const learnedText = levelElement.querySelector('.learned-text');
         
-        if (wordsText) wordsText.textContent = totalWords;
+        // Calculate total words as sum of all familiarity counts (same as back side)
+        const calculatedTotalWords = Object.values(familiarityCounts).reduce((sum, count) => sum + count, 0);
+        
+        if (wordsText) wordsText.textContent = calculatedTotalWords;
         if (learnedText) learnedText.textContent = completedWords;
         
         // Remove existing status classes
