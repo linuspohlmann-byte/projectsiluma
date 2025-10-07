@@ -2240,16 +2240,11 @@ async function updateWordCountsProgressively(groupId, levels) {
         const immediateLevels = levels.slice(0, 3);
         const backgroundLevels = levels.slice(3);
         
-        // Update immediate levels one by one (fast feedback)
-        for (let i = 0; i < immediateLevels.length; i++) {
-            const level = immediateLevels[i];
-            await updateSingleLevelWordCount(groupId, level.level_number);
-            
-            // Small delay between updates for smooth UX
-            if (i < immediateLevels.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 300));
-            }
-        }
+        // Update immediate levels in parallel for faster feedback
+        const immediatePromises = immediateLevels.map(level => 
+            updateSingleLevelWordCount(groupId, level.level_number)
+        );
+        await Promise.all(immediatePromises);
         
         // Update remaining levels in background (batched)
         if (backgroundLevels.length > 0) {
@@ -2285,7 +2280,7 @@ async function updateSingleLevelWordCount(groupId, levelNumber) {
 
 // Update remaining levels in batches
 async function updateRemainingLevelWordCounts(groupId, levels) {
-    const batchSize = 2;
+    const batchSize = 4; // Increased from 2 to 4 for faster processing
     const batches = [];
     
     for (let i = 0; i < levels.length; i += batchSize) {
@@ -2299,9 +2294,9 @@ async function updateRemainingLevelWordCounts(groupId, levels) {
         const promises = batch.map(level => updateSingleLevelWordCount(groupId, level.level_number));
         await Promise.all(promises);
         
-        // Small delay between batches
+        // Minimal delay between batches (reduced from 1000ms to 200ms)
         if (batchIndex < batches.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
     }
 }
@@ -2523,46 +2518,69 @@ async function generateRemainingLevelsInBackground(groupId, remainingLevels) {
     try {
         console.log(`🔄 Background generation started for ${remainingLevels.length} levels`);
         
-        // Process levels in smaller batches to avoid overwhelming the system
-        const batchSize = 2; // Generate 2 levels at a time
-        const batches = [];
-        
-        for (let i = 0; i < remainingLevels.length; i += batchSize) {
-            batches.push(remainingLevels.slice(i, i + batchSize));
-        }
-        
-        console.log(`📦 Processing ${batches.length} batches of ${batchSize} levels each`);
-        
-        // Process batches with delays between them
-        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-            const batch = batches[batchIndex];
-            console.log(`🔄 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} levels)`);
+        // For small numbers of levels, generate all at once for maximum speed
+        if (remainingLevels.length <= 6) {
+            console.log(`🚀 Generating all ${remainingLevels.length} levels in parallel for maximum speed`);
             
             try {
-                // Generate batch
-                const batchResult = await generateAllCustomLevelsContent(groupId, batch);
+                const batchResult = await generateAllCustomLevelsContent(groupId, remainingLevels);
                 
                 if (batchResult.successful > 0) {
-                    console.log(`✅ Batch ${batchIndex + 1} completed: ${batchResult.successful} levels generated`);
-                    
-                    // Update UI to show progress
-                    updateLevelGenerationProgress(groupId, batch, true);
+                    console.log(`✅ All levels completed: ${batchResult.successful} levels generated`);
+                    updateLevelGenerationProgress(groupId, remainingLevels, true);
                 }
                 
                 if (batchResult.failed > 0) {
-                    console.warn(`⚠️ Batch ${batchIndex + 1} had ${batchResult.failed} failures`);
-                    updateLevelGenerationProgress(groupId, batch, false);
+                    console.warn(`⚠️ ${batchResult.failed} levels failed to generate`);
+                    updateLevelGenerationProgress(groupId, remainingLevels, false);
                 }
                 
             } catch (error) {
-                console.error(`❌ Error in batch ${batchIndex + 1}:`, error);
-                updateLevelGenerationProgress(groupId, batch, false);
+                console.error(`❌ Error generating all levels:`, error);
+                updateLevelGenerationProgress(groupId, remainingLevels, false);
+            }
+        } else {
+            // For larger numbers, use optimized batching
+            const batchSize = 4; // Increased from 3 to 4 for faster generation
+            const batches = [];
+            
+            for (let i = 0; i < remainingLevels.length; i += batchSize) {
+                batches.push(remainingLevels.slice(i, i + batchSize));
             }
             
-            // Add delay between batches to avoid overwhelming the system
-            if (batchIndex < batches.length - 1) {
-                console.log(`⏳ Waiting 2 seconds before next batch...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log(`📦 Processing ${batches.length} batches of ${batchSize} levels each`);
+            
+            // Process batches with minimal delays for faster completion
+            for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+                const batch = batches[batchIndex];
+                console.log(`🔄 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} levels)`);
+                
+                try {
+                    // Generate batch
+                    const batchResult = await generateAllCustomLevelsContent(groupId, batch);
+                    
+                    if (batchResult.successful > 0) {
+                        console.log(`✅ Batch ${batchIndex + 1} completed: ${batchResult.successful} levels generated`);
+                        
+                        // Update UI to show progress
+                        updateLevelGenerationProgress(groupId, batch, true);
+                    }
+                    
+                    if (batchResult.failed > 0) {
+                        console.warn(`⚠️ Batch ${batchIndex + 1} had ${batchResult.failed} failures`);
+                        updateLevelGenerationProgress(groupId, batch, false);
+                    }
+                    
+                } catch (error) {
+                    console.error(`❌ Error in batch ${batchIndex + 1}:`, error);
+                    updateLevelGenerationProgress(groupId, batch, false);
+                }
+                
+                // Minimal delay between batches (reduced from 500ms to 200ms)
+                if (batchIndex < batches.length - 1) {
+                    console.log(`⏳ Waiting 200ms before next batch...`);
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
             }
         }
         
