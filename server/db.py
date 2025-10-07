@@ -631,7 +631,7 @@ def init_db():
         
         # User word familiarity table
         execute_query(conn, """
-            CREATE TABLE IF NOT EXISTS user_words_familiarity (
+            CREATE TABLE IF NOT EXISTS user_word_familiarity (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 word_id INTEGER NOT NULL,
@@ -904,7 +904,7 @@ def init_db():
         """)
         
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_words_familiarity (
+        CREATE TABLE IF NOT EXISTS user_word_familiarity (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id INTEGER NOT NULL,
           word_id INTEGER NOT NULL,
@@ -1765,26 +1765,26 @@ def update_user_progress(user_id: int, language: str, level: int, status: str, s
     finally:
         conn.close()
 
-def get_user_words_familiarity(user_id: int, word_id: int):
+def get_user_word_familiarity(user_id: int, word_id: int):
     """Get user's familiarity with a specific word"""
     conn = get_db()
     try:
         row = conn.execute(
-            'SELECT familiarity, seen_count, correct_count, user_comment FROM user_words_familiarity WHERE user_id=? AND word_id=?',
+            'SELECT familiarity, seen_count, correct_count, user_comment FROM user_word_familiarity WHERE user_id=? AND word_id=?',
             (user_id, word_id)
         ).fetchone()
         return row
     finally:
         conn.close()
 
-def update_user_words_familiarity(user_id: int, word_id: int, familiarity: int, seen_count: int = None, correct_count: int = None, user_comment: str = None):
+def update_user_word_familiarity(user_id: int, word_id: int, familiarity: int, seen_count: int = None, correct_count: int = None, user_comment: str = None):
     """Update user's familiarity with a word"""
     conn = get_db(); cur = conn.cursor()
     try:
         now = datetime.now(UTC).isoformat()
         
         # Get current values if not provided
-        current = get_user_words_familiarity(user_id, word_id)
+        current = get_user_word_familiarity(user_id, word_id)
         if current:
             seen_count = seen_count if seen_count is not None else current['seen_count']
             correct_count = correct_count if correct_count is not None else current['correct_count']
@@ -1795,7 +1795,7 @@ def update_user_words_familiarity(user_id: int, word_id: int, familiarity: int, 
             user_comment = user_comment or ''
         
         cur.execute('''
-            INSERT OR REPLACE INTO user_words_familiarity 
+            INSERT OR REPLACE INTO user_word_familiarity 
             (user_id, word_id, familiarity, seen_count, correct_count, user_comment, created_at, updated_at)
             VALUES (?,?,?,?,?,?,?,?)
         ''', (user_id, word_id, familiarity, seen_count, correct_count, user_comment, now, now))
@@ -1804,7 +1804,7 @@ def update_user_words_familiarity(user_id: int, word_id: int, familiarity: int, 
     finally:
         conn.close()
 
-def get_user_words_familiarity_by_word(user_id: int, word: str, language: str, native_language: str):
+def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, native_language: str):
     """Get user's familiarity with a word by word text, language, and native language"""
     from server.db_config import get_database_config, get_db_connection, execute_query
     
@@ -1816,7 +1816,7 @@ def get_user_words_familiarity_by_word(user_id: int, word: str, language: str, n
             # PostgreSQL syntax
             result = execute_query(conn, '''
                 SELECT uwf.familiarity, uwf.seen_count, uwf.correct_count, uwf.user_comment
-                FROM user_words_familiarity uwf
+                FROM user_word_familiarity uwf
                 JOIN words w ON uwf.word_id = w.id
                 WHERE uwf.user_id = %s AND w.word = %s AND w.language = %s AND w.native_language = %s
             ''', (user_id, word, language, native_language))
@@ -1826,7 +1826,7 @@ def get_user_words_familiarity_by_word(user_id: int, word: str, language: str, n
             cur = conn.cursor()
             row = cur.execute('''
                 SELECT uwf.familiarity, uwf.seen_count, uwf.correct_count, uwf.user_comment
-                FROM user_words_familiarity uwf
+                FROM user_word_familiarity uwf
                 JOIN words w ON uwf.word_id = w.id
                 WHERE uwf.user_id = ? AND w.word = ? AND w.language = ? AND w.native_language = ?
             ''', (user_id, word, language, native_language)).fetchone()
@@ -1835,7 +1835,7 @@ def get_user_words_familiarity_by_word(user_id: int, word: str, language: str, n
     finally:
         conn.close()
 
-def update_user_words_familiarity_by_word(user_id: int, word: str, language: str, native_language: str, familiarity: int, user_comment: str = None):
+def update_user_word_familiarity_by_word(user_id: int, word: str, language: str, native_language: str, familiarity: int, user_comment: str = None):
     """Update user's familiarity with a word by word text, language, and native language"""
     from server.db_config import get_database_config, get_db_connection, execute_query
     
@@ -1860,13 +1860,13 @@ def update_user_words_familiarity_by_word(user_id: int, word: str, language: str
         word_id = word_row['id'] if config['type'] == 'postgresql' else word_row[0]
         
         # Get current values
-        current = get_user_words_familiarity(user_id, word_id)
+        current = get_user_word_familiarity(user_id, word_id)
         seen_count = current['seen_count'] if current else 0
         correct_count = current['correct_count'] if current else 0
         user_comment = user_comment or (current.get('user_comment', '') if current else '')
         
         # Update familiarity
-        update_user_words_familiarity(user_id, word_id, familiarity, seen_count, correct_count, user_comment)
+        update_user_word_familiarity(user_id, word_id, familiarity, seen_count, correct_count, user_comment)
         return True
         
     except Exception as e:
@@ -1882,7 +1882,7 @@ def get_user_familiarity_counts(user_id: int, language: str = None):
         if language:
             query = '''
                 SELECT uwf.familiarity, COUNT(*) as count
-                FROM user_words_familiarity uwf
+                FROM user_word_familiarity uwf
                 JOIN words w ON uwf.word_id = w.id
                 WHERE uwf.user_id = ? AND (w.language = ? OR ? = "")
                 GROUP BY uwf.familiarity
@@ -1891,7 +1891,7 @@ def get_user_familiarity_counts(user_id: int, language: str = None):
         else:
             query = '''
                 SELECT familiarity, COUNT(*) as count
-                FROM user_words_familiarity
+                FROM user_word_familiarity
                 WHERE user_id = ?
                 GROUP BY familiarity
             '''

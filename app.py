@@ -582,52 +582,52 @@ def debug_run_database_schema_migration():
         try:
             print("🚀 Starting database schema migration...")
             
-            # Fix user_words_familiarity table
-            print("🔧 Fixing user_words_familiarity table schema...")
+            # Fix user_word_familiarity table
+            print("🔧 Fixing user_word_familiarity table schema...")
             
             # Add word_hash column if missing
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'user_words_familiarity' AND column_name = 'word_hash'
+                    WHERE table_name = 'user_word_familiarity' AND column_name = 'word_hash'
                 );
             """)
             word_hash_exists = cursor.fetchone()[0]
             
             if not word_hash_exists:
-                cursor.execute("ALTER TABLE user_words_familiarity ADD COLUMN word_hash VARCHAR(64);")
-                print("✅ Added word_hash column to user_words_familiarity")
+                cursor.execute("ALTER TABLE user_word_familiarity ADD COLUMN word_hash VARCHAR(64);")
+                print("✅ Added word_hash column to user_word_familiarity")
             else:
-                print("ℹ️ word_hash column already exists in user_words_familiarity")
+                print("ℹ️ word_hash column already exists in user_word_familiarity")
             
             # Add native_language column if missing
             cursor.execute("""
                 SELECT EXISTS (
                     SELECT 1 FROM information_schema.columns 
-                    WHERE table_name = 'user_words_familiarity' AND column_name = 'native_language'
+                    WHERE table_name = 'user_word_familiarity' AND column_name = 'native_language'
                 );
             """)
             native_language_exists = cursor.fetchone()[0]
             
             if not native_language_exists:
-                cursor.execute("ALTER TABLE user_words_familiarity ADD COLUMN native_language VARCHAR(10);")
-                print("✅ Added native_language column to user_words_familiarity")
+                cursor.execute("ALTER TABLE user_word_familiarity ADD COLUMN native_language VARCHAR(10);")
+                print("✅ Added native_language column to user_word_familiarity")
             else:
-                print("ℹ️ native_language column already exists in user_words_familiarity")
+                print("ℹ️ native_language column already exists in user_word_familiarity")
             
             # Create index on word_hash if it doesn't exist
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_user_words_familiarity_user_hash 
-                ON user_words_familiarity(user_id, word_hash);
+                CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_user_hash 
+                ON user_word_familiarity(user_id, word_hash);
             """)
-            print("✅ Created index on user_words_familiarity(user_id, word_hash)")
+            print("✅ Created index on user_word_familiarity(user_id, word_hash)")
             
             # Populate word_hash values for existing records
             print("🔧 Populating word_hash values for existing records...")
             cursor.execute("""
                 SELECT uwf.id, w.word, COALESCE(uwf.native_language, w.native_language) as native_language
-                FROM user_words_familiarity uwf
+                FROM user_word_familiarity uwf
                 JOIN words w ON uwf.word_id = w.id
                 WHERE uwf.word_hash IS NULL;
             """)
@@ -642,7 +642,7 @@ def debug_run_database_schema_migration():
                     word_hash = hashlib.sha256(f"{word}_{native_language}".encode()).hexdigest()
                     
                     cursor.execute("""
-                        UPDATE user_words_familiarity 
+                        UPDATE user_word_familiarity 
                         SET word_hash = %s, native_language = %s
                         WHERE id = %s;
                     """, (word_hash, native_language, record_id))
@@ -1758,7 +1758,7 @@ def api_level_finish():
     if is_authenticated and tl and lvl_val:
         # Save to user-specific data
         try:
-            from server.db import update_user_progress, update_user_words_familiarity
+            from server.db import update_user_progress, update_user_word_familiarity
             
             # Update user progress
             score = float(row['score']) if row['score'] is not None else 0.0
@@ -1795,7 +1795,7 @@ def api_level_finish():
                 
                 # Update word familiarity for each word
                 for word_id in word_ids:
-                    update_user_words_familiarity(
+                    update_user_word_familiarity(
                         user_id=user_id,
                         word_id=word_id,
                         familiarity=5
@@ -2623,7 +2623,7 @@ def api_refresh_custom_level_group_progress_cache(group_id):
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/sync-words')
 @require_auth()
 def api_sync_custom_level_words(group_id):
-    """Sync words from custom level to PostgreSQL words and user_words_familiarity tables"""
+    """Sync words from custom level to PostgreSQL words and user_word_familiarity tables"""
     try:
         # Get user from Flask's g object (set by require_auth decorator)
         user = g.current_user
@@ -3721,7 +3721,7 @@ def api_words_list():
             return jsonify([])
         
         # Get familiarity data for filtered words
-        familiarity_data = db_manager.get_user_words_familiarity(user_id, native_language, filtered_word_hashes)
+        familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, filtered_word_hashes)
         
         # Use filtered word hashes for processing
         word_hashes = filtered_word_hashes
@@ -3925,9 +3925,9 @@ def api_word_get():
     is_authenticated = user_id is not None
     if user_id:
         try:
-            # Get familiarity from PostgreSQL user_words_familiarity table
-            from server.db import get_user_words_familiarity_by_word
-            familiarity_data = get_user_words_familiarity_by_word(user_id, word, language, native_language)
+            # Get familiarity from PostgreSQL user_word_familiarity table
+            from server.db import get_user_word_familiarity_by_word
+            familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
             
             if familiarity_data:
                 data['familiarity'] = familiarity_data['familiarity'] or 0
@@ -4082,7 +4082,7 @@ def api_word_upsert():
     
     # Only save word familiarity updates if user is authenticated
     if is_authenticated:
-        # Save to PostgreSQL user_words_familiarity table
+        # Save to PostgreSQL user_word_familiarity table
         try:
             language = payload.get('language', 'en')
             native_language = user_context.get('native_language', 'en')
@@ -4090,8 +4090,8 @@ def api_word_upsert():
             user_comment = payload.get('user_comment', '')
                 
             # Update word familiarity in PostgreSQL database
-            from server.db import update_user_words_familiarity_by_word
-            success = update_user_words_familiarity_by_word(
+            from server.db import update_user_word_familiarity_by_word
+            success = update_user_word_familiarity_by_word(
                     user_id=user_id,
                 word=word,
                 language=language,
@@ -4248,7 +4248,7 @@ def api_words_adjust_familiarity():
         word_hash = db_manager.generate_word_hash(word, language, native_language)
         
         # Get current familiarity from local database
-        familiarity_data = db_manager.get_user_words_familiarity(user_id, native_language, [word_hash])
+        familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, [word_hash])
         current_familiarity = 0
         if word_hash in familiarity_data:
             current_familiarity = familiarity_data[word_hash]['familiarity']
@@ -4256,7 +4256,7 @@ def api_words_adjust_familiarity():
         new_familiarity = max(0, min(5, current_familiarity + delta))
             
         # Update familiarity in local database
-        success = db_manager.update_user_words_familiarity(
+        success = db_manager.update_user_word_familiarity(
             user_id=user_id,
             native_language=native_language,
             word_hash=word_hash,
@@ -5078,7 +5078,7 @@ def api_practice_grade():
             word_hash = db_manager.generate_word_hash(word, lang, native_language)
             
             # Get current familiarity to calculate new value
-            familiarity_data = db_manager.get_user_words_familiarity(user_id, native_language, [word_hash])
+            familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, [word_hash])
             current_familiarity = 0
             if word_hash in familiarity_data:
                 current_familiarity = familiarity_data[word_hash]['familiarity']
@@ -5087,7 +5087,7 @@ def api_practice_grade():
             new_familiarity = max(0, min(5, current_familiarity + delta))
             
             # Update familiarity in user's local database
-            success = db_manager.update_user_words_familiarity(
+            success = db_manager.update_user_word_familiarity(
                 user_id=user_id,
                 native_language=native_language,
                 word_hash=word_hash,
@@ -5769,7 +5769,7 @@ def api_practice_start_fs():
                 word_hashes.append(word_hash)
             
             # Get familiarity data for all words at once
-            familiarity_data = db_manager.get_user_words_familiarity(user_id, native_language, word_hashes)
+            familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, word_hashes)
             
             # Filter words based on familiarity
             for w in words:
@@ -6659,7 +6659,7 @@ def api_setup_database():
                 
                 # User word familiarity table
                 execute_query(conn, """
-                    CREATE TABLE IF NOT EXISTS user_words_familiarity (
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER NOT NULL,
                         word_id INTEGER NOT NULL,
@@ -6881,7 +6881,7 @@ def api_create_postgresql_tables():
         
         # User word familiarity table
         execute_query(conn, """
-            CREATE TABLE IF NOT EXISTS user_words_familiarity (
+            CREATE TABLE IF NOT EXISTS user_word_familiarity (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 word_id INTEGER NOT NULL,
@@ -7188,7 +7188,7 @@ def api_test_postgresql():
 
 @app.route("/api/debug/add-user-comment-column", methods=["POST"])
 def debug_add_user_comment_column():
-    """Debug endpoint to add user_comment column to user_words_familiarity table"""
+    """Debug endpoint to add user_comment column to user_word_familiarity table"""
     try:
         from server.db_config import get_database_config, get_db_connection, execute_query
         
@@ -7201,38 +7201,38 @@ def debug_add_user_comment_column():
                 result = execute_query(conn, """
                     SELECT column_name 
                     FROM information_schema.columns 
-                    WHERE table_name = "user_words_familiarity" AND column_name = "user_comment"
+                    WHERE table_name = "user_word_familiarity" AND column_name = "user_comment"
                 """)
                 
                 if not result.fetchone():
-                    print("Adding user_comment column to user_words_familiarity table...")
+                    print("Adding user_comment column to user_word_familiarity table...")
                     execute_query(conn, """
-                        ALTER TABLE user_words_familiarity 
+                        ALTER TABLE user_word_familiarity 
                         ADD COLUMN user_comment TEXT
                     """)
                     conn.commit()
-                    print("✅ Added user_comment column to user_words_familiarity table")
+                    print("✅ Added user_comment column to user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column added successfully"})
                 else:
-                    print("user_comment column already exists in user_words_familiarity table")
+                    print("user_comment column already exists in user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column already exists"})
             else:
                 # SQLite syntax - check if column exists first
                 cur = conn.cursor()
-                cur.execute("PRAGMA table_info(user_words_familiarity)")
+                cur.execute("PRAGMA table_info(user_word_familiarity)")
                 columns = [column[1] for column in cur.fetchall()]
                 
                 if "user_comment" not in columns:
-                    print("Adding user_comment column to user_words_familiarity table...")
+                    print("Adding user_comment column to user_word_familiarity table...")
                     cur.execute("""
-                        ALTER TABLE user_words_familiarity 
+                        ALTER TABLE user_word_familiarity 
                         ADD COLUMN user_comment TEXT
                     """)
                     conn.commit()
-                    print("✅ Added user_comment column to user_words_familiarity table")
+                    print("✅ Added user_comment column to user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column added successfully"})
                 else:
-                    print("user_comment column already exists in user_words_familiarity table")
+                    print("user_comment column already exists in user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column already exists"})
                     
         finally:
@@ -7266,11 +7266,11 @@ def debug_check_word_familiarity():
         
         try:
             if config['type'] == 'postgresql':
-                # Check if user_words_familiarity table exists
+                # Check if user_word_familiarity table exists
                 result = execute_query(conn, '''
                     SELECT EXISTS (
                         SELECT FROM information_schema.tables 
-                        WHERE table_name = 'user_words_familiarity'
+                        WHERE table_name = 'user_word_familiarity'
                     );
                 ''')
                 table_exists = result.fetchone()[0]
@@ -7278,7 +7278,7 @@ def debug_check_word_familiarity():
                 if not table_exists:
                     return jsonify({
                         "success": False, 
-                        "error": "user_words_familiarity table does not exist",
+                        "error": "user_word_familiarity table does not exist",
                         "word": word,
                         "user_id": user_id
                     }), 404
@@ -7310,7 +7310,7 @@ def debug_check_word_familiarity():
                 # Check familiarity
                 result = execute_query(conn, '''
                     SELECT familiarity, seen_count, correct_count, user_comment
-                    FROM user_words_familiarity 
+                    FROM user_word_familiarity 
                     WHERE user_id = %s AND word_id = %s
                 ''', (user_id, word_id))
                 familiarity_row = result.fetchone()
@@ -7363,7 +7363,7 @@ def debug_simple_test():
 
 @app.route("/api/debug/create-user-familiarity-table", methods=["POST"])
 def debug_create_user_familiarity_table():
-    """Debug endpoint to create user_words_familiarity table"""
+    """Debug endpoint to create user_word_familiarity table"""
     try:
         from server.db_config import get_database_config, get_db_connection, execute_query
         
@@ -7372,9 +7372,9 @@ def debug_create_user_familiarity_table():
         
         try:
             if config['type'] == 'postgresql':
-                # Create user_words_familiarity table for PostgreSQL
+                # Create user_word_familiarity table for PostgreSQL
                 execute_query(conn, """
-                    CREATE TABLE IF NOT EXISTS user_words_familiarity (
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER NOT NULL,
                         word_id INTEGER NOT NULL,
@@ -7390,12 +7390,12 @@ def debug_create_user_familiarity_table():
                     );
                 """)
                 conn.commit()
-                print("✅ Created user_words_familiarity table (PostgreSQL)")
+                print("✅ Created user_word_familiarity table (PostgreSQL)")
             else:
-                # Create user_words_familiarity table for SQLite
+                # Create user_word_familiarity table for SQLite
                 cur = conn.cursor()
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS user_words_familiarity (
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER NOT NULL,
                         word_id INTEGER NOT NULL,
@@ -7411,19 +7411,19 @@ def debug_create_user_familiarity_table():
                     );
                 """)
                 conn.commit()
-                print("✅ Created user_words_familiarity table (SQLite)")
+                print("✅ Created user_word_familiarity table (SQLite)")
                 
         finally:
             conn.close()
             
-        return jsonify({'success': True, 'message': 'user_words_familiarity table created successfully'})
+        return jsonify({'success': True, 'message': 'user_word_familiarity table created successfully'})
     except Exception as e:
-        print(f"Error creating user_words_familiarity table: {e}")
+        print(f"Error creating user_word_familiarity table: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route("/api/debug/add-user-comment-column", methods=["POST"])
 def debug_add_user_comment_column():
-    """Debug endpoint to add user_comment column to user_words_familiarity table"""
+    """Debug endpoint to add user_comment column to user_word_familiarity table"""
     try:
         from server.db_config import get_database_config, get_db_connection, execute_query
         
@@ -7436,38 +7436,38 @@ def debug_add_user_comment_column():
                 result = execute_query(conn, """
                     SELECT column_name 
                     FROM information_schema.columns 
-                    WHERE table_name = 'user_words_familiarity' AND column_name = 'user_comment'
+                    WHERE table_name = 'user_word_familiarity' AND column_name = 'user_comment'
                 """)
                 
                 if not result.fetchone():
-                    print("Adding user_comment column to user_words_familiarity table...")
+                    print("Adding user_comment column to user_word_familiarity table...")
                     execute_query(conn, """
-                        ALTER TABLE user_words_familiarity 
+                        ALTER TABLE user_word_familiarity 
                         ADD COLUMN user_comment TEXT
                     """)
                     conn.commit()
-                    print("✅ Added user_comment column to user_words_familiarity table")
+                    print("✅ Added user_comment column to user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column added successfully"})
                 else:
-                    print("user_comment column already exists in user_words_familiarity table")
+                    print("user_comment column already exists in user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column already exists"})
             else:
                 # SQLite syntax - check if column exists first
                 cur = conn.cursor()
-                cur.execute("PRAGMA table_info(user_words_familiarity)")
+                cur.execute("PRAGMA table_info(user_word_familiarity)")
                 columns = [column[1] for column in cur.fetchall()]
                 
                 if "user_comment" not in columns:
-                    print("Adding user_comment column to user_words_familiarity table...")
+                    print("Adding user_comment column to user_word_familiarity table...")
                     cur.execute("""
-                        ALTER TABLE user_words_familiarity 
+                        ALTER TABLE user_word_familiarity 
                         ADD COLUMN user_comment TEXT
                     """)
                     conn.commit()
-                    print("✅ Added user_comment column to user_words_familiarity table")
+                    print("✅ Added user_comment column to user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column added successfully"})
                 else:
-                    print("user_comment column already exists in user_words_familiarity table")
+                    print("user_comment column already exists in user_word_familiarity table")
                     return jsonify({"success": True, "message": "user_comment column already exists"})
                     
         finally:
