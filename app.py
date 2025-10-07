@@ -7235,25 +7235,56 @@ def debug_add_user_comment_column():
         
         try:
             if config["type"] == "postgresql":
-                # Check if column exists
+                # First check if table exists
                 result = execute_query(conn, """
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = "user_word_familiarity" AND column_name = "user_comment"
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'user_word_familiarity'
+                    );
                 """)
+                table_exists = result.fetchone()[0]
                 
-                if not result.fetchone():
-                    print("Adding user_comment column to user_word_familiarity table...")
+                if not table_exists:
+                    print("Creating user_word_familiarity table...")
                     execute_query(conn, """
-                        ALTER TABLE user_word_familiarity 
-                        ADD COLUMN user_comment TEXT
+                        CREATE TABLE user_word_familiarity (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER NOT NULL,
+                            word_id INTEGER NOT NULL,
+                            familiarity INTEGER DEFAULT 0,
+                            seen_count INTEGER DEFAULT 0,
+                            correct_count INTEGER DEFAULT 0,
+                            user_comment TEXT,
+                            last_seen TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                            UNIQUE(user_id, word_id)
+                        );
                     """)
                     conn.commit()
-                    print("✅ Added user_comment column to user_word_familiarity table")
-                    return jsonify({"success": True, "message": "user_comment column added successfully"})
+                    print("✅ Created user_word_familiarity table with user_comment column")
+                    return jsonify({"success": True, "message": "user_word_familiarity table created with user_comment column"})
                 else:
-                    print("user_comment column already exists in user_word_familiarity table")
-                    return jsonify({"success": True, "message": "user_comment column already exists"})
+                    # Check if column exists
+                    result = execute_query(conn, """
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'user_word_familiarity' AND column_name = 'user_comment'
+                    """)
+                    
+                    if not result.fetchone():
+                        print("Adding user_comment column to user_word_familiarity table...")
+                        execute_query(conn, """
+                            ALTER TABLE user_word_familiarity 
+                            ADD COLUMN user_comment TEXT
+                        """)
+                        conn.commit()
+                        print("✅ Added user_comment column to user_word_familiarity table")
+                        return jsonify({"success": True, "message": "user_comment column added successfully"})
+                    else:
+                        print("user_comment column already exists in user_word_familiarity table")
+                        return jsonify({"success": True, "message": "user_comment column already exists"})
             else:
                 # SQLite syntax - check if column exists first
                 cur = conn.cursor()
