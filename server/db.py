@@ -1804,6 +1804,18 @@ def update_user_word_familiarity(user_id: int, word_id: int, familiarity: int, s
     finally:
         conn.close()
 
+def get_user_word_familiarity(user_id: int, word_id: int):
+    """Get user's familiarity with a specific word"""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT familiarity, seen_count, correct_count, user_comment FROM user_word_familiarity WHERE user_id=? AND word_id=?',
+            (user_id, word_id)
+        ).fetchone()
+        return row
+    finally:
+        conn.close()
+
 def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, native_language: str):
     """Get user's familiarity with a word by word text, language, and native language"""
     from server.db_config import get_database_config, get_db_connection, execute_query
