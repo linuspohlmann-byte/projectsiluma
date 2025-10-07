@@ -318,14 +318,22 @@ def update_word_familiarity(user_id: int, word: str, language: str,
                            familiarity: int, seen_count: int = None, correct_count: int = None) -> bool:
     """Update user's word familiarity"""
     
+    print(f"🔧 update_word_familiarity called: user_id={user_id}, word='{word}', language='{language}', familiarity={familiarity}")
+    
     native_language = get_user_native_language(user_id)
+    print(f"🔧 Native language for user {user_id}: {native_language}")
+    
     ensure_user_databases(user_id, native_language)
     
     word_hash = db_manager.generate_word_hash(word, language, native_language)
+    print(f"🔧 Generated word hash for '{word}': {word_hash}")
     
-    return db_manager.update_user_word_familiarity(
+    result = db_manager.update_user_word_familiarity(
         user_id, native_language, word_hash, familiarity, seen_count, correct_count
     )
+    
+    print(f"🔧 update_user_word_familiarity result: {result}")
+    return result
 
 def get_user_familiarity_counts_for_words(user_id: int, words: List[str], language: str, native_language: str) -> Dict[str, int]:
     """Get familiarity count distribution for specific words"""
@@ -337,54 +345,102 @@ def get_user_familiarity_counts_for_words(user_id: int, words: List[str], langua
     # Ensure user databases exist
     ensure_user_databases(user_id, native_language)
     
-    # Get familiarity counts for specific words
-    db_path = db_manager.get_user_db_path(user_id, native_language)
+    # Check if we should use PostgreSQL instead of local SQLite
+    from .db_config import get_database_config, get_db_connection, execute_query
     
-    try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+    config = get_database_config()
+    if config['type'] == 'postgresql':
+        # Use PostgreSQL
+        conn = get_db_connection()
+        try:
+            # Create word hashes for the given words
+            word_hashes = []
+            for word in words:
+                word_hash = db_manager.generate_word_hash(word, language, native_language)
+                word_hashes.append(word_hash)
+            
+            # Get familiarity counts for these specific words
+            placeholders = ','.join(['%s' for _ in word_hashes])
+            query_params = [user_id, native_language] + word_hashes
+            result = execute_query(conn, f"""
+                SELECT familiarity, COUNT(*) as count
+                FROM user_word_familiarity
+                WHERE user_id = %s AND native_language = %s AND word_hash IN ({placeholders})
+                GROUP BY familiarity
+            """, query_params)
+            
+            # Initialize counts
+            counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+            
+            # Fill in actual counts
+            for row in result.fetchall():
+                familiarity = str(row['familiarity'])
+                count = row['count']
+                if familiarity in counts:
+                    counts[familiarity] = count
+            
+            # If no words found in familiarity database, all words are unknown (level 0)
+            total_found = sum(counts.values())
+            if total_found == 0:
+                counts['0'] = len(words)  # All words are unknown
+            
+            return counts
+            
+        except Exception as e:
+            print(f"Error getting familiarity counts for words from PostgreSQL: {e}")
+            # Return all words as unknown (level 0)
+            return {'0': len(words), '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+        finally:
+            conn.close()
+    else:
+        # Fallback to local SQLite databases
+        db_path = db_manager.get_user_db_path(user_id, native_language)
         
-        # Create word hashes for the given words
-        word_hashes = []
-        for word in words:
-            word_hash = db_manager.generate_word_hash(word, language, native_language)
-            word_hashes.append(word_hash)
-        
-        # Get familiarity counts for these specific words
-        placeholders = ','.join(['?' for _ in word_hashes])
-        query = f"""
-            SELECT familiarity, COUNT(*) as count
-            FROM words_local
-            WHERE word_hash IN ({placeholders})
-            GROUP BY familiarity
-        """
-        
-        cursor.execute(query, word_hashes)
-        results = cursor.fetchall()
-        
-        # Initialize counts
-        counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
-        
-        # Fill in actual counts
-        for row in results:
-            familiarity = str(row['familiarity'])
-            count = row['count']
-            if familiarity in counts:
-                counts[familiarity] = count
-        
-        # If no words found in familiarity database, all words are unknown (level 0)
-        total_found = sum(counts.values())
-        if total_found == 0:
-            counts['0'] = len(words)  # All words are unknown
-        
-        conn.close()
-        return counts
-        
-    except Exception as e:
-        print(f"Error getting familiarity counts for words: {e}")
-        # Return all words as unknown (level 0)
-        return {'0': len(words), '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Create word hashes for the given words
+            word_hashes = []
+            for word in words:
+                word_hash = db_manager.generate_word_hash(word, language, native_language)
+                word_hashes.append(word_hash)
+            
+            # Get familiarity counts for these specific words
+            placeholders = ','.join(['?' for _ in word_hashes])
+            query = f"""
+                SELECT familiarity, COUNT(*) as count
+                FROM words_local
+                WHERE word_hash IN ({placeholders})
+                GROUP BY familiarity
+            """
+            
+            cursor.execute(query, word_hashes)
+            results = cursor.fetchall()
+            
+            # Initialize counts
+            counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+            
+            # Fill in actual counts
+            for row in results:
+                familiarity = str(row['familiarity'])
+                count = row['count']
+                if familiarity in counts:
+                    counts[familiarity] = count
+            
+            # If no words found in familiarity database, all words are unknown (level 0)
+            total_found = sum(counts.values())
+            if total_found == 0:
+                counts['0'] = len(words)  # All words are unknown
+            
+            conn.close()
+            return counts
+            
+        except Exception as e:
+            print(f"Error getting familiarity counts for words: {e}")
+            # Return all words as unknown (level 0)
+            return {'0': len(words), '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
 
 def get_familiarity_counts_for_level(language: str, level: int, user_id: int = None) -> Dict[int, int]:
     """Get familiarity count distribution for specific level"""

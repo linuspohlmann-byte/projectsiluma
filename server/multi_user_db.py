@@ -152,14 +152,53 @@ class MultiUserDBManager:
     
     def ensure_user_database(self, user_id: int, native_language: str) -> bool:
         """Ensure user database exists for native language"""
-        try:
-            db_path = self.get_user_db_path(user_id, native_language)
-            if not os.path.exists(db_path):
-                return self.create_user_database(user_id, native_language)
-            return True
-        except Exception as e:
-            print(f"Error ensuring user database for user {user_id}, language {native_language}: {e}")
-            return False
+        # Check if we should use PostgreSQL instead of local SQLite
+        from .db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        if config['type'] == 'postgresql':
+            # Use PostgreSQL - ensure user_word_familiarity table exists
+            conn = get_db_connection()
+            try:
+                # Create user_word_familiarity table if it doesn't exist
+                execute_query(conn, """
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        word_hash TEXT NOT NULL,
+                        native_language TEXT NOT NULL,
+                        familiarity INTEGER DEFAULT 0,
+                        seen_count INTEGER DEFAULT 0,
+                        correct_count INTEGER DEFAULT 0,
+                        unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, word_hash, native_language)
+                    )
+                """)
+                
+                # Create indexes
+                execute_query(conn, "CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_user_hash ON user_word_familiarity(user_id, word_hash)")
+                execute_query(conn, "CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_native_lang ON user_word_familiarity(native_language)")
+                
+                conn.commit()
+                return True
+                
+            except Exception as e:
+                print(f"Error ensuring PostgreSQL user database: {e}")
+                return False
+            finally:
+                conn.close()
+        else:
+            # Fallback to local SQLite databases
+            try:
+                db_path = self.get_user_db_path(user_id, native_language)
+                if not os.path.exists(db_path):
+                    return self.create_user_database(user_id, native_language)
+                return True
+            except Exception as e:
+                print(f"Error ensuring user database for user {user_id}, language {native_language}: {e}")
+                return False
     
     def add_word_to_global(self, word: str, language: str, native_language: str, 
                           word_data: Dict[str, Any]) -> Optional[str]:
@@ -292,107 +331,225 @@ class MultiUserDBManager:
         if not self.ensure_user_database(user_id, native_language):
             return {}
         
-        db_path = self.get_user_db_path(user_id, native_language)
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        # Check if we should use PostgreSQL instead of local SQLite
+        from .db_config import get_database_config, get_db_connection, execute_query
         
-        try:
-            placeholders = ','.join(['?' for _ in word_hashes])
-            cur.execute(f"""
-                SELECT word_hash, familiarity, seen_count, correct_count
-                FROM words_local 
-                WHERE word_hash IN ({placeholders})
-            """, word_hashes)
+        config = get_database_config()
+        if config['type'] == 'postgresql':
+            # Use PostgreSQL
+            conn = get_db_connection()
+            try:
+                placeholders = ','.join(['%s' for _ in word_hashes])
+                query_params = [user_id, native_language] + word_hashes
+                result = execute_query(conn, f"""
+                    SELECT word_hash, familiarity, seen_count, correct_count
+                    FROM user_word_familiarity 
+                    WHERE user_id = %s AND native_language = %s AND word_hash IN ({placeholders})
+                """, query_params)
+                
+                familiarity_data = {}
+                for row in result.fetchall():
+                    familiarity_data[row['word_hash']] = {
+                        'familiarity': row['familiarity'],
+                        'seen_count': row['seen_count'],
+                        'correct_count': row['correct_count']
+                    }
+                
+                return familiarity_data
+                
+            except Exception as e:
+                print(f"Error getting user word familiarity from PostgreSQL: {e}")
+                return {}
+            finally:
+                conn.close()
+        else:
+            # Fallback to local SQLite databases
+            db_path = self.get_user_db_path(user_id, native_language)
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
             
-            result = {}
-            for row in cur.fetchall():
-                result[row['word_hash']] = {
-                    'familiarity': row['familiarity'],
-                    'seen_count': row['seen_count'],
-                    'correct_count': row['correct_count']
-                }
-            
-            return result
-            
-        except Exception as e:
-            print(f"Error getting user word familiarity: {e}")
-            return {}
-        finally:
-            conn.close()
+            try:
+                placeholders = ','.join(['?' for _ in word_hashes])
+                cur.execute(f"""
+                    SELECT word_hash, familiarity, seen_count, correct_count
+                    FROM words_local 
+                    WHERE word_hash IN ({placeholders})
+                """, word_hashes)
+                
+                result = {}
+                for row in cur.fetchall():
+                    result[row['word_hash']] = {
+                        'familiarity': row['familiarity'],
+                        'seen_count': row['seen_count'],
+                        'correct_count': row['correct_count']
+                    }
+                
+                return result
+                
+            except Exception as e:
+                print(f"Error getting user word familiarity: {e}")
+                return {}
+            finally:
+                conn.close()
     
     def update_user_word_familiarity(self, user_id: int, native_language: str, 
                                    word_hash: str, familiarity: int, 
                                    seen_count: int = None, correct_count: int = None) -> bool:
         """Update user's word familiarity data"""
+        print(f"🔧 MultiUserDBManager.update_user_word_familiarity called: user_id={user_id}, native_language={native_language}, word_hash={word_hash}, familiarity={familiarity}")
+        
         if not self.ensure_user_database(user_id, native_language):
+            print(f"❌ Failed to ensure user database for user {user_id}, language {native_language}")
             return False
         
-        db_path = self.get_user_db_path(user_id, native_language)
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+        # Check if we should use PostgreSQL instead of local SQLite
+        from .db_config import get_database_config, get_db_connection, execute_query
         
-        try:
-            now = datetime.now(UTC).isoformat()
-            
-            # Build update query dynamically
-            updates = ['familiarity = ?', 'updated_at = ?']
-            values = [familiarity, now]
-            
-            if seen_count is not None:
-                updates.append('seen_count = ?')
-                values.append(seen_count)
-            
-            if correct_count is not None:
-                updates.append('correct_count = ?')
-                values.append(correct_count)
-            
-            values.append(word_hash)
-            
-            # First try to update existing record
-            cur.execute(f"""
-                UPDATE words_local 
-                SET {', '.join(updates)}
-                WHERE word_hash = ?
-            """, values)
-            
-            # If no rows were affected, insert new record
-            if cur.rowcount == 0:
-                insert_values = [word_hash, familiarity, now]
-                insert_updates = ['word_hash', 'familiarity', 'created_at', 'updated_at']
+        config = get_database_config()
+        print(f"🔧 Database config: {config}")
+        if config['type'] == 'postgresql':
+            # Use PostgreSQL
+            print(f"🔧 Using PostgreSQL for user word familiarity update")
+            conn = get_db_connection()
+            try:
+                now = datetime.now(UTC).isoformat()
+                
+                # Build update query dynamically
+                updates = ['familiarity = %s', 'updated_at = %s']
+                values = [familiarity, now]
                 
                 if seen_count is not None:
-                    insert_values.append(seen_count)
-                    insert_updates.append('seen_count')
-                else:
-                    insert_values.append(0)
-                    insert_updates.append('seen_count')
+                    updates.append('seen_count = %s')
+                    values.append(seen_count)
                 
                 if correct_count is not None:
-                    insert_values.append(correct_count)
-                    insert_updates.append('correct_count')
-                else:
-                    insert_values.append(0)
-                    insert_updates.append('correct_count')
+                    updates.append('correct_count = %s')
+                    values.append(correct_count)
                 
-                insert_values.append(now)  # unlocked_at
-                insert_updates.append('unlocked_at')
+                values.extend([user_id, word_hash, native_language])
                 
-                placeholders = ','.join(['?' for _ in insert_values])
+                print(f"🔧 Attempting UPDATE with values: {values}")
+                
+                # First try to update existing record
+                result = execute_query(conn, f"""
+                    UPDATE user_word_familiarity 
+                    SET {', '.join(updates)}
+                    WHERE user_id = %s AND word_hash = %s AND native_language = %s
+                """, values)
+                
+                print(f"🔧 UPDATE result rowcount: {result.rowcount}")
+                
+                # If no rows were affected, insert new record
+                if result.rowcount == 0:
+                    print(f"🔧 No rows updated, attempting INSERT")
+                    insert_values = [user_id, word_hash, native_language, familiarity, now, now]
+                    insert_updates = ['user_id', 'word_hash', 'native_language', 'familiarity', 'created_at', 'updated_at']
+                    
+                    if seen_count is not None:
+                        insert_values.append(seen_count)
+                        insert_updates.append('seen_count')
+                    else:
+                        insert_values.append(0)
+                        insert_updates.append('seen_count')
+                    
+                    if correct_count is not None:
+                        insert_values.append(correct_count)
+                        insert_updates.append('correct_count')
+                    else:
+                        insert_values.append(0)
+                        insert_updates.append('correct_count')
+                    
+                    insert_values.append(now)  # unlocked_at
+                    insert_updates.append('unlocked_at')
+                    
+                    print(f"🔧 INSERT values: {insert_values}")
+                    print(f"🔧 INSERT columns: {insert_updates}")
+                    
+                    placeholders = ','.join(['%s' for _ in insert_values])
+                    insert_result = execute_query(conn, f"""
+                        INSERT INTO user_word_familiarity ({', '.join(insert_updates)})
+                        VALUES ({placeholders})
+                    """, insert_values)
+                    
+                    print(f"🔧 INSERT result rowcount: {insert_result.rowcount}")
+                
+                conn.commit()
+                print(f"🔧 PostgreSQL update successful")
+                return True
+                
+            except Exception as e:
+                print(f"Error updating user word familiarity in PostgreSQL: {e}")
+                return False
+            finally:
+                conn.close()
+        else:
+            # Fallback to local SQLite databases
+            db_path = self.get_user_db_path(user_id, native_language)
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            
+            try:
+                now = datetime.now(UTC).isoformat()
+                
+                # Build update query dynamically
+                updates = ['familiarity = ?', 'updated_at = ?']
+                values = [familiarity, now]
+                
+                if seen_count is not None:
+                    updates.append('seen_count = ?')
+                    values.append(seen_count)
+                
+                if correct_count is not None:
+                    updates.append('correct_count = ?')
+                    values.append(correct_count)
+                
+                values.append(word_hash)
+                
+                # First try to update existing record
                 cur.execute(f"""
-                    INSERT INTO words_local ({', '.join(insert_updates)})
-                    VALUES ({placeholders})
-                """, insert_values)
-            
-            conn.commit()
-            return True
-            
-        except Exception as e:
-            print(f"Error updating user word familiarity: {e}")
-            return False
-        finally:
-            conn.close()
+                    UPDATE words_local 
+                    SET {', '.join(updates)}
+                    WHERE word_hash = ?
+                """, values)
+                
+                # If no rows were affected, insert new record
+                if cur.rowcount == 0:
+                    insert_values = [word_hash, familiarity, now]
+                    insert_updates = ['word_hash', 'familiarity', 'created_at', 'updated_at']
+                    
+                    if seen_count is not None:
+                        insert_values.append(seen_count)
+                        insert_updates.append('seen_count')
+                    else:
+                        insert_values.append(0)
+                        insert_updates.append('seen_count')
+                    
+                    if correct_count is not None:
+                        insert_values.append(correct_count)
+                        insert_updates.append('correct_count')
+                    else:
+                        insert_values.append(0)
+                        insert_updates.append('correct_count')
+                    
+                    insert_values.append(now)  # unlocked_at
+                    insert_updates.append('unlocked_at')
+                    
+                    placeholders = ','.join(['?' for _ in insert_values])
+                    cur.execute(f"""
+                        INSERT INTO words_local ({', '.join(insert_updates)})
+                        VALUES ({placeholders})
+                    """, insert_values)
+                
+                conn.commit()
+                return True
+                
+            except Exception as e:
+                print(f"Error updating user word familiarity: {e}")
+                return False
+            finally:
+                conn.close()
     
     def get_global_word_data(self, native_language: str, word_hashes: List[str]) -> Dict[str, Dict[str, Any]]:
         """Get global word data for given word hashes"""

@@ -903,37 +903,62 @@ async function startCustomGroup(groupId) {
         console.log('📚 Custom group loaded:', group);
         console.log('📖 Levels found:', levels.length);
         
-        // Fetch word familiarity data for all levels in the group
-        let wordFamiliarityData = null;
-        try {
-            console.log('🔤 Fetching word familiarity data for custom group:', groupId);
-            const familiarityResponse = await fetch(`/api/custom-level-groups/${groupId}/words-familiarity`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                }
-            });
+        // Check if any levels need content generation (ultra-lazy loading)
+        const levelsNeedingGeneration = levels.filter(level => {
+            const content = level.content || {};
+            return content.ultra_lazy_loading && !content.sentences_generated;
+        });
+        
+        if (levelsNeedingGeneration.length > 0) {
+            console.log(`🚀 Generating content for ${levelsNeedingGeneration.length} levels...`);
             
-            if (familiarityResponse.ok) {
-                const familiarityData = await familiarityResponse.json();
-                if (familiarityData.success) {
-                    wordFamiliarityData = familiarityData;
-                    console.log('✅ Word familiarity data loaded:', wordFamiliarityData);
-                } else {
-                    console.warn('⚠️ Failed to load word familiarity data:', familiarityData.error);
-                }
-            } else {
-                console.warn('⚠️ Failed to fetch word familiarity data:', familiarityResponse.status);
+            // Show progress message with more details
+            if (window.showLoader) {
+                window.showLoader(`Generiere ${levelsNeedingGeneration.length} Level mit AI-Inhalten...`);
             }
-        } catch (error) {
-            console.warn('⚠️ Error fetching word familiarity data:', error);
+            
+            try {
+                // Generate content for all levels that need it
+                const generationResult = await generateAllCustomLevelsContent(groupId, levelsNeedingGeneration);
+                
+                // Show success/failure summary
+                if (generationResult.successful > 0) {
+                    console.log(`✅ Successfully generated content for ${generationResult.successful} levels`);
+                }
+                if (generationResult.failed > 0) {
+                    console.warn(`⚠️ Failed to generate content for ${generationResult.failed} levels`);
+                }
+                
+                // Reload the group data to get updated levels
+                const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                    }
+                });
+                
+                if (reloadResponse.ok) {
+                    const reloadData = await reloadResponse.json();
+                    if (reloadData.success) {
+                        levels.splice(0, levels.length, ...reloadData.levels);
+                        console.log('✅ Reloaded levels with generated content');
+                        
+                        // Show success notification
+                        if (generationResult.successful > 0) {
+                            showNotification(`✅ ${generationResult.successful} Level erfolgreich generiert!`, 'success');
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error during content generation:', error);
+                showNotification('⚠️ Einige Level konnten nicht generiert werden. Sie werden beim Start erstellt.', 'warning');
+            }
         }
         
         // Store custom group context for level rendering
         window.currentCustomGroup = {
             id: groupId,
             group: group,
-            levels: levels,
-            wordFamiliarityData: wordFamiliarityData
+            levels: levels
         };
         
         // Switch to levels tab
@@ -960,9 +985,9 @@ async function startCustomGroup(groupId) {
         // Show levels container (same as standard groups)
         showLevelsContainer();
         
-        // Render custom levels
-        console.log('🎨 Calling renderCustomLevels...');
-        renderCustomLevels(groupId, levels);
+        // Render custom levels with preloading for optimal performance
+        console.log('🎨 Calling renderCustomLevelsWithPreloading...');
+        renderCustomLevelsWithPreloading(groupId, levels);
         
     } catch (error) {
         console.error('❌ Error starting custom group:', error);
@@ -980,6 +1005,112 @@ async function startCustomGroup(groupId) {
         if (window.hideLoader) {
             window.hideLoader();
         }
+    }
+}
+
+// Generate content for all custom levels that need it
+async function generateAllCustomLevelsContent(groupId, levelsNeedingGeneration) {
+    try {
+        console.log(`🚀 Starting batch content generation for ${levelsNeedingGeneration.length} levels`);
+        
+        // Use the new batch API endpoint for optimal performance
+        const response = await fetch(`/api/custom-levels/${groupId}/generate-all-content`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                console.log(`🎉 Batch content generation complete: ${data.successful} successful, ${data.failed} failed`);
+                
+                if (data.failed > 0) {
+                    const failedLevels = data.results.filter(r => !r.success).map(r => r.levelNumber);
+                    console.warn(`⚠️ Failed to generate content for levels: ${failedLevels.join(', ')}`);
+                }
+                
+                return { 
+                    successful: data.successful, 
+                    failed: data.failed, 
+                    results: data.results 
+                };
+            } else {
+                console.error(`❌ Batch generation failed:`, data.error);
+                throw new Error(data.error || 'Batch generation failed');
+            }
+        } else {
+            console.error(`❌ HTTP error in batch generation:`, response.status);
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in batch content generation:', error);
+        
+        // Fallback to individual level generation if batch fails
+        console.log('🔄 Falling back to individual level generation...');
+        return await generateAllCustomLevelsContentFallback(groupId, levelsNeedingGeneration);
+    }
+}
+
+// Fallback function for individual level generation
+async function generateAllCustomLevelsContentFallback(groupId, levelsNeedingGeneration) {
+    try {
+        console.log(`🔄 Fallback: Generating content individually for ${levelsNeedingGeneration.length} levels`);
+        
+        // Generate content for all levels in parallel for optimal performance
+        const generationPromises = levelsNeedingGeneration.map(async (level, index) => {
+            try {
+                console.log(`📝 Generating content for level ${level.level_number} (${index + 1}/${levelsNeedingGeneration.length})`);
+                
+                const response = await fetch(`/api/custom-levels/${groupId}/${level.level_number}/generate-content`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        console.log(`✅ Generated content for level ${level.level_number}`);
+                        return { success: true, levelNumber: level.level_number };
+                    } else {
+                        console.error(`❌ Failed to generate content for level ${level.level_number}:`, data.error);
+                        return { success: false, levelNumber: level.level_number, error: data.error };
+                    }
+                } else {
+                    console.error(`❌ HTTP error generating content for level ${level.level_number}:`, response.status);
+                    return { success: false, levelNumber: level.level_number, error: `HTTP ${response.status}` };
+                }
+            } catch (error) {
+                console.error(`❌ Error generating content for level ${level.level_number}:`, error);
+                return { success: false, levelNumber: level.level_number, error: error.message };
+            }
+        });
+        
+        // Wait for all generations to complete
+        const results = await Promise.all(generationPromises);
+        
+        // Count successes and failures
+        const successful = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        
+        console.log(`🎉 Fallback generation complete: ${successful} successful, ${failed} failed`);
+        
+        if (failed > 0) {
+            const failedLevels = results.filter(r => !r.success).map(r => r.levelNumber);
+            console.warn(`⚠️ Failed to generate content for levels: ${failedLevels.join(', ')}`);
+        }
+        
+        return { successful, failed, results };
+        
+    } catch (error) {
+        console.error('❌ Error in fallback content generation:', error);
+        throw error;
     }
 }
 
@@ -1224,14 +1355,30 @@ function renderCustomLevels(groupId, levels) {
         const levelTitle = level.title || `Level ${levelNumber}`;
         const levelTopic = level.topic || 'Custom Level';
         
+        // Check if level needs content generation
+        const content = level.content || {};
+        const needsGeneration = content.ultra_lazy_loading && !content.sentences_generated;
+        const isGenerating = content.ultra_lazy_loading && content.sentences_generated === false;
+        
+        // Determine level status
+        let levelStatus = 'Bereit';
+        let statusClass = '';
+        if (needsGeneration) {
+            levelStatus = 'Wird generiert...';
+            statusClass = 'generating';
+        } else if (isGenerating) {
+            levelStatus = 'Generiert...';
+            statusClass = 'generating';
+        }
+        
         return `
-            <div class="level-card" data-level="${levelNumber}" data-custom-group-id="${groupId}">
+            <div class="level-card ${statusClass}" data-level="${levelNumber}" data-custom-group-id="${groupId}">
                 <div class="level-card-inner">
                     <div class="level-card-front">
                         <div class="level-card-content">
                             <div class="level-number">${levelNumber}</div>
                             <div class="level-card-info">
-                                <div class="level-status">Bereit</div>
+                                <div class="level-status ${statusClass}">${levelStatus}</div>
                                 <div class="level-title">${escapeHtml(levelTitle)}</div>
                                 
                                 <!-- Word statistics section (same as standard levels) -->
@@ -1791,24 +1938,34 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
         const level = window.currentCustomGroup?.levels?.find(l => l.level_number === levelNumber);
         if (!level) return;
         
-        // Get familiarity counts from the pre-loaded data
+        // Get familiarity counts
         const familiarityCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
         
-        // Use the word familiarity data we fetched when the group was loaded
-        const wordFamiliarityData = window.currentCustomGroup?.wordFamiliarityData;
-        if (wordFamiliarityData && wordFamiliarityData.level_familiarity_counts) {
-            const levelCounts = wordFamiliarityData.level_familiarity_counts[levelNumber];
-            if (levelCounts) {
-                // Convert string keys to numbers and populate familiarityCounts
-                for (let familiarity = 0; familiarity <= 5; familiarity++) {
-                    familiarityCounts[familiarity] = levelCounts[familiarity.toString()] || 0;
-                }
-                console.log(`✅ Custom level ${levelNumber} familiarity data loaded from pre-fetched data:`, familiarityCounts);
-            } else {
-                console.log(`⚠️ No familiarity data found for level ${levelNumber} in pre-fetched data`);
+        // Try to get user familiarity data
+        try {
+            const headers = {};
+            if (window.authManager && window.authManager.isAuthenticated()) {
+                Object.assign(headers, window.authManager.getAuthHeaders());
             }
-        } else {
-            console.log('⚠️ No word familiarity data available for custom level group, using defaults');
+            
+            console.log('🔧 Fetching custom level familiarity:', groupId, levelNumber);
+            const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/familiarity`, {
+                headers: headers
+            });
+            
+            if (response.ok) {
+                const familiarityData = await response.json();
+                if (familiarityData.success) {
+                    Object.assign(familiarityCounts, familiarityData.familiarity_counts || {});
+                    console.log('✅ Custom level familiarity loaded:', familiarityData);
+                } else {
+                    console.log('⚠️ Familiarity API returned error:', familiarityData.error);
+                }
+            } else {
+                console.log('⚠️ Familiarity API not available for custom level, using defaults. Status:', response.status);
+            }
+        } catch (error) {
+            console.log('⚠️ No familiarity data available for custom level, using defaults:', error.message);
         }
         
         // Update familiarity counts in the UI
@@ -1891,6 +2048,10 @@ window.closeModal = closeModal;
 window.startCustomGroup = startCustomGroup;
 window.addGroupManagementToQuickAccess = addGroupManagementToQuickAccess;
 window.removeGroupManagementFromQuickAccess = removeGroupManagementFromQuickAccess;
+window.generateAllCustomLevelsContent = generateAllCustomLevelsContent;
+window.generateAllCustomLevelsContentFallback = generateAllCustomLevelsContentFallback;
+window.preloadCustomLevelData = preloadCustomLevelData;
+window.renderCustomLevelsWithPreloading = renderCustomLevelsWithPreloading;
 
 // Show creation progress modal
 function showCreationProgressModal() {
@@ -1932,6 +2093,126 @@ function showCreationProgressModal() {
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// Add CSS styles for generating status
+function addGeneratingStatusStyles() {
+    const styleId = 'custom-levels-generating-styles';
+    if (document.getElementById(styleId)) return; // Already added
+    
+    const styles = `
+        <style id="${styleId}">
+            .level-card.generating {
+                opacity: 0.8;
+                position: relative;
+            }
+            
+            .level-card.generating::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(45deg, transparent 30%, rgba(0, 123, 255, 0.1) 50%, transparent 70%);
+                animation: shimmer 2s infinite;
+                pointer-events: none;
+                z-index: 1;
+            }
+            
+            .level-status.generating {
+                color: #007bff;
+                font-weight: 600;
+                animation: pulse 1.5s infinite;
+            }
+            
+            @keyframes shimmer {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+            }
+            
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.6; }
+            }
+            
+            .level-card.generating .level-btn {
+                opacity: 0.6;
+                pointer-events: none;
+            }
+        </style>
+    `;
+    
+    document.head.insertAdjacentHTML('beforeend', styles);
+}
+
+// Initialize styles when the module loads
+addGeneratingStatusStyles();
+
+// Preload level data for better performance
+async function preloadCustomLevelData(groupId, levels) {
+    try {
+        console.log('🚀 Preloading custom level data for better performance...');
+        
+        // Preload level data for levels that don't need generation
+        const levelsToPreload = levels.filter(level => {
+            const content = level.content || {};
+            return !content.ultra_lazy_loading || content.sentences_generated;
+        });
+        
+        if (levelsToPreload.length === 0) {
+            console.log('📝 No levels to preload');
+            return;
+        }
+        
+        // Preload in background without blocking UI
+        const preloadPromises = levelsToPreload.map(async (level) => {
+            try {
+                const response = await fetch(`/api/custom-levels/${groupId}/${level.level_number}/progress`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        // Cache the progress data for faster rendering
+                        const levelCard = document.querySelector(`.level-card[data-level="${level.level_number}"][data-custom-group-id="${groupId}"]`);
+                        if (levelCard) {
+                            levelCard.dataset.bulkData = JSON.stringify({
+                                fam_counts: {0: data.total_words || 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: data.completed_words || 0},
+                                status: data.status || 'not_started',
+                                last_score: data.level_score || 0,
+                                total_words: data.total_words || 0
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log(`⚠️ Failed to preload data for level ${level.level_number}:`, error);
+            }
+        });
+        
+        // Fire and forget - don't wait for completion
+        Promise.all(preloadPromises).catch(() => {});
+        
+        console.log(`✅ Started preloading data for ${levelsToPreload.length} levels`);
+        
+    } catch (error) {
+        console.log('⚠️ Error in preloading:', error);
+    }
+}
+
+// Enhanced level rendering with preloading
+function renderCustomLevelsWithPreloading(groupId, levels) {
+    // Render levels first
+    renderCustomLevels(groupId, levels);
+    
+    // Then preload data in background
+    setTimeout(() => {
+        preloadCustomLevelData(groupId, levels);
+    }, 100);
 }
 
 // Simple progress animation (no longer needed with ultra-lazy loading)
@@ -2136,73 +2417,65 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
             return;
         }
         
-        // For authenticated users, use the word familiarity data we already have
-        const wordFamiliarityData = window.currentCustomGroup?.wordFamiliarityData;
+        // For authenticated users, fetch bulk stats once for all levels
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
         
-        if (wordFamiliarityData && wordFamiliarityData.level_familiarity_counts) {
-            // Apply progression logic to all levels using pre-fetched data
-            const levelCards = levelsContainer.querySelectorAll('.level-card');
-            levelCards.forEach(card => {
-                const levelNumber = parseInt(card.dataset.level);
-                const levelCounts = wordFamiliarityData.level_familiarity_counts[levelNumber];
-                
-                if (levelCounts) {
-                    // Calculate total words and learned words (familiarity 5)
-                    const totalWords = Object.values(levelCounts).reduce((sum, count) => sum + count, 0);
-                    const learnedWords = levelCounts['5'] || 0;
+        const response = await fetch(`/api/custom-levels/${groupId}/bulk-stats`, {
+            headers: headers
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.levels) {
+                // Apply progression logic to all levels
+                const levelCards = levelsContainer.querySelectorAll('.level-card');
+                levelCards.forEach(card => {
+                    const levelNumber = parseInt(card.dataset.level);
+                    const levelData = data.levels[levelNumber];
                     
-                    // Update word statistics on the front of the card
-                    const wordsCountElement = card.querySelector('.words-text');
-                    const learnedCountElement = card.querySelector('.learned-text');
-                    
-                    if (wordsCountElement) {
-                        wordsCountElement.textContent = totalWords;
-                    }
-                    if (learnedCountElement) {
-                        learnedCountElement.textContent = learnedWords;
-                    }
-                    
-                    // Calculate progress percentage
-                    const progressPercent = totalWords > 0 ? Math.round((learnedWords / totalWords) * 100) : 0;
-                    
-                    // Update progress bar
-                    const progressFill = card.querySelector('.level-progress-fill');
-                    if (progressFill) {
-                        progressFill.style.width = `${progressPercent}%`;
-                    }
-                    
-                    // Update completion circle
-                    const completionText = card.querySelector('.completion-circle-text');
-                    if (completionText) {
-                        completionText.textContent = `${progressPercent}%`;
-                    }
-                    
-                    // Simple progression logic: Level 1 is always unlocked, others are unlocked if previous level has some progress
-                    let isUnlocked = false;
-                    
-                    if (levelNumber === 1) {
-                        // Level 1 is always available
-                        isUnlocked = true;
-                        card.classList.add('unlocked');
-                        card.classList.remove('locked', 'done');
-                    } else if (levelNumber > 1) {
-                        // Check if previous level has some learned words
-                        const prevLevel = levelNumber - 1;
-                        const prevLevelCounts = wordFamiliarityData.level_familiarity_counts[prevLevel];
-                        if (prevLevelCounts) {
-                            const prevLearnedWords = prevLevelCounts['5'] || 0;
-                            const prevTotalWords = Object.values(prevLevelCounts).reduce((sum, count) => sum + count, 0);
-                            
-                            // Unlock if previous level has at least 60% learned words or some progress
-                            if (prevTotalWords > 0 && (prevLearnedWords / prevTotalWords) >= 0.6) {
-                                isUnlocked = true;
-                                card.classList.add('unlocked');
-                                card.classList.remove('locked', 'done');
-                            } else if (prevLearnedWords > 0) {
-                                // Some progress, but not enough for full unlock
-                                isUnlocked = true;
-                                card.classList.add('unlocked');
-                                card.classList.remove('locked', 'done');
+                    if (levelData && levelData.success) {
+                        const userProgress = levelData.user_progress;
+                        const status = userProgress?.status || levelData.status;
+                        const score = userProgress?.score || levelData.last_score;
+                        
+                        let isUnlocked = false;
+                        
+                        if (status === 'completed' && Number(score || 0) > 0.6) {
+                            // Level completed with good score
+                            isUnlocked = true;
+                            card.classList.add('done');
+                            card.classList.remove('locked', 'unlocked');
+                        } else if (status === 'completed' && Number(score || 0) <= 0.6) {
+                            // Level completed but low score
+                            isUnlocked = true;
+                            card.classList.add('unlocked');
+                            card.classList.remove('locked', 'done');
+                        } else if (levelNumber === 1) {
+                            // Level 1 is always available
+                            isUnlocked = true;
+                            card.classList.add('unlocked');
+                            card.classList.remove('locked', 'done');
+                        } else if (levelNumber > 1) {
+                            // Check if previous level is completed
+                            const prevLevel = levelNumber - 1;
+                            const prevLevelData = data.levels[prevLevel];
+                            if (prevLevelData && prevLevelData.success) {
+                                const prevUserProgress = prevLevelData.user_progress;
+                                const prevStatus = prevUserProgress?.status || prevLevelData.status;
+                                const prevScore = prevUserProgress?.score || prevLevelData.last_score;
+                                const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+                                
+                                if (isPrevCompleted) {
+                                    isUnlocked = true;
+                                    card.classList.add('unlocked');
+                                    card.classList.remove('locked', 'done');
+                                } else {
+                                    card.classList.add('locked');
+                                    card.classList.remove('unlocked', 'done');
+                                }
                             } else {
                                 card.classList.add('locked');
                                 card.classList.remove('unlocked', 'done');
@@ -2211,20 +2484,32 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                             card.classList.add('locked');
                             card.classList.remove('unlocked', 'done');
                         }
+                        
+                        // Set allowStart flag for unlocked levels
+                        if (isUnlocked) {
+                            card.dataset.allowStart = 'true';
+                        }
+                        
+                        // Cache the data for later use
+                        card.dataset.bulkData = JSON.stringify(levelData);
                     } else {
-                        card.classList.add('locked');
-                        card.classList.remove('unlocked', 'done');
+                        // Level data not found
+                        if (levelNumber === 1) {
+                            card.classList.add('unlocked');
+                            card.classList.remove('locked', 'done');
+                            card.dataset.allowStart = 'true';
+                        } else {
+                            card.classList.add('locked');
+                            card.classList.remove('unlocked', 'done');
+                        }
                     }
-                    
-                    // Set allowStart flag for unlocked levels
-                    if (isUnlocked) {
-                        card.dataset.allowStart = 'true';
-                    }
-                    
-                    // Cache the familiarity data for later use
-                    card.dataset.familiarityData = JSON.stringify(levelCounts);
-                } else {
-                    // Level data not found - use defaults
+                });
+                console.log(`Applied bulk progression for ${levelCards.length} levels`);
+            } else {
+                // API response not successful - fallback
+                const levelCards = levelsContainer.querySelectorAll('.level-card');
+                levelCards.forEach(card => {
+                    const levelNumber = parseInt(card.dataset.level);
                     if (levelNumber === 1) {
                         card.classList.add('unlocked');
                         card.classList.remove('locked', 'done');
@@ -2233,11 +2518,11 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                         card.classList.add('locked');
                         card.classList.remove('unlocked', 'done');
                     }
-                }
-            });
-            console.log(`Applied bulk progression for ${levelCards.length} levels using word familiarity data`);
+                });
+                console.log(`Applied bulk progression fallback - only level 1 unlocked`);
+            }
         } else {
-            // No word familiarity data available - fallback
+            // API request failed - fallback
             const levelCards = levelsContainer.querySelectorAll('.level-card');
             levelCards.forEach(card => {
                 const levelNumber = parseInt(card.dataset.level);
@@ -2250,7 +2535,7 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                     card.classList.remove('unlocked', 'done');
                 }
             });
-            console.log(`Applied bulk progression fallback - only level 1 unlocked (no familiarity data)`);
+            console.log(`Applied bulk progression fallback - only level 1 unlocked`);
         }
         
     } catch (error) {

@@ -284,89 +284,6 @@ def debug_tts_status():
             'success': False
         }), 500
 
-@app.route('/fix-database', methods=['GET', 'POST'])
-def fix_database_endpoint():
-    """Simple endpoint to fix database schema"""
-    try:
-        print("🚨 Database fix endpoint called")
-        from emergency_fix import emergency_database_fix
-        success = emergency_database_fix()
-        if success:
-            return f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0;">
-                <div style="background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto;">
-                    <h1 style="color: #059669;">✅ Database Fix Successful!</h1>
-                    <p>The database schema has been fixed successfully.</p>
-                    <p><strong>Fixed issues:</strong></p>
-                    <ul>
-                        <li>Added missing <code>word_hash</code> column</li>
-                        <li>Added missing <code>native_language</code> column</li>
-                        <li>Created proper indexes</li>
-                    </ul>
-                    <p>The custom level group word familiarity functionality should now work properly.</p>
-                    <a href="/" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to App</a>
-                </div>
-            </body>
-            </html>
-            """
-        else:
-            return f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0;">
-                <div style="background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto;">
-                    <h1 style="color: #ea580c;">❌ Database Fix Failed</h1>
-                    <p>The database fix encountered an error.</p>
-                    <a href="/" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to App</a>
-                </div>
-            </body>
-            </html>
-            """
-    except Exception as e:
-        return f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0;">
-            <div style="background: white; padding: 20px; border-radius: 10px; max-width: 600px; margin: 0 auto;">
-                <h1 style="color: #dc2626;">❌ Database Fix Error</h1>
-                <p>Error: {str(e)}</p>
-                <a href="/" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to App</a>
-            </div>
-        </body>
-        </html>
-        """
-
-@app.get('/api/debug/fix-database-schema')
-@app.post('/api/debug/fix-database-schema')
-def debug_fix_database_schema():
-    """Emergency endpoint to fix database schema issues"""
-    try:
-        print("🚨 Emergency database schema fix requested")
-        
-        # Import the fix function
-        from run_database_fix import run_emergency_database_fix
-        
-        # Run the fix
-        success = run_emergency_database_fix()
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': 'Database schema fixed successfully',
-                'details': 'user_word_familiarity table now has correct schema with word_hash and native_language columns'
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Database schema fix failed'
-            }), 500
-            
-    except Exception as e:
-        print(f"❌ Error in database schema fix endpoint: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
 @app.post('/api/debug/migrate-data')
 def debug_migrate_data():
     """Debug endpoint to migrate data to Railway PostgreSQL"""
@@ -1432,93 +1349,6 @@ def api_get_custom_level_group(group_id):
         print(f"Error getting custom level group: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@custom_levels_bp.get('/api/custom-level-groups/<int:group_id>/words-familiarity')
-@require_auth()
-def api_get_custom_level_group_words_familiarity(group_id):
-    """Get word familiarity data for all levels in a custom level group"""
-    try:
-        # Get user from Flask's g object (set by require_auth decorator)
-        user = g.current_user
-        user_id = user['id'] if user else None
-        
-        if not user_id:
-            return jsonify({'success': False, 'error': 'Authentication required'}), 401
-        
-        group = get_custom_level_group(group_id, user_id)
-        
-        if not group:
-            return jsonify({'success': False, 'error': 'Level group not found'}), 404
-        
-        # Get all levels for this group
-        levels = get_custom_levels_for_group(group_id)
-        
-        language = group.get('language', 'en')
-        native_language = group.get('native_language', 'de')
-        
-        # Collect all words from all levels with their familiarity data
-        level_words_familiarity = {}
-        all_words = set()
-        
-        for level in levels:
-            level_number = level.get('level_number', 0)
-            level_words = set()
-            
-            if level.get('content') and level['content'].get('items'):
-                for item in level['content']['items']:
-                    words = item.get('words', [])
-                    for word in words:
-                        if word and word.strip():
-                            word_clean = word.strip().lower()
-                            level_words.add(word_clean)
-                            all_words.add(word_clean)
-            
-            level_words_familiarity[level_number] = list(level_words)
-        
-        # Get familiarity data for all words
-        from server.multi_user_db import MultiUserDBManager
-        db_manager = MultiUserDBManager()
-        
-        # Convert words to word hashes for the API
-        word_hashes = []
-        for word in all_words:
-            import hashlib
-            word_hash = hashlib.md5(f"{word}_{language}".encode()).hexdigest()
-            word_hashes.append(word_hash)
-        
-        # Get familiarity data from database
-        familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, word_hashes)
-        
-        # Create word to familiarity mapping
-        word_familiarity_map = {}
-        for word in all_words:
-            import hashlib
-            word_hash = hashlib.md5(f"{word}_{language}".encode()).hexdigest()
-            familiarity = familiarity_data.get(word_hash, {}).get('familiarity', 0)
-            word_familiarity_map[word] = familiarity
-        
-        # Calculate familiarity counts per level
-        level_familiarity_counts = {}
-        for level_number, words in level_words_familiarity.items():
-            counts = {str(i): 0 for i in range(6)}  # 0-5 familiarity levels
-            for word in words:
-                familiarity = word_familiarity_map.get(word, 0)
-                counts[str(familiarity)] += 1
-            level_familiarity_counts[level_number] = counts
-        
-        return jsonify({
-            'success': True,
-            'group_id': group_id,
-            'language': language,
-            'native_language': native_language,
-            'level_words': level_words_familiarity,
-            'level_familiarity_counts': level_familiarity_counts,
-            'word_familiarity_map': word_familiarity_map
-        })
-        
-    except Exception as e:
-        print(f"Error getting custom level group words familiarity: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 @custom_levels_bp.get('/api/custom-level-groups/<int:group_id>/levels/<int:level_number>')
 @require_auth()
 def api_get_custom_level(group_id, level_number):
@@ -1977,6 +1807,92 @@ def api_generate_custom_level_content(group_id, level_number):
         
     except Exception as e:
         print(f"Error generating custom level content: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.post('/api/custom-levels/<int:group_id>/generate-all-content')
+@require_auth(optional=True)
+def api_generate_all_custom_levels_content(group_id):
+    """Generate content for all custom levels in a group (batch processing for optimal performance)"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        # Get group info
+        from server.services.custom_levels import get_custom_level_group, get_custom_levels_for_group
+        group_data = get_custom_level_group(group_id, user_id)
+        if not group_data:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+        
+        # Get all levels for this group
+        levels = get_custom_levels_for_group(group_id)
+        if not levels:
+            return jsonify({'success': False, 'error': 'No levels found'}), 404
+        
+        # Filter levels that need content generation
+        levels_needing_generation = []
+        for level in levels:
+            content = level.get('content', {})
+            if content.get('ultra_lazy_loading', False) and not content.get('sentences_generated', False):
+                levels_needing_generation.append(level)
+        
+        if not levels_needing_generation:
+            return jsonify({'success': True, 'message': 'All levels already have content generated'})
+        
+        language = group_data.get('language', 'en')
+        native_language = group_data.get('native_language', 'de')
+        
+        print(f"🚀 Starting batch content generation for {len(levels_needing_generation)} levels in group {group_id}")
+        
+        # Generate content for all levels in parallel for optimal performance
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from server.services.custom_levels import enrich_custom_level_words_on_demand
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=3) as executor:  # Limit concurrency to avoid overwhelming the system
+            # Submit all generation tasks
+            future_to_level = {
+                executor.submit(enrich_custom_level_words_on_demand, group_id, level['level_number'], language, native_language): level
+                for level in levels_needing_generation
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_level):
+                level = future_to_level[future]
+                try:
+                    success = future.result()
+                    results.append({
+                        'level_number': level['level_number'],
+                        'success': success
+                    })
+                    if success:
+                        print(f"✅ Generated content for level {level['level_number']}")
+                    else:
+                        print(f"❌ Failed to generate content for level {level['level_number']}")
+                except Exception as e:
+                    print(f"❌ Exception generating content for level {level['level_number']}: {e}")
+                    results.append({
+                        'level_number': level['level_number'],
+                        'success': False,
+                        'error': str(e)
+                    })
+        
+        # Count successes and failures
+        successful = len([r for r in results if r['success']])
+        failed = len([r for r in results if not r['success']])
+        
+        print(f"🎉 Batch content generation complete: {successful} successful, {failed} failed")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Generated content for {successful} levels',
+            'results': results,
+            'successful': successful,
+            'failed': failed
+        })
+        
+    except Exception as e:
+        print(f"Error in batch content generation: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @custom_levels_bp.get('/api/custom-levels/<int:group_id>/<int:level_number>/familiarity')
@@ -5564,24 +5480,7 @@ def periodic_sync():
     except Exception as e:
         print(f"Error in periodic sync: {e}")
 
-def run_startup_database_fix():
-    """Run database fix on application startup"""
-    try:
-        print("🚀 Running startup database fix...")
-        from emergency_fix import emergency_database_fix
-        success = emergency_database_fix()
-        if success:
-            print("✅ Startup database fix completed successfully!")
-        else:
-            print("⚠️ Startup database fix failed, but continuing...")
-    except Exception as e:
-        print(f"⚠️ Startup database fix error: {e}")
-        print("Continuing with application startup...")
-
 if __name__ == '__main__':
-    # Run database fix on startup
-    run_startup_database_fix()
-    
     # Sync databases on startup
     print("🚀 Starting ProjectSiluma...")
     sync_databases_on_startup()
@@ -5618,19 +5517,6 @@ else:
     # Set up logging for production
     import logging
     logging.basicConfig(level=logging.WARNING)
-    
-    # Run database fix on production startup
-    try:
-        print("🚀 Running production database fix...")
-        from emergency_fix import emergency_database_fix
-        success = emergency_database_fix()
-        if success:
-            print("✅ Production database fix completed successfully!")
-        else:
-            print("⚠️ Production database fix failed, but continuing...")
-    except Exception as e:
-        print(f"⚠️ Production database fix error: {e}")
-        print("Continuing with production startup...")
 
 @app.route('/api/setup-database', methods=['POST'])
 def api_setup_database():
