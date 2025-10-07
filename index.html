@@ -2763,12 +2763,20 @@
       background: var(--card);
       color: var(--fg);
       box-sizing: border-box;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 40px;
     }
     
     .tooltip-editable:focus {
       outline: none;
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    
+    .tooltip-editable::placeholder {
+      color: var(--text-tertiary);
+      font-style: italic;
     }
 
     /* Responsive tooltip adjustments */
@@ -5680,9 +5688,40 @@
     <audio id="tt-audio-el" style="display:none" preload="none"></audio>
     <div class="body">
       <div class="tooltip-field">
-      <div class="tooltip-field">
         <label>Übersetzung</label>
         <div id="tt-translation" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Aussprache (IPA) <span id="tt-badge-ipa" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
+        <div id="tt-ipa" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Genus</label>
+        <div id="tt-gender" class="tooltip-text-field">–</div>
+      </div>
+      
+      <!-- Beispielsatz ausgeblendet, Element bleibt für eventuelle JS-Zugriffe erhalten -->
+      <label style="display:none">Beispielsatz
+        <textarea id="tt-example" placeholder="Beispiel eingeben"></textarea>
+      </label>
+      
+      <div class="tooltip-field">
+        <label>Beispiel-Übersetzung <span id="tt-badge-example-native" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Muttersprache</span></label>
+        <div id="tt-example-native" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Synonyme <span id="tt-badge-syn" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
+        <div id="tt-syn" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Wortart</label>
+        <div id="tt-pos" class="tooltip-text-field">–</div>
+      </div>
+      
       <div class="tooltip-field">
         <label>Bekanntheit</label>
         <select id="tt-fam" class="tooltip-editable">
@@ -5693,26 +5732,11 @@
           <option value="4" data-i18n="familiarity.strong">Stark</option>
           <option value="5" data-i18n="familiarity.memorized">Auswendig</option>
         </select>
-      </div>      </div>
+      </div>
+      
       <div class="tooltip-field">
-        <label>Aussprache (IPA) <span id="tt-badge-ipa" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
-        <div id="tt-ipa" class="tooltip-text-field">–</div>
-      <div class="tooltip-field">
-        <label>Genus</label>
-        <div id="tt-gender" class="tooltip-text-field">–</div>
-      </div>      <!-- Beispielsatz ausgeblendet, Element bleibt für eventuelle JS-Zugriffe erhalten -->
-      <label style="display:none">Beispielsatz
-        <textarea id="tt-example" placeholder="Beispiel eingeben"></textarea>
-      </label>
-      <div class="tooltip-field">
-        <label>Beispiel-Übersetzung <span id="tt-badge-example-native" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Muttersprache</span></label>
-        <div id="tt-example-native" class="tooltip-text-field">–</div>
-      <div class="tooltip-field">
-        <label>Synonyme <span id="tt-badge-syn" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
-        <div id="tt-syn" class="tooltip-text-field">–</div>
-      <div class="tooltip-field">
-        <label>Wortart</label>
-        <div id="tt-pos" class="tooltip-text-field">–</div>
+        <label>Kommentar</label>
+        <textarea id="tt-user-comment" class="tooltip-editable" placeholder="Persönlicher Kommentar zu diesem Wort..." rows="3"></textarea>
       </div>
       
       <!-- Hidden elements for JS compatibility -->

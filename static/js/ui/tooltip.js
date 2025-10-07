@@ -24,9 +24,10 @@ export async function ttSave(){
   const language = (document.getElementById('target-lang')?.value||'').trim();
   const native_language = (localStorage.getItem('siluma_native')||'').trim();
   const familiarity = parseInt(document.getElementById('tt-fam')?.value||'0',10)||0;
+  const user_comment = (document.getElementById('tt-user-comment')?.value||'').trim();
   
-  // Only save familiarity - other fields are read-only
-  const payload = { word, language, native_language, familiarity };
+  // Save familiarity and user comment
+  const payload = { word, language, native_language, familiarity, user_comment };
   try{
     // Add native language header for unauthenticated users
     const headers = { 'Content-Type': 'application/json' };
@@ -156,9 +157,12 @@ export async function openTooltip(anchor, word){
       posEl.textContent = posMap[js.pos] || '–';
     }
     
-    // Fill editable field (familiarity)
+    // Fill editable fields (familiarity and user comment)
     const fam = $('#tt-fam'); 
     if(fam) fam.value = String(js.familiarity ?? fam.value ?? 0);
+    
+    const userComment = $('#tt-user-comment');
+    if(userComment) userComment.value = js.user_comment || '';
     
     // Audio handling
     const a = $('#tt-audio-el');

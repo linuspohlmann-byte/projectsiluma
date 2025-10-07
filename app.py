@@ -3925,36 +3925,34 @@ def api_word_get():
     is_authenticated = user_id is not None
     if user_id:
         try:
-            # Get familiarity from local database
-            from server.db_multi_user import get_user_native_language
-            from server.multi_user_db import db_manager
-            # We need to find which level this word belongs to
-            # For now, we'll get it from the global database and then check local
-            native_language = get_user_native_language(user_id)
-            word_hash = db_manager.generate_word_hash(word, language, native_language)
+            # Get familiarity from PostgreSQL user_word_familiarity table
+            from server.db import get_user_word_familiarity_by_word
+            familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
             
-            # Get familiarity from local database
-            familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, [word_hash])
-            if word_hash in familiarity_data:
-                data['familiarity'] = familiarity_data[word_hash]['familiarity']
-                data['seen_count'] = familiarity_data[word_hash]['seen_count']
-                data['correct_count'] = familiarity_data[word_hash]['correct_count']
+            if familiarity_data:
+                data['familiarity'] = familiarity_data['familiarity'] or 0
+                data['seen_count'] = familiarity_data['seen_count'] or 0
+                data['correct_count'] = familiarity_data['correct_count'] or 0
+                data['user_comment'] = familiarity_data['user_comment'] or ''
             else:
-                # Word not in local database yet
+                # Word not in familiarity table yet
                 data['familiarity'] = 0
                 data['seen_count'] = 0
                 data['correct_count'] = 0
+                data['user_comment'] = ''
         except Exception as e:
             print(f"Error getting user familiarity data: {e}")
             # Fallback to default values
             data['familiarity'] = 0
             data['seen_count'] = 0
             data['correct_count'] = 0
+            data['user_comment'] = ''
     else:
         # Not authenticated - return default values
         data['familiarity'] = 0
         data['seen_count'] = 0
         data['correct_count'] = 0
+        data['user_comment'] = ''
     
     # Keep user-specific familiarity data for authenticated users
     # Only remove global familiarity data if it exists and we have user-specific data
@@ -4084,25 +4082,26 @@ def api_word_upsert():
     
     # Only save word familiarity updates if user is authenticated
     if is_authenticated:
-        # Save to user-specific local database
+        # Save to PostgreSQL user_word_familiarity table
         try:
             language = payload.get('language', 'en')
+            native_language = user_context.get('native_language', 'en')
             familiarity = payload.get('familiarity', 0)
-            seen_count = payload.get('seen_count')
-            correct_count = payload.get('correct_count')
+            user_comment = payload.get('user_comment', '')
                 
-            # Update word familiarity in local database
-            success = update_word_familiarity(
-                    user_id=user_id,
+            # Update word familiarity in PostgreSQL database
+            from server.db import update_user_word_familiarity_by_word
+            success = update_user_word_familiarity_by_word(
+                user_id=user_id,
                 word=word,
                 language=language,
+                native_language=native_language,
                 familiarity=familiarity,
-                seen_count=seen_count,
-                correct_count=correct_count
+                user_comment=user_comment
             )
             
             if success:
-                print(f"Word familiarity updated for user {user_id}: {word} -> {familiarity}")
+                print(f"Word familiarity updated for user {user_id}: {word} -> {familiarity} (comment: {user_comment[:50]}...)")
             else:
                 print(f"Failed to update word familiarity for user {user_id}: {word}")
                 
@@ -7223,3 +7222,59 @@ def api_test_postgresql():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route("/api/debug/add-user-comment-column", methods=["POST"])
+def debug_add_user_comment_column():
+    """Debug endpoint to add user_comment column to user_word_familiarity table"""
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config["type"] == "postgresql":
+                # Check if column exists
+                result = execute_query(conn, """
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = "user_word_familiarity" AND column_name = "user_comment"
+                """)
+                
+                if not result.fetchone():
+                    print("Adding user_comment column to user_word_familiarity table...")
+                    execute_query(conn, """
+                        ALTER TABLE user_word_familiarity 
+                        ADD COLUMN user_comment TEXT
+                    """)
+                    conn.commit()
+                    print("✅ Added user_comment column to user_word_familiarity table")
+                    return jsonify({"success": True, "message": "user_comment column added successfully"})
+                else:
+                    print("user_comment column already exists in user_word_familiarity table")
+                    return jsonify({"success": True, "message": "user_comment column already exists"})
+            else:
+                # SQLite syntax - check if column exists first
+                cur = conn.cursor()
+                cur.execute("PRAGMA table_info(user_word_familiarity)")
+                columns = [column[1] for column in cur.fetchall()]
+                
+                if "user_comment" not in columns:
+                    print("Adding user_comment column to user_word_familiarity table...")
+                    cur.execute("""
+                        ALTER TABLE user_word_familiarity 
+                        ADD COLUMN user_comment TEXT
+                    """)
+                    conn.commit()
+                    print("✅ Added user_comment column to user_word_familiarity table")
+                    return jsonify({"success": True, "message": "user_comment column added successfully"})
+                else:
+                    print("user_comment column already exists in user_word_familiarity table")
+                    return jsonify({"success": True, "message": "user_comment column already exists"})
+                    
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
