@@ -15,8 +15,11 @@ def create_custom_level_progress_table():
     
     try:
         if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            execute_query(conn, """
+            # PostgreSQL syntax - use cursor directly for better error handling
+            cursor = conn.cursor()
+            
+            # Create table
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS custom_level_progress (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL,
@@ -38,15 +41,19 @@ def create_custom_level_progress_table():
             """)
             
             # Create indexes for performance
-            execute_query(conn, """
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_custom_level_progress_user_group 
                 ON custom_level_progress(user_id, group_id);
             """)
             
-            execute_query(conn, """
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_custom_level_progress_last_updated 
                 ON custom_level_progress(last_updated);
             """)
+            
+            # Commit the transaction
+            conn.commit()
+            print("✅ Custom level progress table created successfully in PostgreSQL")
             
         else:
             # SQLite syntax
@@ -89,6 +96,13 @@ def create_custom_level_progress_table():
         
     except Exception as e:
         print(f"❌ Error creating custom level progress table: {e}")
+        import traceback
+        traceback.print_exc()
+        # Try to rollback if possible
+        try:
+            conn.rollback()
+        except:
+            pass
     finally:
         conn.close()
 
