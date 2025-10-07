@@ -1368,6 +1368,26 @@ function renderCustomLevels(groupId, levels) {
         const needsGeneration = content.ultra_lazy_loading && !content.sentences_generated;
         const isGenerating = content.ultra_lazy_loading && content.sentences_generated === false;
         
+        // Estimate word count immediately for better UX
+        let estimatedWords = 0;
+        if (content.items && content.items.length > 0) {
+            // Count words from existing content
+            const allWords = new Set();
+            content.items.forEach(item => {
+                if (item.words) {
+                    item.words.forEach(word => {
+                        if (word && word.trim()) {
+                            allWords.add(word.trim().toLowerCase());
+                        }
+                    });
+                }
+            });
+            estimatedWords = allWords.size;
+        } else if (needsGeneration) {
+            // Estimate for levels that need generation
+            estimatedWords = 25; // Typical custom level size
+        }
+        
         // Determine level status
         let levelStatus = 'Bereit';
         let statusClass = '';
@@ -1395,7 +1415,7 @@ function renderCustomLevels(groupId, levels) {
                                         <div class="level-word-stats-left">
                                             <div class="level-words-count">
                                                 <span class="words-icon">📖</span>
-                                                <span class="words-text">0</span>
+                                                <span class="words-text">${estimatedWords}</span>
                                             </div>
                                             <div class="level-learned-count">
                                                 <span class="learned-icon">💡</span>
@@ -2063,6 +2083,122 @@ window.renderCustomLevelsWithPreloading = renderCustomLevelsWithPreloading;
 window.generateRemainingLevelsInBackground = generateRemainingLevelsInBackground;
 window.updateLevelGenerationProgress = updateLevelGenerationProgress;
 window.applyBasicCustomLevelProgression = applyBasicCustomLevelProgression;
+window.updateWordCountsProgressively = updateWordCountsProgressively;
+window.updateSingleLevelWordCount = updateSingleLevelWordCount;
+window.updateLevelCardWordCount = updateLevelCardWordCount;
+
+// Progressive word count updates (one level at a time for better UX)
+async function updateWordCountsProgressively(groupId, levels) {
+    try {
+        console.log('📊 Starting progressive word count updates...');
+        
+        // Only update first 3 levels immediately, others in background
+        const immediateLevels = levels.slice(0, 3);
+        const backgroundLevels = levels.slice(3);
+        
+        // Update immediate levels one by one (fast feedback)
+        for (let i = 0; i < immediateLevels.length; i++) {
+            const level = immediateLevels[i];
+            await updateSingleLevelWordCount(groupId, level.level_number);
+            
+            // Small delay between updates for smooth UX
+            if (i < immediateLevels.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+        }
+        
+        // Update remaining levels in background (batched)
+        if (backgroundLevels.length > 0) {
+            console.log(`🔄 Updating ${backgroundLevels.length} remaining levels in background...`);
+            updateRemainingLevelWordCounts(groupId, backgroundLevels);
+        }
+        
+    } catch (error) {
+        console.error('Error in progressive word count updates:', error);
+    }
+}
+
+// Update word count for a single level
+async function updateSingleLevelWordCount(groupId, levelNumber) {
+    try {
+        const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                updateLevelCardWordCount(groupId, levelNumber, data);
+                console.log(`✅ Updated word count for level ${levelNumber}: ${data.total_words} words`);
+            }
+        }
+    } catch (error) {
+        console.log(`⚠️ Failed to update word count for level ${levelNumber}:`, error);
+    }
+}
+
+// Update remaining levels in batches
+async function updateRemainingLevelWordCounts(groupId, levels) {
+    const batchSize = 2;
+    const batches = [];
+    
+    for (let i = 0; i < levels.length; i += batchSize) {
+        batches.push(levels.slice(i, i + batchSize));
+    }
+    
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        
+        // Process batch in parallel
+        const promises = batch.map(level => updateSingleLevelWordCount(groupId, level.level_number));
+        await Promise.all(promises);
+        
+        // Small delay between batches
+        if (batchIndex < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+}
+
+// Update the visual word count on a level card
+function updateLevelCardWordCount(groupId, levelNumber, progressData) {
+    const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
+    if (!levelCard) return;
+    
+    const wordsText = levelCard.querySelector('.words-text');
+    const learnedText = levelCard.querySelector('.learned-text');
+    const completionText = levelCard.querySelector('.completion-circle-text');
+    const progressFill = levelCard.querySelector('.level-progress-fill');
+    
+    if (wordsText) {
+        wordsText.textContent = progressData.total_words || 0;
+    }
+    
+    if (learnedText) {
+        learnedText.textContent = progressData.completed_words || 0;
+    }
+    
+    if (completionText) {
+        const score = Math.round((progressData.level_score || 0) * 100);
+        completionText.textContent = `${score}%`;
+    }
+    
+    if (progressFill) {
+        const progress = progressData.total_words > 0 ? 
+            Math.round(((progressData.completed_words || 0) / progressData.total_words) * 100) : 0;
+        progressFill.style.width = `${progress}%`;
+    }
+    
+    // Cache the data for later use
+    levelCard.dataset.bulkData = JSON.stringify({
+        fam_counts: progressData.fam_counts || {0: progressData.total_words || 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: progressData.completed_words || 0},
+        status: progressData.status || 'not_started',
+        last_score: progressData.level_score || 0,
+        total_words: progressData.total_words || 0
+    });
+}
 
 // Show creation progress modal
 function showCreationProgressModal() {
@@ -2322,11 +2458,16 @@ function updateLevelGenerationProgress(groupId, levels, success) {
 
 // Enhanced level rendering with preloading (optimized for speed)
 function renderCustomLevelsWithPreloading(groupId, levels) {
-    // Render levels first
+    // Render levels first with estimated word counts
     renderCustomLevels(groupId, levels);
     
     // Apply basic progression immediately (fast path)
     applyBasicCustomLevelProgression(groupId, levels);
+    
+    // Start progressive word count updates (non-blocking)
+    setTimeout(() => {
+        updateWordCountsProgressively(groupId, levels);
+    }, 200);
     
     // Then preload detailed data in background (non-blocking)
     setTimeout(() => {
