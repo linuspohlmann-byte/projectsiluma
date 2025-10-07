@@ -1854,8 +1854,10 @@ def update_user_word_familiarity_by_word(user_id: int, word: str, language: str,
             word_row = cur.execute('SELECT id FROM words WHERE word = ? AND language = ? AND native_language = ?', (word, language, native_language)).fetchone()
         
         if not word_row:
-            print(f"Word not found: {word} ({language} -> {native_language})")
+            print(f"❌ Word not found: {word} ({language} -> {native_language})")
             return False
+        else:
+            print(f"✅ Word found: {word} ({language} -> {native_language}) with ID: {word_row['id'] if config['type'] == 'postgresql' else word_row[0]}")
         
         word_id = word_row['id'] if config['type'] == 'postgresql' else word_row[0]
         
@@ -1883,11 +1885,15 @@ def update_user_word_familiarity_by_word(user_id: int, word: str, language: str,
         final_user_comment = user_comment if user_comment is not None else current_user_comment
         
         # Update familiarity
+        print(f"🔧 Updating familiarity: user_id={user_id}, word_id={word_id}, familiarity={familiarity}, seen_count={seen_count}, correct_count={correct_count}, user_comment='{final_user_comment}'")
         update_user_word_familiarity(user_id, word_id, familiarity, seen_count, correct_count, final_user_comment)
+        print(f"✅ Familiarity update completed successfully")
         return True
         
     except Exception as e:
-        print(f"Error updating familiarity: {e}")
+        print(f"❌ Error updating familiarity: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         conn.close()
