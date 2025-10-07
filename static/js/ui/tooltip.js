@@ -14,19 +14,51 @@ function _langBadgeText(kind){
 }
 
 // Tooltip state
-const TT = { el: null, word: '', anchor: null };
+const TT = { el: null, word: '', anchor: null, isSaving: false };
 
 // --- Save current tooltip fields ------------------------------------------------
 export async function ttSave(){
+  // Prevent multiple simultaneous saves
+  if (TT.isSaving) {
+    console.log('🔧 Save already in progress, skipping...');
+    return;
+  }
+  
   const wordEl = document.getElementById('tt-title');
   const word = (wordEl?.textContent||'').trim();
   if(!word) return;
+  
+  TT.isSaving = true;
   
   // Use stored context information for reliable identification
   const context = TT.wordContext || {};
   const language = context.language || (document.getElementById('target-lang')?.value||'').trim();
   const native_language = context.native_language || (localStorage.getItem('siluma_native')||'').trim();
-  const user_id = context.user_id;
+  let user_id = context.user_id;
+  
+  // Fallback: try to get user_id from auth context if not available
+  if (!user_id) {
+    try {
+      // First try to get from global auth state
+      if (window.authManager && window.authManager.currentUser) {
+        user_id = window.authManager.currentUser.id;
+      } else {
+        // Fallback: try to decode from session token
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          try {
+            const userInfo = JSON.parse(atob(sessionToken.split('.')[1]));
+            user_id = userInfo.user_id || userInfo.id;
+          } catch (e) {
+            console.warn('⚠️ Could not decode session token:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Could not get user ID:', e);
+    }
+  }
+  
   const familiarity = parseInt(document.getElementById('tt-fam')?.value||'0',10)||0;
   const user_comment = (document.getElementById('tt-user-comment')?.value||'').trim();
   
@@ -34,6 +66,11 @@ export async function ttSave(){
   if (!language || !native_language) {
     console.warn('⚠️ Missing language context for tooltip save:', { language, native_language });
     return;
+  }
+  
+  // Warn if user_id is still undefined
+  if (!user_id) {
+    console.warn('⚠️ User ID is undefined, saving without user context');
   }
   
   // Save familiarity and user comment with full context
@@ -71,6 +108,9 @@ export async function ttSave(){
       }
     }catch(_){}
   }catch(_){ /* ignore network errors on close */ }
+  finally {
+    TT.isSaving = false;
+  }
 }
 
 // --- Close tooltip -------------------------------------------------------------
@@ -85,7 +125,7 @@ export async function closeTooltip(doSave=true){
   }
   
   tip.style.display = 'none';
-  TT.word=''; TT.anchor=null; TT.wordContext=null;
+  TT.word=''; TT.anchor=null; TT.wordContext=null; TT.isSaving=false;
   document.removeEventListener('click', onDocClick, {capture:false});
 }
 
