@@ -3362,8 +3362,8 @@ def api_enrich_custom_level_words(group_id, level_number):
                             ))
                         
                         conn.commit()
-                    enriched_count += 1
-                    print(f"Enriched custom level word: {word} -> {enriched_data.get('translation', '')}")
+                        enriched_count += 1
+                        print(f"Enriched custom level word: {word} -> {enriched_data.get('translation', '')}")
                         
                     finally:
                         conn.close()
