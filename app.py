@@ -4103,9 +4103,9 @@ def api_word_upsert():
             )
             
             if success:
-                print(f"Word familiarity updated for user {user_id}: {word} -> {familiarity} (comment: {user_comment[:50]}...)")
+                print(f"✅ Word familiarity updated for user {target_user_id}: {word} -> {familiarity} (comment: {user_comment[:50]}...)")
             else:
-                print(f"Failed to update word familiarity for user {user_id}: {word}")
+                print(f"❌ Failed to update word familiarity for user {target_user_id}: {word}")
                 
         except Exception as e:
             print(f"Error saving user word familiarity: {e}")
@@ -7330,5 +7330,45 @@ def debug_check_word_familiarity():
                 "reason": "No familiarity data found"
             })
             
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/debug/test-update-familiarity", methods=["POST"])
+def debug_test_update_familiarity():
+    """Debug endpoint to test updating familiarity directly"""
+    try:
+        payload = request.get_json(force=True) or {}
+        word = payload.get('word', '').strip()
+        user_id = payload.get('user_id')
+        language = payload.get('language', 'ka').strip()
+        native_language = payload.get('native_language', 'de').strip()
+        familiarity = payload.get('familiarity', 0)
+        user_comment = payload.get('user_comment', '')
+        
+        if not word or not user_id:
+            return jsonify({"success": False, "error": "word and user_id required"}), 400
+        
+        # Test the update function directly
+        from server.db import update_user_word_familiarity_by_word
+        success = update_user_word_familiarity_by_word(
+            user_id=user_id,
+            word=word,
+            language=language,
+            native_language=native_language,
+            familiarity=familiarity,
+            user_comment=user_comment
+        )
+        
+        return jsonify({
+            "success": success,
+            "word": word,
+            "user_id": user_id,
+            "language": language,
+            "native_language": native_language,
+            "familiarity": familiarity,
+            "user_comment": user_comment,
+            "message": "Update successful" if success else "Update failed"
+        })
+        
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
