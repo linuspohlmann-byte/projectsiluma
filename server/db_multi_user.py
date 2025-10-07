@@ -10,6 +10,35 @@ from datetime import datetime, UTC
 from typing import Dict, List, Optional, Any
 from .multi_user_db import db_manager
 
+def get_user_id_from_group_id(group_id: int) -> int:
+    """Get user ID from custom level group ID"""
+    try:
+        from .db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                result = execute_query(conn, """
+                    SELECT user_id FROM custom_level_groups 
+                    WHERE id = %s
+                """, (group_id,))
+                row = result.fetchone()
+                return row['user_id'] if row else None
+            else:
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id FROM custom_level_groups WHERE id = ?", (group_id,))
+                row = cursor.fetchone()
+                return row[0] if row else None
+                
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error getting user ID from group ID: {e}")
+        return None
+
 def get_db():
     """Get connection to main database (for backward compatibility)"""
     try:

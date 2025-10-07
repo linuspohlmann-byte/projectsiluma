@@ -257,6 +257,118 @@ def calculate_word_count_from_content(content: Dict[str, Any]) -> int:
     
     return len(all_words)
 
+def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, content: Dict[str, Any], language: str, native_language: str) -> bool:
+    """Sync words from custom level to PostgreSQL words and user_word_familiarity tables"""
+    try:
+        if not content or not content.get('items'):
+            print(f"⚠️ No content items found for level {group_id}/{level_number}")
+            return False
+        
+        # Extract all unique words from the level content
+        all_words = set()
+        for item in content['items']:
+            words = item.get('words', [])
+            for word in words:
+                if word and word.strip():
+                    all_words.add(word.strip().lower())
+        
+        if not all_words:
+            print(f"⚠️ No words found in level {group_id}/{level_number}")
+            return False
+        
+        print(f"🔄 Syncing {len(all_words)} words from level {group_id}/{level_number} to PostgreSQL...")
+        
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        from server.db_multi_user import get_user_id_from_group_id
+        
+        # Get user ID from group
+        user_id = get_user_id_from_group_id(group_id)
+        if not user_id:
+            print(f"❌ Could not find user ID for group {group_id}")
+            return False
+        
+        config = get_database_config()
+        if config['type'] != 'postgresql':
+            print(f"⚠️ Not using PostgreSQL, skipping word sync")
+            return False
+        
+        conn = get_db_connection()
+        try:
+            # Step 1: Ensure words exist in words table (batch operation for performance)
+            words_list = list(all_words)
+            placeholders = ','.join(['%s'] * len(words_list))
+            
+            # Check which words already exist
+            result = execute_query(conn, f"""
+                SELECT word FROM words 
+                WHERE word IN ({placeholders}) AND language = %s
+            """, words_list + [language])
+            
+            existing_words = {row['word'] for row in result.fetchall()}
+            new_words = [word for word in words_list if word not in existing_words]
+            
+            # Insert new words in batch
+            words_synced = 0
+            if new_words:
+                for word in new_words:
+                    execute_query(conn, """
+                        INSERT INTO words (word, language, native_language, created_at, updated_at)
+                        VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, (word, language, native_language))
+                words_synced = len(new_words)
+            
+            # Step 2: Add words to user_word_familiarity table (batch operation for performance)
+            # Get all word IDs
+            result = execute_query(conn, f"""
+                SELECT id, word FROM words 
+                WHERE word IN ({placeholders}) AND language = %s
+            """, words_list + [language])
+            
+            word_id_map = {row['word']: row['id'] for row in result.fetchall()}
+            
+            # Check which words user already has
+            word_ids = list(word_id_map.values())
+            if word_ids:
+                placeholders_ids = ','.join(['%s'] * len(word_ids))
+                result = execute_query(conn, f"""
+                    SELECT word_id FROM user_word_familiarity 
+                    WHERE user_id = %s AND word_id IN ({placeholders_ids})
+                """, [user_id] + word_ids)
+                
+                existing_user_word_ids = {row['word_id'] for row in result.fetchall()}
+                
+                # Insert new user word familiarity entries in batch
+                user_words_added = 0
+                new_user_words = []
+                for word, word_id in word_id_map.items():
+                    if word_id not in existing_user_word_ids:
+                        new_user_words.append((user_id, word_id))
+                
+                if new_user_words:
+                    for user_id_val, word_id in new_user_words:
+                        execute_query(conn, """
+                            INSERT INTO user_word_familiarity 
+                            (user_id, word_id, familiarity, seen_count, correct_count, created_at, updated_at)
+                            VALUES (%s, %s, 0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """, (user_id_val, word_id))
+                    user_words_added = len(new_user_words)
+            else:
+                user_words_added = 0
+            
+            conn.commit()
+            print(f"✅ Word sync complete: {words_synced} new words, {user_words_added} user words added")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error syncing words to PostgreSQL: {e}")
+            return False
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"❌ Error in sync_custom_level_words_to_postgresql: {e}")
+        return False
+
 def update_word_count_for_level(group_id: int, level_number: int, content: Dict[str, Any]) -> bool:
     """Update word count for a specific level in the database"""
     try:
@@ -1369,6 +1481,10 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
             
             conn.commit()
             print(f"✅ Updated level {group_id}/{level_number} with enriched content and word count: {word_count}")
+            
+            # Sync words to PostgreSQL after successful level generation
+            sync_custom_level_words_to_postgresql(group_id, level_number, content, language, native_language)
+            
             return True
             
         finally:

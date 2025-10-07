@@ -1919,6 +1919,62 @@ def api_generate_specific_custom_levels_content(group_id):
         print(f"Error generating specific custom level content: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@custom_levels_bp.post('/api/custom-levels/<int:group_id>/sync-words')
+@require_auth()
+def api_sync_custom_level_words(group_id):
+    """Sync words from custom level to PostgreSQL words and user_word_familiarity tables"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        # Get group info
+        from server.services.custom_levels import get_custom_level_group, get_custom_levels_for_group, sync_custom_level_words_to_postgresql
+        
+        group_data = get_custom_level_group(group_id, user_id)
+        if not group_data:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+        
+        # Get all levels for this group
+        levels = get_custom_levels_for_group(group_id)
+        if not levels:
+            return jsonify({'success': False, 'error': 'No levels found'}), 404
+        
+        language = group_data.get('language', 'en')
+        native_language = group_data.get('native_language', 'de')
+        
+        print(f"🔄 Starting word sync for group {group_id} with {len(levels)} levels")
+        
+        # Sync words for all levels that have content
+        synced_levels = 0
+        total_words_synced = 0
+        total_user_words_added = 0
+        
+        for level in levels:
+            content = level.get('content', {})
+            if content and content.get('items'):
+                success = sync_custom_level_words_to_postgresql(
+                    group_id, level['level_number'], content, language, native_language
+                )
+                if success:
+                    synced_levels += 1
+        
+        print(f"🎉 Word sync complete: {synced_levels} levels synced")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully synced words for {synced_levels} levels',
+            'synced_levels': synced_levels,
+            'total_levels': len(levels)
+        })
+        
+    except Exception as e:
+        print(f"Error syncing custom level words: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/generate-all-content')
 @require_auth(optional=True)
 def api_generate_all_custom_levels_content(group_id):
