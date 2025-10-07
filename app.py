@@ -3907,16 +3907,16 @@ def api_word_get():
             cur = conn.cursor()
             row = cur.execute('SELECT * FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
         
-    if not row:
+        if not row:
             # Return empty word data if not found
-        return jsonify({
-          'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
-              'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
-          'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
-          'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
-        })
-    
-    data = dict(row)
+            data = {
+                'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
+                'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
+                'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
+                'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0, 'user_comment': ''
+            }
+        else:
+            data = dict(row)
         
     finally:
         conn.close()
