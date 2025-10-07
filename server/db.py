@@ -1829,6 +1829,7 @@ def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, na
     try:
         if config['type'] == 'postgresql':
             # PostgreSQL syntax
+            print(f"🔍 Querying familiarity: user_id={user_id}, word='{word}', language='{language}', native_language='{native_language}'")
             result = execute_query(conn, '''
                 SELECT uwf.familiarity, uwf.seen_count, uwf.correct_count, uwf.user_comment
                 FROM user_word_familiarity uwf
@@ -1836,6 +1837,7 @@ def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, na
                 WHERE uwf.user_id = %s AND w.word = %s AND w.language = %s AND w.native_language = %s
             ''', (user_id, word, language, native_language))
             row = result.fetchone()
+            print(f"🔍 Query result: {row}")
         else:
             # SQLite syntax
             cur = conn.cursor()
