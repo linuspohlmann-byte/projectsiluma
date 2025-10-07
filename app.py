@@ -3255,9 +3255,9 @@ def api_enrich_custom_level_words(group_id, level_number):
                         existing = cur.execute('SELECT translation FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
                     
                     if existing and existing.get('translation'):
-                        # Word already has translation, skip
+                    # Word already has translation, skip
                         print(f"Word '{word}' already exists in words table, skipping enrichment")
-                        continue
+                    continue
                         
                 finally:
                     conn.close()
@@ -3287,17 +3287,17 @@ def api_enrich_custom_level_words(group_id, level_number):
                     try:
                         # Prepare data for insertion
                         insert_data = {
-                            'word': word,
-                            'language': language,
-                            'native_language': native_language,
-                            'translation': enriched_data.get('translation', ''),
+                        'word': word,
+                        'language': language,
+                        'native_language': native_language,
+                        'translation': enriched_data.get('translation', ''),
                             'example': enriched_data.get('example', ''),
                             'example_native': enriched_data.get('example_native', ''),
                             'lemma': enriched_data.get('lemma', ''),
-                            'pos': enriched_data.get('pos', ''),
-                            'ipa': enriched_data.get('ipa', ''),
+                        'pos': enriched_data.get('pos', ''),
+                        'ipa': enriched_data.get('ipa', ''),
                             'audio_url': enriched_data.get('audio_url', ''),
-                            'gender': enriched_data.get('gender', 'none'),
+                        'gender': enriched_data.get('gender', 'none'),
                             'plural': enriched_data.get('plural', ''),
                             'conj': json.dumps(enriched_data.get('conj', {})) if enriched_data.get('conj') else None,
                             'comp': json.dumps(enriched_data.get('comp', {})) if enriched_data.get('comp') else None,
@@ -3362,8 +3362,8 @@ def api_enrich_custom_level_words(group_id, level_number):
                             ))
                         
                         conn.commit()
-                        enriched_count += 1
-                        print(f"Enriched custom level word: {word} -> {enriched_data.get('translation', '')}")
+                    enriched_count += 1
+                    print(f"Enriched custom level word: {word} -> {enriched_data.get('translation', '')}")
                         
                     finally:
                         conn.close()
@@ -3907,16 +3907,16 @@ def api_word_get():
             cur = conn.cursor()
             row = cur.execute('SELECT * FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
         
-        if not row:
+    if not row:
             # Return empty word data if not found
-            return jsonify({
-              'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
+        return jsonify({
+          'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
               'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
-              'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
-              'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
-            })
-        
-        data = dict(row)
+          'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
+          'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
+        })
+    
+    data = dict(row)
         
     finally:
         conn.close()
@@ -4005,17 +4005,17 @@ def api_words_get_many():
         conn = get_db_connection()
         
         try:
-            if config['type'] == 'postgresql':
-                # PostgreSQL syntax
-                result = execute_query(conn, '''
-                    SELECT * FROM words 
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                SELECT * FROM words 
                     WHERE word = ANY(%s) AND language = %s AND native_language = %s
                 ''', (words, language, native_language))
-                rows = result.fetchall()
-            else:
+            rows = result.fetchall()
+        else:
                 # SQLite syntax (fallback)
-                cur = conn.cursor()
-                placeholders = ','.join('?' for _ in words)
+            cur = conn.cursor()
+            placeholders = ','.join('?' for _ in words)
                 rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND language=? AND native_language=?', (*words, language, native_language)).fetchall()
             
             # Convert to dict with word as key
@@ -4035,7 +4035,7 @@ def api_words_get_many():
                 word_data_map[word_data['word']] = word_data
             
             # Convert to list format expected by frontend
-            out = []
+        out = []
             for word in words:
                 if word in word_data_map:
                     word_data = word_data_map[word]
@@ -4053,7 +4053,7 @@ def api_words_get_many():
                         'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
                     })
             
-            return jsonify({'success': True, 'data': out})
+        return jsonify({'success': True, 'data': out})
             
         finally:
             conn.close()
@@ -4092,7 +4092,7 @@ def api_word_upsert():
             # Update word familiarity in PostgreSQL database
             from server.db import update_user_word_familiarity_by_word
             success = update_user_word_familiarity_by_word(
-                user_id=user_id,
+                    user_id=user_id,
                 word=word,
                 language=language,
                 native_language=native_language,
@@ -4206,52 +4206,14 @@ def api_word_upsert():
             
         finally:
             conn.close()
-        
+            
     except Exception as e:
         print(f"Error upserting word to PostgreSQL words table: {e}")
         # Don't use fallback to old system as it creates duplicates
         print(f"Word upsert failed for: {word} ({language} -> {native_language})")
     
     # For unauthenticated users, we still save to global database but not user-specific data
-        # and use multi-user system if possible
-        try:
-            # Try to get native language from request headers (sent by frontend)
-            native_language = request.headers.get('X-Native-Language', 'en')
-            
-            from server.multi_user_db import db_manager
-            
-            language = payload.get('language', 'en')
-            
-            # Add word to global database for this native language
-            word_data = {
-                'translation': payload.get('translation', ''),
-                'example': payload.get('example', ''),
-                'example_native': payload.get('example_native', ''),
-                'lemma': payload.get('lemma', ''),
-                'pos': payload.get('pos', ''),
-                'ipa': payload.get('ipa', ''),
-                'audio_url': payload.get('audio_url', ''),
-                'gender': payload.get('gender', ''),
-                'plural': payload.get('plural', ''),
-                'conj': payload.get('conj', {}),
-                'comp': payload.get('comp', {}),
-                'synonyms': payload.get('synonyms', []),
-                'collocations': payload.get('collocations', []),
-                'cefr': payload.get('cefr', ''),
-                'freq_rank': payload.get('freq_rank'),
-                'tags': payload.get('tags', []),
-                'note': payload.get('note', ''),
-                'info': payload.get('info', {})
-            }
-            
-            word_hash = db_manager.add_word_to_global(word, language, native_language, word_data)
-            if word_hash:
-                print(f"Word added to global database for unauthenticated user (native: {native_language}): {word}")
-            else:
-                print(f"Failed to add word to global database for unauthenticated user (native: {native_language}): {word}")
-            
-        except Exception as e:
-            print(f"Error adding word to global database for unauthenticated user: {e}")
+    # The global word data is already saved above, so we don't need to do anything else here
     
     return jsonify({'success': True})
 
@@ -7235,56 +7197,25 @@ def debug_add_user_comment_column():
         
         try:
             if config["type"] == "postgresql":
-                # First check if table exists
+                # Check if column exists
                 result = execute_query(conn, """
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = 'user_word_familiarity'
-                    );
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = "user_word_familiarity" AND column_name = "user_comment"
                 """)
-                table_exists = result.fetchone()[0]
                 
-                if not table_exists:
-                    print("Creating user_word_familiarity table...")
+                if not result.fetchone():
+                    print("Adding user_comment column to user_word_familiarity table...")
                     execute_query(conn, """
-                        CREATE TABLE user_word_familiarity (
-                            id SERIAL PRIMARY KEY,
-                            user_id INTEGER NOT NULL,
-                            word_id INTEGER NOT NULL,
-                            familiarity INTEGER DEFAULT 0,
-                            seen_count INTEGER DEFAULT 0,
-                            correct_count INTEGER DEFAULT 0,
-                            user_comment TEXT,
-                            last_seen TIMESTAMP,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-                            UNIQUE(user_id, word_id)
-                        );
+                        ALTER TABLE user_word_familiarity 
+                        ADD COLUMN user_comment TEXT
                     """)
                     conn.commit()
-                    print("✅ Created user_word_familiarity table with user_comment column")
-                    return jsonify({"success": True, "message": "user_word_familiarity table created with user_comment column"})
+                    print("✅ Added user_comment column to user_word_familiarity table")
+                    return jsonify({"success": True, "message": "user_comment column added successfully"})
                 else:
-                    # Check if column exists
-                    result = execute_query(conn, """
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = %s AND column_name = %s
-                    """, ('user_word_familiarity', 'user_comment'))
-                    
-                    if not result.fetchone():
-                        print("Adding user_comment column to user_word_familiarity table...")
-                        execute_query(conn, """
-                            ALTER TABLE user_word_familiarity 
-                            ADD COLUMN user_comment TEXT
-                        """)
-                        conn.commit()
-                        print("✅ Added user_comment column to user_word_familiarity table")
-                        return jsonify({"success": True, "message": "user_comment column added successfully"})
-                    else:
-                        print("user_comment column already exists in user_word_familiarity table")
-                        return jsonify({"success": True, "message": "user_comment column already exists"})
+                    print("user_comment column already exists in user_word_familiarity table")
+                    return jsonify({"success": True, "message": "user_comment column already exists"})
             else:
                 # SQLite syntax - check if column exists first
                 cur = conn.cursor()
