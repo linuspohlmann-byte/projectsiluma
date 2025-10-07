@@ -903,33 +903,33 @@ async function startCustomGroup(groupId) {
         console.log('📚 Custom group loaded:', group);
         console.log('📖 Levels found:', levels.length);
         
-        // Quick check: Only process if levels actually need generation
+        // Smart generation: Only generate levels that should be unlocked based on user progress
         const levelsNeedingGeneration = levels.filter(level => {
             const content = level.content || {};
             return content.ultra_lazy_loading && !content.sentences_generated;
         });
         
         if (levelsNeedingGeneration.length > 0) {
-            console.log(`🚀 Progressive loading: ${levelsNeedingGeneration.length} levels need generation`);
+            console.log(`🚀 Smart loading: ${levelsNeedingGeneration.length} levels need generation`);
             
-            // Only generate first 3 levels immediately for fast initial load
-            const immediateLevels = levelsNeedingGeneration.slice(0, 3);
-            const remainingLevels = levelsNeedingGeneration.slice(3);
+            // Determine which levels to generate based on user progress
+            const levelsToGenerate = await determineLevelsToGenerate(groupId, levels, levelsNeedingGeneration);
             
-            if (immediateLevels.length > 0) {
-                console.log(`⚡ Generating first ${immediateLevels.length} levels immediately...`);
+            if (levelsToGenerate.immediate.length > 0) {
+                console.log(`⚡ Generating ${levelsToGenerate.immediate.length} relevant levels immediately...`);
                 
-                // Show quick progress message
+                // Show smart progress message
                 if (window.showLoader) {
-                    window.showLoader(`Generiere erste ${immediateLevels.length} Level...`);
+                    const levelNumbers = levelsToGenerate.immediate.map(l => l.level_number).join(', ');
+                    window.showLoader(`Generiere Level ${levelNumbers}...`);
                 }
                 
                 try {
-                    // Generate only first few levels for immediate availability
-                    const generationResult = await generateAllCustomLevelsContent(groupId, immediateLevels);
+                    // Generate only relevant levels for immediate availability
+                    const generationResult = await generateAllCustomLevelsContent(groupId, levelsToGenerate.immediate);
                     
                     if (generationResult.successful > 0) {
-                        console.log(`✅ Generated ${generationResult.successful} levels for immediate use`);
+                        console.log(`✅ Generated ${generationResult.successful} relevant levels for immediate use`);
                     }
                     
                     // Reload the group data to get updated levels
@@ -943,20 +943,20 @@ async function startCustomGroup(groupId) {
                         const reloadData = await reloadResponse.json();
                         if (reloadData.success) {
                             levels.splice(0, levels.length, ...reloadData.levels);
-                            console.log('✅ Reloaded levels with immediate content');
+                            console.log('✅ Reloaded levels with smart-generated content');
                         }
                     }
                 } catch (error) {
-                    console.error('❌ Error during immediate content generation:', error);
+                    console.error('❌ Error during smart content generation:', error);
                 }
             }
             
             // Start background generation for remaining levels (non-blocking)
-            if (remainingLevels.length > 0) {
-                console.log(`🔄 Starting background generation for ${remainingLevels.length} remaining levels...`);
+            if (levelsToGenerate.background.length > 0) {
+                console.log(`🔄 Starting background generation for ${levelsToGenerate.background.length} remaining levels...`);
                 
                 // Generate remaining levels in background without blocking UI
-                generateRemainingLevelsInBackground(groupId, remainingLevels);
+                generateRemainingLevelsInBackground(groupId, levelsToGenerate.background);
             }
         } else {
             console.log(`✅ All levels already generated - fast loading!`);
@@ -2086,6 +2086,155 @@ window.applyBasicCustomLevelProgression = applyBasicCustomLevelProgression;
 window.updateWordCountsProgressively = updateWordCountsProgressively;
 window.updateSingleLevelWordCount = updateSingleLevelWordCount;
 window.updateLevelCardWordCount = updateLevelCardWordCount;
+window.determineLevelsToGenerate = determineLevelsToGenerate;
+window.getUserProgressForGroup = getUserProgressForGroup;
+window.determineUnlockedLevels = determineUnlockedLevels;
+window.findNextLevelToUnlock = findNextLevelToUnlock;
+
+// Smart level generation: Determine which levels to generate based on user progress
+async function determineLevelsToGenerate(groupId, allLevels, levelsNeedingGeneration) {
+    try {
+        console.log('🧠 Determining smart level generation strategy...');
+        
+        const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+        
+        if (!isUserAuthenticated) {
+            // For unauthenticated users, only generate level 1
+            const level1 = levelsNeedingGeneration.find(level => level.level_number === 1);
+            return {
+                immediate: level1 ? [level1] : [],
+                background: levelsNeedingGeneration.filter(level => level.level_number !== 1)
+            };
+        }
+        
+        // For authenticated users, check their progress
+        const userProgress = await getUserProgressForGroup(groupId);
+        const unlockedLevels = determineUnlockedLevels(userProgress, allLevels.length);
+        
+        console.log(`📊 User progress analysis:`, {
+            totalLevels: allLevels.length,
+            unlockedLevels: unlockedLevels,
+            levelsNeedingGeneration: levelsNeedingGeneration.length
+        });
+        
+        // Find the next level that should be unlocked but needs generation
+        const nextLevelToUnlock = findNextLevelToUnlock(unlockedLevels, levelsNeedingGeneration);
+        
+        // Determine immediate and background generation
+        const immediate = [];
+        const background = [];
+        
+        if (nextLevelToUnlock) {
+            // Generate the next level that should be unlocked
+            immediate.push(nextLevelToUnlock);
+            console.log(`🎯 Next level to generate: Level ${nextLevelToUnlock.level_number}`);
+            
+            // Also generate the level after that for smooth progression
+            const nextNextLevel = levelsNeedingGeneration.find(level => 
+                level.level_number === nextLevelToUnlock.level_number + 1
+            );
+            if (nextNextLevel) {
+                immediate.push(nextNextLevel);
+                console.log(`🎯 Also generating next level: Level ${nextNextLevel.level_number}`);
+            }
+        } else {
+            // If no specific level needs immediate generation, generate first few
+            immediate.push(...levelsNeedingGeneration.slice(0, 2));
+            console.log(`🎯 No specific level needed, generating first 2 levels`);
+        }
+        
+        // Put remaining levels in background
+        const immediateLevelNumbers = immediate.map(l => l.level_number);
+        background.push(...levelsNeedingGeneration.filter(level => 
+            !immediateLevelNumbers.includes(level.level_number)
+        ));
+        
+        console.log(`📋 Smart generation plan:`, {
+            immediate: immediate.map(l => l.level_number),
+            background: background.map(l => l.level_number)
+        });
+        
+        return { immediate, background };
+        
+    } catch (error) {
+        console.error('Error determining levels to generate:', error);
+        // Fallback: generate first 2 levels
+        return {
+            immediate: levelsNeedingGeneration.slice(0, 2),
+            background: levelsNeedingGeneration.slice(2)
+        };
+    }
+}
+
+// Get user progress for a custom level group
+async function getUserProgressForGroup(groupId) {
+    try {
+        const response = await fetch(`/api/custom-levels/${groupId}/bulk-stats`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                return data.levels || {};
+            }
+        }
+    } catch (error) {
+        console.log('Could not fetch user progress, using defaults:', error);
+    }
+    
+    return {};
+}
+
+// Determine which levels should be unlocked based on user progress
+function determineUnlockedLevels(userProgress, totalLevels) {
+    const unlockedLevels = [];
+    
+    for (let levelNum = 1; levelNum <= totalLevels; levelNum++) {
+        const levelData = userProgress[levelNum];
+        
+        if (levelNum === 1) {
+            // Level 1 is always unlocked
+            unlockedLevels.push(levelNum);
+        } else {
+            // Check if previous level is completed with good score
+            const prevLevelData = userProgress[levelNum - 1];
+            if (prevLevelData && prevLevelData.success) {
+                const prevUserProgress = prevLevelData.user_progress;
+                const prevStatus = prevUserProgress?.status || prevLevelData.status;
+                const prevScore = prevUserProgress?.score || prevLevelData.last_score;
+                const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+                
+                if (isPrevCompleted) {
+                    unlockedLevels.push(levelNum);
+                } else {
+                    // Stop at first locked level
+                    break;
+                }
+            } else {
+                // Stop at first level without data
+                break;
+            }
+        }
+    }
+    
+    return unlockedLevels;
+}
+
+// Find the next level that should be unlocked but needs generation
+function findNextLevelToUnlock(unlockedLevels, levelsNeedingGeneration) {
+    // Find the highest unlocked level
+    const highestUnlocked = Math.max(...unlockedLevels, 0);
+    
+    // Find the next level that needs generation
+    const nextLevel = levelsNeedingGeneration.find(level => 
+        level.level_number === highestUnlocked + 1
+    );
+    
+    return nextLevel;
+}
 
 // Progressive word count updates (one level at a time for better UX)
 async function updateWordCountsProgressively(groupId, levels) {
