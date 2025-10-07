@@ -44,6 +44,12 @@ export function initHeaderStats() {
     // Check initial state
     isUserAuthenticated = window.authManager.isAuthenticated();
     console.log('📊 Header stats: Initial auth state:', isUserAuthenticated);
+    console.log('🔍 Auth debug - authManager exists:', !!window.authManager);
+    if (window.authManager) {
+      console.log('🔍 Auth debug - sessionToken:', !!window.authManager.sessionToken);
+      console.log('🔍 Auth debug - currentUser:', !!window.authManager.currentUser);
+      console.log('🔍 Auth debug - currentUser data:', window.authManager.currentUser);
+    }
     
     // Listen for auth state changes
     document.addEventListener('authStateChanged', () => {
@@ -79,6 +85,14 @@ export function initHeaderStats() {
  */
 export async function updateStats(force = false) {
   if (!currentLanguage) return;
+  
+  // Update authentication state before proceeding
+  if (window.authManager) {
+    isUserAuthenticated = window.authManager.isAuthenticated();
+    console.log('🔍 UpdateStats auth debug - sessionToken:', !!window.authManager.sessionToken);
+    console.log('🔍 UpdateStats auth debug - currentUser:', !!window.authManager.currentUser);
+    console.log('🔍 UpdateStats auth debug - isAuthenticated result:', isUserAuthenticated);
+  }
   
   // Batch multiple update requests
   if (!force && statsUpdatePending) {
