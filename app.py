@@ -364,6 +364,152 @@ def debug_run_progress_cache_migration():
             'success': False
         }), 500
 
+@app.post('/api/debug/run-database-schema-migration')
+def debug_run_database_schema_migration():
+    """Run database schema migration to fix missing columns and schema issues"""
+    try:
+        import os
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        
+        # Get database connection
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL environment variable not set'
+            }), 500
+        
+        conn = psycopg2.connect(database_url)
+        
+        try:
+            print("🚀 Starting database schema migration...")
+            
+            # Fix user_word_familiarity table
+            print("🔧 Fixing user_word_familiarity table schema...")
+            
+            # Add word_hash column if missing
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'user_word_familiarity' AND column_name = 'word_hash'
+                );
+            """)
+            word_hash_exists = cursor.fetchone()[0]
+            
+            if not word_hash_exists:
+                cursor.execute("ALTER TABLE user_word_familiarity ADD COLUMN word_hash VARCHAR(64);")
+                print("✅ Added word_hash column to user_word_familiarity")
+            else:
+                print("ℹ️ word_hash column already exists in user_word_familiarity")
+            
+            # Add native_language column if missing
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'user_word_familiarity' AND column_name = 'native_language'
+                );
+            """)
+            native_language_exists = cursor.fetchone()[0]
+            
+            if not native_language_exists:
+                cursor.execute("ALTER TABLE user_word_familiarity ADD COLUMN native_language VARCHAR(10);")
+                print("✅ Added native_language column to user_word_familiarity")
+            else:
+                print("ℹ️ native_language column already exists in user_word_familiarity")
+            
+            # Create index on word_hash if it doesn't exist
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_user_word_familiarity_user_hash 
+                ON user_word_familiarity(user_id, word_hash);
+            """)
+            print("✅ Created index on user_word_familiarity(user_id, word_hash)")
+            
+            # Populate word_hash values for existing records
+            print("🔧 Populating word_hash values for existing records...")
+            cursor.execute("""
+                SELECT uwf.id, w.word, COALESCE(uwf.native_language, w.native_language) as native_language
+                FROM user_word_familiarity uwf
+                JOIN words w ON uwf.word_id = w.id
+                WHERE uwf.word_hash IS NULL;
+            """)
+            
+            records = cursor.fetchall()
+            print(f"📊 Found {len(records)} records without word_hash")
+            
+            if records:
+                import hashlib
+                for record_id, word, native_language in records:
+                    # Generate hash
+                    word_hash = hashlib.sha256(f"{word}_{native_language}".encode()).hexdigest()
+                    
+                    cursor.execute("""
+                        UPDATE user_word_familiarity 
+                        SET word_hash = %s, native_language = %s
+                        WHERE id = %s;
+                    """, (word_hash, native_language, record_id))
+                
+                print(f"✅ Updated {len(records)} records with word_hash")
+            
+            # Fix level_runs table
+            print("🔧 Fixing level_runs table schema...")
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_name = 'level_runs'
+                );
+            """)
+            table_exists = cursor.fetchone()[0]
+            
+            if not table_exists:
+                print("ℹ️ level_runs table does not exist, creating it...")
+                cursor.execute("""
+                    CREATE TABLE level_runs (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        level INTEGER NOT NULL,
+                        score DECIMAL(5,2),
+                        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                print("✅ Created level_runs table")
+            else:
+                print("ℹ️ level_runs table already exists")
+            
+            conn.commit()
+            cursor.close()
+            
+            print("✅ Database schema migration completed successfully!")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Database schema migration completed successfully',
+                'records_updated': len(records) if records else 0
+            })
+            
+        except Exception as e:
+            print(f"❌ Migration failed: {e}")
+            import traceback
+            traceback.print_exc()
+            conn.rollback()
+            return jsonify({
+                'error': str(e),
+                'success': False
+            }), 500
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Error in database schema migration: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.get('/api/debug/check-progress-cache-table')
 def debug_check_progress_cache_table():
     """Check if custom_level_progress table exists and show its structure"""
