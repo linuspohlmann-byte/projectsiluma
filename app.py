@@ -288,8 +288,8 @@ def debug_tts_status():
 def debug_migrate_word_count():
     """Add word_count column to custom_levels table and populate existing data"""
     try:
-        from server.db import migrate_custom_levels_add_word_count, calculate_and_update_word_count
-        from server.services.custom_levels import get_custom_levels_for_group
+        from server.db import migrate_custom_levels_add_word_count
+        from server.services.custom_levels import get_custom_levels_for_group, calculate_word_count_from_content
         
         # Add the word_count column
         migrate_custom_levels_add_word_count()
@@ -314,18 +314,43 @@ def debug_migrate_word_count():
             conn.close()
         
         updated_count = 0
+        total_levels = 0
+        
         for group_id in groups:
             levels = get_custom_levels_for_group(group_id)
             for level in levels:
-                if level.get('content') and level.get('content', {}).get('items'):
-                    word_count = calculate_and_update_word_count(group_id, level['level_number'], level['content'])
-                    if word_count > 0:
-                        updated_count += 1
+                total_levels += 1
+                level_number = level['level_number']
+                content = level.get('content', {})
+                
+                # Calculate word count from content
+                word_count = calculate_word_count_from_content(content)
+                
+                if word_count > 0:
+                    # Update the word count in database
+                    if config['type'] == 'postgresql':
+                        execute_query(conn, """
+                            UPDATE custom_levels 
+                            SET word_count = %s, updated_at = %s
+                            WHERE group_id = %s AND level_number = %s
+                        """, (word_count, datetime.now(UTC).isoformat(), group_id, level_number))
+                    else:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            UPDATE custom_levels 
+                            SET word_count = ?, updated_at = ?
+                            WHERE group_id = ? AND level_number = ?
+                        """, (word_count, datetime.now(UTC).isoformat(), group_id, level_number))
+                        conn.commit()
+                    
+                    updated_count += 1
+                    print(f"✅ Updated level {group_id}/{level_number}: {word_count} words")
         
         return jsonify({
             'success': True,
-            'message': f'Successfully migrated word counts for {updated_count} levels',
-            'updated_levels': updated_count
+            'message': f'Successfully migrated word counts for {updated_count} out of {total_levels} levels',
+            'updated_levels': updated_count,
+            'total_levels': total_levels
         })
         
     except Exception as e:
