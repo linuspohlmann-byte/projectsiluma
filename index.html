@@ -2722,6 +2722,23 @@
     #level-tip .stat-label{ 
       font-size:11px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:.5px; 
     }
+    
+    /* Responsive tooltip adjustments */
+    @media (max-width: 768px) {
+      #tooltip, #level-tip {
+        min-width: 280px;
+        max-width: 90vw;
+        margin: 0 auto;
+      }
+      
+      #tooltip .body, #level-tip .body {
+        padding: 16px 20px;
+      }
+      
+      #tooltip header, #level-tip header {
+        padding: 16px 20px 12px;
+      }
+    }
 
     /* Field stacks */
     .field{display:flex;flex-direction:column;gap:6px}

@@ -2280,13 +2280,61 @@ export async function ensureTopicsForVisibleLevels(){
 function positionLevelTip(anchor){
   const r = anchor.getBoundingClientRect();
   const tip = document.getElementById('level-tip');
-  const pad = 8;
-  let x = r.left + window.scrollX;
-  let y = r.bottom + window.scrollY + pad;
-  const w = tip.offsetWidth||320, h = tip.offsetHeight||200;
-  if(x + w > window.scrollX + window.innerWidth) x = window.scrollX + window.innerWidth - w - pad;
-  if(y + h > window.scrollY + window.innerHeight) y = r.top + window.scrollY - h - pad;
-  tip.style.left = x+'px'; tip.style.top = y+'px';
+  const pad = 20;
+  
+  // Check if we're on mobile (768px or less)
+  const isMobile = window.innerWidth <= 768;
+  
+  // Get shell element to determine the right edge of the content area
+  const shell = document.querySelector('.shell');
+  const shellRect = shell ? shell.getBoundingClientRect() : null;
+  
+  // Calculate the right edge of the content area (shell right edge)
+  const contentRightEdge = shellRect ? shellRect.right : window.innerWidth;
+  
+  // Position tooltip in the right margin area, centered vertically
+  const w = tip.offsetWidth || 320;
+  const h = tip.offsetHeight || 200;
+  
+  let x, y;
+  
+  if (isMobile) {
+    // On mobile, position tooltip centered horizontally and above/below anchor
+    x = (window.innerWidth - w) / 2;
+    
+    // Try to position above the anchor first
+    y = r.top + window.scrollY - h - pad;
+    
+    // If it doesn't fit above, position below
+    if (y < window.scrollY + pad) {
+      y = r.bottom + window.scrollY + pad;
+    }
+    
+    // Ensure it stays within viewport
+    if (y + h > window.scrollY + window.innerHeight - pad) {
+      y = window.scrollY + window.innerHeight - h - pad;
+    }
+  } else {
+    // Desktop: position in right margin area
+    // X position: right edge of content + some padding, but ensure it fits in viewport
+    x = contentRightEdge + pad;
+    if (x + w > window.innerWidth) {
+      x = window.innerWidth - w - pad;
+    }
+    
+    // Y position: center vertically relative to the anchor, but keep within viewport
+    y = r.top + window.scrollY + (r.height / 2) - (h / 2);
+    
+    // Ensure tooltip stays within viewport bounds
+    if (y < window.scrollY + pad) {
+      y = window.scrollY + pad;
+    } else if (y + h > window.scrollY + window.innerHeight - pad) {
+      y = window.scrollY + window.innerHeight - h - pad;
+    }
+  }
+  
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
 }
 
 async function updateLevelTipContent(lvl, isDone){
