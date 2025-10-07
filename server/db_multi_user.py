@@ -389,14 +389,23 @@ def get_user_familiarity_counts_for_words(user_id: int, words: List[str], langua
                 word_hashes.append(word_hash)
             
             # Get familiarity counts for these specific words
-            placeholders = ','.join(['%s' for _ in word_hashes])
-            query_params = [user_id, native_language] + word_hashes
-            result = execute_query(conn, f"""
-                SELECT familiarity, COUNT(*) as count
-                FROM user_word_familiarity
-                WHERE user_id = %s AND native_language = %s AND word_hash IN ({placeholders})
-                GROUP BY familiarity
-            """, query_params)
+            if word_hashes:
+                placeholders = ','.join(['%s' for _ in word_hashes])
+                query_params = [user_id, native_language] + word_hashes
+                result = execute_query(conn, f"""
+                    SELECT familiarity, COUNT(*) as count
+                    FROM user_word_familiarity
+                    WHERE user_id = %s AND native_language = %s AND word_hash IN ({placeholders})
+                    GROUP BY familiarity
+                """, query_params)
+            else:
+                # No word hashes, return empty result
+                result = execute_query(conn, """
+                    SELECT familiarity, COUNT(*) as count
+                    FROM user_word_familiarity
+                    WHERE user_id = %s AND native_language = %s AND 1=0
+                    GROUP BY familiarity
+                """, [user_id, native_language])
             
             # Initialize counts
             counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
@@ -437,15 +446,25 @@ def get_user_familiarity_counts_for_words(user_id: int, words: List[str], langua
                 word_hashes.append(word_hash)
             
             # Get familiarity counts for these specific words
-            placeholders = ','.join(['?' for _ in word_hashes])
-            query = f"""
-                SELECT familiarity, COUNT(*) as count
-                FROM words_local
-                WHERE word_hash IN ({placeholders})
-                GROUP BY familiarity
-            """
-            
-            cursor.execute(query, word_hashes)
+            if word_hashes:
+                placeholders = ','.join(['?' for _ in word_hashes])
+                query = f"""
+                    SELECT familiarity, COUNT(*) as count
+                    FROM words_local
+                    WHERE word_hash IN ({placeholders})
+                    GROUP BY familiarity
+                """
+                
+                cursor.execute(query, word_hashes)
+            else:
+                # No word hashes, return empty result
+                query = """
+                    SELECT familiarity, COUNT(*) as count
+                    FROM words_local
+                    WHERE 1=0
+                    GROUP BY familiarity
+                """
+                cursor.execute(query)
             results = cursor.fetchall()
             
             # Initialize counts
@@ -516,13 +535,22 @@ def get_familiarity_counts_for_level(language: str, level: int, user_id: int = N
             level_word_hashes.append(word_hash)
         
         # Get familiarity counts for level words only
-        placeholders = ','.join(['?' for _ in level_word_hashes])
-        cur.execute(f"""
-            SELECT familiarity, COUNT(*) as count
-            FROM words_local
-            WHERE word_hash IN ({placeholders})
-            GROUP BY familiarity
-        """, level_word_hashes)
+        if level_word_hashes:
+            placeholders = ','.join(['?' for _ in level_word_hashes])
+            cur.execute(f"""
+                SELECT familiarity, COUNT(*) as count
+                FROM words_local
+                WHERE word_hash IN ({placeholders})
+                GROUP BY familiarity
+            """, level_word_hashes)
+        else:
+            # No word hashes, return empty result
+            cur.execute("""
+                SELECT familiarity, COUNT(*) as count
+                FROM words_local
+                WHERE 1=0
+                GROUP BY familiarity
+            """)
         
         counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         for row in cur.fetchall():
@@ -633,7 +661,7 @@ def get_global_level_stats(language: str, level: int) -> Dict[str, Any]:
         cur = conn.cursor()
         cur.execute("""
             SELECT AVG(score) as avg_score FROM level_runs 
-            WHERE level = ? AND score IS NOT NULL
+            WHERE level = %s AND score IS NOT NULL
         """, (level,))
         
         row = cur.fetchone()

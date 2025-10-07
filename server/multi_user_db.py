@@ -339,13 +339,21 @@ class MultiUserDBManager:
             # Use PostgreSQL
             conn = get_db_connection()
             try:
-                placeholders = ','.join(['%s' for _ in word_hashes])
-                query_params = [user_id, native_language] + word_hashes
-                result = execute_query(conn, f"""
-                    SELECT word_hash, familiarity, seen_count, correct_count
-                    FROM user_word_familiarity 
-                    WHERE user_id = %s AND native_language = %s AND word_hash IN ({placeholders})
-                """, query_params)
+                if word_hashes:
+                    placeholders = ','.join(['%s' for _ in word_hashes])
+                    query_params = [user_id, native_language] + word_hashes
+                    result = execute_query(conn, f"""
+                        SELECT word_hash, familiarity, seen_count, correct_count
+                        FROM user_word_familiarity 
+                        WHERE user_id = %s AND native_language = %s AND word_hash IN ({placeholders})
+                    """, query_params)
+                else:
+                    # No word hashes, return empty result
+                    result = execute_query(conn, """
+                        SELECT word_hash, familiarity, seen_count, correct_count
+                        FROM user_word_familiarity 
+                        WHERE user_id = %s AND native_language = %s AND 1=0
+                    """, [user_id, native_language])
                 
                 familiarity_data = {}
                 for row in result.fetchall():
@@ -370,12 +378,20 @@ class MultiUserDBManager:
             cur = conn.cursor()
             
             try:
-                placeholders = ','.join(['?' for _ in word_hashes])
-                cur.execute(f"""
-                    SELECT word_hash, familiarity, seen_count, correct_count
-                    FROM words_local 
-                    WHERE word_hash IN ({placeholders})
-                """, word_hashes)
+                if word_hashes:
+                    placeholders = ','.join(['?' for _ in word_hashes])
+                    cur.execute(f"""
+                        SELECT word_hash, familiarity, seen_count, correct_count
+                        FROM words_local 
+                        WHERE word_hash IN ({placeholders})
+                    """, word_hashes)
+                else:
+                    # No word hashes, return empty result
+                    cur.execute("""
+                        SELECT word_hash, familiarity, seen_count, correct_count
+                        FROM words_local 
+                        WHERE 1=0
+                    """)
                 
                 result = {}
                 for row in cur.fetchall():
@@ -562,14 +578,24 @@ class MultiUserDBManager:
         cur = conn.cursor()
         
         try:
-            placeholders = ','.join(['?' for _ in word_hashes])
-            cur.execute(f"""
-                SELECT id, word_hash, word, language, translation, example, info, lemma, pos,
-                       ipa, audio_url, gender, plural, conj, comp, synonyms, collocations,
-                       example_native, cefr, freq_rank, tags, note, created_at, updated_at
-                FROM words_global 
-                WHERE word_hash IN ({placeholders})
-            """, word_hashes)
+            if word_hashes:
+                placeholders = ','.join(['?' for _ in word_hashes])
+                cur.execute(f"""
+                    SELECT id, word_hash, word, language, translation, example, info, lemma, pos,
+                           ipa, audio_url, gender, plural, conj, comp, synonyms, collocations,
+                           example_native, cefr, freq_rank, tags, note, created_at, updated_at
+                    FROM words_global 
+                    WHERE word_hash IN ({placeholders})
+                """, word_hashes)
+            else:
+                # No word hashes, return empty result
+                cur.execute("""
+                    SELECT id, word_hash, word, language, translation, example, info, lemma, pos,
+                           ipa, audio_url, gender, plural, conj, comp, synonyms, collocations,
+                           example_native, cefr, freq_rank, tags, note, created_at, updated_at
+                    FROM words_global 
+                    WHERE 1=0
+                """)
             
             result = {}
             for row in cur.fetchall():
