@@ -364,6 +364,29 @@ def debug_run_progress_cache_migration():
             'success': False
         }), 500
 
+@app.post('/api/debug/create-global-words-table')
+def debug_create_global_words_table():
+    """Create global_words table for global tooltip storage"""
+    try:
+        from server.global_words_db import ensure_global_words_table
+        
+        print("🚀 Creating global_words table...")
+        ensure_global_words_table()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Global words table created successfully'
+        })
+        
+    except Exception as e:
+        print(f"❌ Failed to create global_words table: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/run-database-schema-migration')
 def debug_run_database_schema_migration():
     """Run database schema migration to fix missing columns and schema issues"""
@@ -3574,16 +3597,23 @@ def api_word_get():
     user_context = get_user_context()
     user_id = user_context['user_id']
     
-    row = get_word_row(word, language)
-    if not row:
+    # Get native language from user context or default
+    native_language = user_context.get('native_language', 'en')
+    
+    # Get word data from global PostgreSQL database
+    from server.global_words_db import get_global_word
+    
+    word_data = get_global_word(word, language, native_language)
+    if not word_data:
+        # Return empty word data if not found in global database
         return jsonify({
           'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
-          'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': '', 'plural': '',
+          'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
           'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
           'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
         })
     
-    data = dict(row)
+    data = word_data
     
     # Get user-specific familiarity data if authenticated
     is_authenticated = user_id is not None
@@ -3660,37 +3690,34 @@ def api_words_get_many():
         return jsonify({'success': True, 'data': []})
     
     try:
-        from server.db_config import get_database_config, get_db_connection, execute_query
+        # Get user context for native language
+        user_context = get_user_context()
+        native_language = user_context.get('native_language', 'en')
         
-        config = get_database_config()
-        conn = get_db_connection()
+        # Get words from global PostgreSQL database
+        from server.global_words_db import get_global_words_batch
         
-        if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            result = execute_query(conn, '''
-                SELECT * FROM words 
-                WHERE word = ANY(%s) AND (language = %s OR %s = '')
-            ''', (words, language, language))
-            rows = result.fetchall()
-        else:
-            # SQLite syntax
-            cur = conn.cursor()
-            placeholders = ','.join('?' for _ in words)
-            rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND (language=? OR ?="")', (*words, language, language)).fetchall()
+        word_data_map = get_global_words_batch(words, language, native_language)
         
-        conn.close()
-        
+        # Convert to list format expected by frontend
         out = []
-        for row in rows:
-            d = dict(row)
-            if d.get('info'):
-                try: d['info'] = json.loads(d['info'])
-                except Exception: pass
-            for k in ('conj','comp','synonyms','collocations','tags'):
-                if d.get(k):
-                    try: d[k] = json.loads(d[k])
-                    except Exception: pass
-            out.append(d)
+        for word in words:
+            if word in word_data_map:
+                word_data = word_data_map[word]
+                # Ensure all required fields exist
+                word_data.setdefault('familiarity', 0)
+                word_data.setdefault('seen_count', 0)
+                word_data.setdefault('correct_count', 0)
+                out.append(word_data)
+            else:
+                # Return empty data for words not found
+                out.append({
+                    'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
+                    'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
+                    'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
+                    'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
+                })
+        
         return jsonify({'success': True, 'data': out})
         
     except Exception as e:
@@ -3746,50 +3773,50 @@ def api_word_upsert():
         # User not authenticated - don't save word familiarity updates
         print(f"Word familiarity update by unauthenticated user - not saved: {word}")
     
-    # Always update the global word data (for word enrichment, etc.)
-    # Use the new multi-user system for global word data
-    if is_authenticated:
+    # Always update the global word data in PostgreSQL (for word enrichment, etc.)
+    try:
+        from server.global_words_db import upsert_global_word
+        
+        language = payload.get('language', 'en')
+        native_language = user_context.get('native_language', 'en')
+        
+        # Prepare word data for global storage
+        word_data = {
+            'translation': payload.get('translation', ''),
+            'example': payload.get('example', ''),
+            'example_native': payload.get('example_native', ''),
+            'lemma': payload.get('lemma', ''),
+            'pos': payload.get('pos', ''),
+            'ipa': payload.get('ipa', ''),
+            'audio_url': payload.get('audio_url', ''),
+            'gender': payload.get('gender', 'none'),
+            'plural': payload.get('plural', ''),
+            'conj': payload.get('conj', {}),
+            'comp': payload.get('comp', {}),
+            'synonyms': payload.get('synonyms', []),
+            'collocations': payload.get('collocations', []),
+            'cefr': payload.get('cefr', ''),
+            'freq_rank': payload.get('freq_rank'),
+            'tags': payload.get('tags', []),
+            'note': payload.get('note', ''),
+            'info': payload.get('info', {})
+        }
+        
+        success = upsert_global_word(word, language, native_language, word_data)
+        if success:
+            print(f"Word upserted to global PostgreSQL database: {word} ({language} -> {native_language})")
+        else:
+            print(f"Failed to upsert word to global PostgreSQL database: {word}")
+        
+    except Exception as e:
+        print(f"Error upserting word to global PostgreSQL database: {e}")
+        # Fallback to old system for compatibility
         try:
-            from server.db_multi_user import get_user_native_language
-            from server.multi_user_db import db_manager
-            
-            language = payload.get('language', 'en')
-            native_language = get_user_native_language(user_id)
-            
-            # Add word to global database for this native language
-            word_data = {
-                'translation': payload.get('translation', ''),
-                'example': payload.get('example', ''),
-                'example_native': payload.get('example_native', ''),
-                'lemma': payload.get('lemma', ''),
-                'pos': payload.get('pos', ''),
-                'ipa': payload.get('ipa', ''),
-                'audio_url': payload.get('audio_url', ''),
-                'gender': payload.get('gender', ''),
-                'plural': payload.get('plural', ''),
-                'conj': payload.get('conj', {}),
-                'comp': payload.get('comp', {}),
-                'synonyms': payload.get('synonyms', []),
-                'collocations': payload.get('collocations', []),
-                'cefr': payload.get('cefr', ''),
-                'freq_rank': payload.get('freq_rank'),
-                'tags': payload.get('tags', []),
-                'note': payload.get('note', ''),
-                'info': payload.get('info', {})
-            }
-            
-            word_hash = db_manager.add_word_to_global(word, language, native_language, word_data)
-            if word_hash:
-                print(f"Word added to global database for native language {native_language}: {word}")
-            else:
-                print(f"Failed to add word to global database for native language {native_language}: {word}")
-            
-        except Exception as e:
-            print(f"Error adding word to global database: {e}")
-            # Fallback to old system
             upsert_word_row(payload)
-    else:
-        # For unauthenticated users, try to get native language from request headers
+        except Exception as fallback_error:
+            print(f"Fallback to old system also failed: {fallback_error}")
+    
+    # For unauthenticated users, we still save to global database but not user-specific data
         # and use multi-user system if possible
         try:
             # Try to get native language from request headers (sent by frontend)
