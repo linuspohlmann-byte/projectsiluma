@@ -5512,7 +5512,24 @@ def periodic_sync():
     except Exception as e:
         print(f"Error in periodic sync: {e}")
 
+def run_startup_database_fix():
+    """Run database fix on application startup"""
+    try:
+        print("🚀 Running startup database fix...")
+        from emergency_fix import emergency_database_fix
+        success = emergency_database_fix()
+        if success:
+            print("✅ Startup database fix completed successfully!")
+        else:
+            print("⚠️ Startup database fix failed, but continuing...")
+    except Exception as e:
+        print(f"⚠️ Startup database fix error: {e}")
+        print("Continuing with application startup...")
+
 if __name__ == '__main__':
+    # Run database fix on startup
+    run_startup_database_fix()
+    
     # Sync databases on startup
     print("🚀 Starting ProjectSiluma...")
     sync_databases_on_startup()
@@ -5549,6 +5566,19 @@ else:
     # Set up logging for production
     import logging
     logging.basicConfig(level=logging.WARNING)
+    
+    # Run database fix on production startup
+    try:
+        print("🚀 Running production database fix...")
+        from emergency_fix import emergency_database_fix
+        success = emergency_database_fix()
+        if success:
+            print("✅ Production database fix completed successfully!")
+        else:
+            print("⚠️ Production database fix failed, but continuing...")
+    except Exception as e:
+        print(f"⚠️ Production database fix error: {e}")
+        print("Continuing with production startup...")
 
 @app.route('/api/setup-database', methods=['POST'])
 def api_setup_database():
