@@ -1825,6 +1825,100 @@ def api_generate_custom_level_content(group_id, level_number):
         print(f"Error generating custom level content: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@custom_levels_bp.post('/api/custom-levels/<int:group_id>/generate-specific-content')
+@require_auth(optional=True)
+def api_generate_specific_custom_levels_content(group_id):
+    """Generate content for specific custom levels (for immediate generation)"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        # Get request data
+        payload = request.get_json(force=True) or {}
+        level_numbers = payload.get('level_numbers', [])
+        
+        if not level_numbers:
+            return jsonify({'success': False, 'error': 'No level numbers provided'}), 400
+        
+        # Get group info
+        from server.services.custom_levels import get_custom_level_group, get_custom_levels_for_group
+        group_data = get_custom_level_group(group_id, user_id)
+        if not group_data:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+        
+        # Get all levels for this group
+        levels = get_custom_levels_for_group(group_id)
+        if not levels:
+            return jsonify({'success': False, 'error': 'No levels found'}), 404
+        
+        # Filter to only the requested levels that need generation
+        levels_needing_generation = []
+        for level in levels:
+            if level['level_number'] in level_numbers:
+                content = level.get('content', {})
+                if content.get('ultra_lazy_loading', False) and not content.get('sentences_generated', False):
+                    levels_needing_generation.append(level)
+        
+        if not levels_needing_generation:
+            return jsonify({'success': True, 'message': 'Requested levels already have content generated'})
+        
+        language = group_data.get('language', 'en')
+        native_language = group_data.get('native_language', 'de')
+        
+        print(f"🚀 Starting specific content generation for {len(levels_needing_generation)} levels: {[l['level_number'] for l in levels_needing_generation]}")
+        
+        # Generate content for specific levels in parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from server.services.custom_levels import enrich_custom_level_words_on_demand
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Submit generation tasks for specific levels only
+            future_to_level = {
+                executor.submit(enrich_custom_level_words_on_demand, group_id, level['level_number'], language, native_language): level
+                for level in levels_needing_generation
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_level):
+                level = future_to_level[future]
+                try:
+                    success = future.result()
+                    results.append({
+                        'level_number': level['level_number'],
+                        'success': success
+                    })
+                    if success:
+                        print(f"✅ Generated content for level {level['level_number']}")
+                    else:
+                        print(f"❌ Failed to generate content for level {level['level_number']}")
+                except Exception as e:
+                    print(f"❌ Exception generating content for level {level['level_number']}: {e}")
+                    results.append({
+                        'level_number': level['level_number'],
+                        'success': False,
+                        'error': str(e)
+                    })
+        
+        # Count successes and failures
+        successful = len([r for r in results if r['success']])
+        failed = len([r for r in results if not r['success']])
+        
+        print(f"🎉 Specific content generation complete: {successful} successful, {failed} failed")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Generated content for {successful} specific levels',
+            'results': results,
+            'successful': successful,
+            'failed': failed
+        })
+        
+    except Exception as e:
+        print(f"Error generating specific custom level content: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/generate-all-content')
 @require_auth(optional=True)
 def api_generate_all_custom_levels_content(group_id):

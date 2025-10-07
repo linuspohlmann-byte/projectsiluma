@@ -925,8 +925,8 @@ async function startCustomGroup(groupId) {
                 }
                 
                 try {
-                    // Generate only relevant levels for immediate availability
-                    const generationResult = await generateAllCustomLevelsContent(groupId, levelsToGenerate.immediate);
+                    // Generate only relevant levels for immediate availability using specific API
+                    const generationResult = await generateSpecificCustomLevelsContent(groupId, levelsToGenerate.immediate);
                     
                     if (generationResult.successful > 0) {
                         console.log(`✅ Generated ${generationResult.successful} relevant levels for immediate use`);
@@ -1017,6 +1017,55 @@ async function startCustomGroup(groupId) {
 }
 
 // Generate content for all custom levels that need it
+async function generateSpecificCustomLevelsContent(groupId, levelsNeedingGeneration) {
+    try {
+        console.log(`🚀 Starting specific content generation for ${levelsNeedingGeneration.length} levels`);
+        
+        // Extract level numbers
+        const levelNumbers = levelsNeedingGeneration.map(level => level.level_number);
+        
+        // Use the new specific API endpoint for immediate generation
+        const response = await fetch(`/api/custom-levels/${groupId}/generate-specific-content`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+            },
+            body: JSON.stringify({
+                level_numbers: levelNumbers
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                console.log(`🎉 Specific content generation complete: ${data.successful} successful, ${data.failed} failed`);
+                
+                if (data.failed > 0) {
+                    const failedLevels = data.results.filter(r => !r.success).map(r => r.level_number);
+                    console.warn(`⚠️ Failed to generate content for levels: ${failedLevels.join(', ')}`);
+                }
+                
+                return { 
+                    successful: data.successful, 
+                    failed: data.failed, 
+                    results: data.results 
+                };
+            } else {
+                console.error(`❌ Specific generation failed:`, data.error);
+                return { successful: 0, failed: levelsNeedingGeneration.length, results: [] };
+            }
+        } else {
+            console.error(`❌ Specific generation request failed: ${response.status}`);
+            return { successful: 0, failed: levelsNeedingGeneration.length, results: [] };
+        }
+        
+    } catch (error) {
+        console.error(`❌ Error in specific content generation:`, error);
+        return { successful: 0, failed: levelsNeedingGeneration.length, results: [] };
+    }
+}
+
 async function generateAllCustomLevelsContent(groupId, levelsNeedingGeneration) {
     try {
         console.log(`🚀 Starting batch content generation for ${levelsNeedingGeneration.length} levels`);
@@ -2114,26 +2163,36 @@ async function determineLevelsToGenerate(groupId, allLevels, levelsNeedingGenera
         console.log(`📊 User progress analysis:`, {
             totalLevels: allLevels.length,
             unlockedLevels: unlockedLevels,
-            levelsNeedingGeneration: levelsNeedingGeneration.length
+            levelsNeedingGeneration: levelsNeedingGeneration.length,
+            hasProgressData: Object.keys(userProgress).length > 0
         });
-        
-        // Find the current active level (highest unlocked) that needs generation
-        const currentActiveLevel = findCurrentActiveLevel(unlockedLevels, levelsNeedingGeneration);
         
         // Determine immediate and background generation
         const immediate = [];
         const background = [];
         
-        if (currentActiveLevel) {
-            // Generate only the current active level (highest unlocked)
-            immediate.push(currentActiveLevel);
-            console.log(`🎯 Current active level to generate: Level ${currentActiveLevel.level_number}`);
-        } else {
-            // If no specific level needs immediate generation, generate first level only
+        // For new groups (no progress data), only generate Level 1 immediately
+        if (Object.keys(userProgress).length === 0) {
             const firstLevel = levelsNeedingGeneration.find(level => level.level_number === 1);
             if (firstLevel) {
                 immediate.push(firstLevel);
-                console.log(`🎯 No specific level needed, generating Level 1 only`);
+                console.log(`🎯 New group detected: generating Level 1 only for immediate play`);
+            }
+        } else {
+            // For existing groups, find the current active level (highest unlocked) that needs generation
+            const currentActiveLevel = findCurrentActiveLevel(unlockedLevels, levelsNeedingGeneration);
+            
+            if (currentActiveLevel) {
+                // Generate only the current active level (highest unlocked)
+                immediate.push(currentActiveLevel);
+                console.log(`🎯 Current active level to generate: Level ${currentActiveLevel.level_number}`);
+            } else {
+                // If no specific level needs immediate generation, generate first level only
+                const firstLevel = levelsNeedingGeneration.find(level => level.level_number === 1);
+                if (firstLevel) {
+                    immediate.push(firstLevel);
+                    console.log(`🎯 No specific level needed, generating Level 1 only`);
+                }
             }
         }
         
