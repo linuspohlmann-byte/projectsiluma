@@ -7388,3 +7388,13 @@ def debug_check_word_familiarity():
             
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/debug/simple-test", methods=["GET"])
+def debug_simple_test():
+    """Simple debug endpoint to test if the app is working"""
+    return jsonify({
+        "success": True,
+        "message": "Debug endpoint working",
+        "timestamp": "2024-01-01T00:00:00Z"
+    })
