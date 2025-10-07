@@ -284,6 +284,86 @@ def debug_tts_status():
             'success': False
         }), 500
 
+@app.post('/api/debug/run-progress-cache-migration')
+def debug_run_progress_cache_migration():
+    """Run migration to populate custom_level_progress table with existing data"""
+    try:
+        from server.db_progress_cache import (
+            create_custom_level_progress_table,
+            refresh_custom_level_group_progress,
+            get_custom_level_group_progress
+        )
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        from server.services.custom_levels import get_custom_level_groups, get_custom_levels_for_group
+        
+        # 1. Ensure table exists
+        create_custom_level_progress_table()
+        
+        # 2. Get all custom level groups
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                result = execute_query(conn, "SELECT id, user_id FROM custom_level_groups")
+                groups = [(row['id'], row['user_id']) for row in result.fetchall()]
+            else:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, user_id FROM custom_level_groups")
+                groups = [(row[0], row[1]) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+        
+        print(f"📚 Found {len(groups)} custom level groups")
+        
+        # 3. Populate progress cache for each group
+        total_groups_processed = 0
+        total_levels_processed = 0
+        
+        for group_id, user_id in groups:
+            try:
+                print(f"🔄 Processing group {group_id} for user {user_id}...")
+                
+                # Get levels for this group
+                levels = get_custom_levels_for_group(group_id)
+                if not levels:
+                    print(f"⚠️ No levels found for group {group_id}")
+                    continue
+                
+                # Refresh progress cache for all levels in this group
+                success = refresh_custom_level_group_progress(user_id, group_id)
+                
+                if success:
+                    # Verify the cache was populated
+                    cached_data = get_custom_level_group_progress(user_id, group_id)
+                    cached_levels = len(cached_data)
+                    
+                    print(f"✅ Group {group_id}: {cached_levels}/{len(levels)} levels cached")
+                    total_groups_processed += 1
+                    total_levels_processed += cached_levels
+                else:
+                    print(f"❌ Failed to cache progress for group {group_id}")
+                    
+            except Exception as e:
+                print(f"❌ Error processing group {group_id}: {e}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Migration complete! Groups processed: {total_groups_processed}/{len(groups)}, Levels cached: {total_levels_processed}',
+            'groups_processed': total_groups_processed,
+            'total_groups': len(groups),
+            'levels_cached': total_levels_processed
+        })
+        
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/create-progress-cache-table')
 def debug_create_progress_cache_table():
     """Create custom_level_progress table for caching familiarity data"""
