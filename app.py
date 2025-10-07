@@ -7270,8 +7270,8 @@ def debug_add_user_comment_column():
                     result = execute_query(conn, """
                         SELECT column_name 
                         FROM information_schema.columns 
-                        WHERE table_name = 'user_word_familiarity' AND column_name = 'user_comment'
-                    """)
+                        WHERE table_name = %s AND column_name = %s
+                    """, ('user_word_familiarity', 'user_comment'))
                     
                     if not result.fetchone():
                         print("Adding user_comment column to user_word_familiarity table...")
