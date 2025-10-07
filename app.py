@@ -1919,6 +1919,68 @@ def api_generate_specific_custom_levels_content(group_id):
         print(f"Error generating specific custom level content: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@custom_levels_bp.get('/api/custom-levels/<int:group_id>/progress-cache')
+@require_auth()
+def api_get_custom_level_group_progress_cache(group_id):
+    """Get cached progress data for all levels in a custom group (ultra-fast)"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        from server.db_progress_cache import get_custom_level_group_progress
+        
+        # Get cached progress data for all levels in the group
+        progress_data = get_custom_level_group_progress(user_id, group_id)
+        
+        print(f"🚀 Returning cached progress data for group {group_id}: {len(progress_data)} levels")
+        
+        return jsonify({
+            'success': True,
+            'progress_data': progress_data,
+            'cached_levels': len(progress_data)
+        })
+        
+    except Exception as e:
+        print(f"Error getting custom level group progress cache: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.post('/api/custom-levels/<int:group_id>/refresh-progress-cache')
+@require_auth()
+def api_refresh_custom_level_group_progress_cache(group_id):
+    """Refresh cached progress data for all levels in a custom group"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        from server.db_progress_cache import refresh_custom_level_group_progress
+        
+        # Refresh cached progress data
+        success = refresh_custom_level_group_progress(user_id, group_id)
+        
+        if success:
+            print(f"✅ Refreshed progress cache for group {group_id}")
+            return jsonify({
+                'success': True,
+                'message': 'Progress cache refreshed successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to refresh progress cache'
+            }), 500
+        
+    except Exception as e:
+        print(f"Error refreshing custom level group progress cache: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/sync-words')
 @require_auth()
 def api_sync_custom_level_words(group_id):

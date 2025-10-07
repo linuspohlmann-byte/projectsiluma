@@ -1485,6 +1485,15 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
             # Sync words to PostgreSQL after successful level generation
             sync_custom_level_words_to_postgresql(group_id, level_number, content, language, native_language)
             
+            # Refresh progress cache after word sync
+            from server.db_progress_cache import refresh_custom_level_progress
+            from server.db_multi_user import get_user_id_from_group_id
+            
+            user_id = get_user_id_from_group_id(group_id)
+            if user_id:
+                refresh_custom_level_progress(user_id, group_id, level_number)
+                print(f"🔄 Refreshed progress cache for level {group_id}/{level_number}")
+            
             return True
             
         finally:

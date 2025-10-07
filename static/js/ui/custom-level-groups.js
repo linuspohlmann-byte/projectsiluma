@@ -993,6 +993,9 @@ async function startCustomGroup(groupId) {
         // Show levels container (same as standard groups)
         showLevelsContainer();
         
+        // Load cached progress data for all levels (ultra-fast)
+        await loadCachedGroupProgress(groupId);
+        
         // Render custom levels with preloading for optimal performance
         console.log('🎨 Calling renderCustomLevelsWithPreloading...');
         renderCustomLevelsWithPreloading(groupId, levels);
@@ -1631,6 +1634,11 @@ function renderCustomLevels(groupId, levels) {
             applyCustomLevelProgress(card, levelNumber, groupId);
         }, 100);
         
+        // Store cached progress data if available
+        if (window.cachedGroupProgress && window.cachedGroupProgress[levelNumber]) {
+            card.dataset.cachedProgressData = JSON.stringify(window.cachedGroupProgress[levelNumber]);
+        }
+        
         // Note: Click handlers are already set via HTML onclick attributes
         // which include proper lock checking via handleCustomLevelStart()
         // No need for additional JavaScript event listeners
@@ -2008,24 +2016,34 @@ function updateCustomLevelCompletionCircle(levelElement, progressPercent) {
     }
 }
 
-// Load familiarity data for custom level back side
+// Load familiarity data for custom level back side (optimized with cache)
 async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId) {
     try {
-        // Get level data
-        const level = window.currentCustomGroup?.levels?.find(l => l.level_number === levelNumber);
-        if (!level) return;
+        // Check if we have cached data first
+        const cachedData = levelElement.dataset.cachedProgressData;
+        if (cachedData) {
+            try {
+                const progressData = JSON.parse(cachedData);
+                if (progressData.fam_counts) {
+                    console.log('🚀 Using cached familiarity data for level', levelNumber);
+                    updateFamiliarityUI(levelElement, progressData.fam_counts);
+                    return;
+                }
+            } catch (error) {
+                console.log('⚠️ Error parsing cached data, falling back to API:', error);
+            }
+        }
         
-        // Get familiarity counts
+        // Fallback to API if no cached data
         const familiarityCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
         
-        // Try to get user familiarity data
         try {
             const headers = {};
             if (window.authManager && window.authManager.isAuthenticated()) {
                 Object.assign(headers, window.authManager.getAuthHeaders());
             }
             
-            console.log('🔧 Fetching custom level familiarity:', groupId, levelNumber);
+            console.log('🔧 Fetching custom level familiarity from API:', groupId, levelNumber);
             const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/familiarity`, {
                 headers: headers
             });
@@ -2034,7 +2052,7 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
                 const familiarityData = await response.json();
                 if (familiarityData.success) {
                     Object.assign(familiarityCounts, familiarityData.familiarity_counts || {});
-                    console.log('✅ Custom level familiarity loaded:', familiarityData);
+                    console.log('✅ Custom level familiarity loaded from API:', familiarityData);
                 } else {
                     console.log('⚠️ Familiarity API returned error:', familiarityData.error);
                 }
@@ -2045,19 +2063,56 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
             console.log('⚠️ No familiarity data available for custom level, using defaults:', error.message);
         }
         
-        // Update familiarity counts in the UI
-        Object.keys(familiarityCounts).forEach(level => {
-            const familiarityItem = levelElement.querySelector(`[data-familiarity-level="${level}"]`);
-            if (familiarityItem) {
-                const countElement = familiarityItem.querySelector('.familiarity-count');
-                if (countElement) {
-                    countElement.textContent = familiarityCounts[level];
-                }
-            }
-        });
+        updateFamiliarityUI(levelElement, familiarityCounts);
         
     } catch (error) {
         console.log('Error loading custom level familiarity data:', error);
+    }
+}
+
+// Helper function to update familiarity UI
+function updateFamiliarityUI(levelElement, familiarityCounts) {
+    Object.keys(familiarityCounts).forEach(level => {
+        const familiarityItem = levelElement.querySelector(`[data-familiarity-level="${level}"]`);
+        if (familiarityItem) {
+            const countElement = familiarityItem.querySelector('.familiarity-count');
+            if (countElement) {
+                countElement.textContent = familiarityCounts[level];
+            }
+        }
+    });
+}
+
+// Load cached progress data for all levels in a group (ultra-fast)
+async function loadCachedGroupProgress(groupId) {
+    try {
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        console.log('🚀 Loading cached progress data for group:', groupId);
+        const response = await fetch(`/api/custom-levels/${groupId}/progress-cache`, {
+            headers: headers
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.progress_data) {
+                // Store cached progress data globally for use in level cards
+                window.cachedGroupProgress = data.progress_data;
+                console.log(`✅ Loaded cached progress for ${data.cached_levels} levels`);
+                return true;
+            }
+        } else {
+            console.log('⚠️ No cached progress data available, will use individual API calls');
+        }
+        
+        return false;
+        
+    } catch (error) {
+        console.log('⚠️ Error loading cached progress data:', error.message);
+        return false;
     }
 }
 
