@@ -1779,26 +1779,41 @@ def get_user_word_familiarity(user_id: int, word_id: int):
 
 def update_user_word_familiarity(user_id: int, word_id: int, familiarity: int, seen_count: int = None, correct_count: int = None, user_comment: str = None):
     """Update user's familiarity with a word"""
-    conn = get_db(); cur = conn.cursor()
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    
+    config = get_database_config()
+    conn = get_db_connection()
+    
     try:
         now = datetime.now(UTC).isoformat()
         
-        # Get current values if not provided
-        current = get_user_word_familiarity(user_id, word_id)
-        if current:
-            seen_count = seen_count if seen_count is not None else current['seen_count']
-            correct_count = correct_count if correct_count is not None else current['correct_count']
-            user_comment = user_comment if user_comment is not None else current.get('user_comment', '')
-        else:
-            seen_count = seen_count or 0
-            correct_count = correct_count or 0
-            user_comment = user_comment or ''
+        # Set default values
+        seen_count = seen_count or 0
+        correct_count = correct_count or 0
+        user_comment = user_comment or ''
         
-        cur.execute('''
-            INSERT OR REPLACE INTO user_word_familiarity 
-            (user_id, word_id, familiarity, seen_count, correct_count, user_comment, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?)
-        ''', (user_id, word_id, familiarity, seen_count, correct_count, user_comment, now, now))
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax - use INSERT ... ON CONFLICT
+            execute_query(conn, '''
+                INSERT INTO user_word_familiarity 
+                (user_id, word_id, familiarity, seen_count, correct_count, user_comment, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, word_id) 
+                DO UPDATE SET
+                    familiarity = EXCLUDED.familiarity,
+                    seen_count = EXCLUDED.seen_count,
+                    correct_count = EXCLUDED.correct_count,
+                    user_comment = EXCLUDED.user_comment,
+                    updated_at = EXCLUDED.updated_at
+            ''', (user_id, word_id, familiarity, seen_count, correct_count, user_comment, now, now))
+        else:
+            # SQLite syntax
+            cur = conn.cursor()
+            cur.execute('''
+                INSERT OR REPLACE INTO user_word_familiarity 
+                (user_id, word_id, familiarity, seen_count, correct_count, user_comment, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?)
+            ''', (user_id, word_id, familiarity, seen_count, correct_count, user_comment, now, now))
         
         conn.commit()
     finally:
