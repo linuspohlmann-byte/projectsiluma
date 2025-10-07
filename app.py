@@ -365,6 +365,69 @@ def debug_run_progress_cache_migration():
         }), 500
 
 
+@app.post('/api/debug/add-words-unique-constraint')
+def debug_add_words_unique_constraint():
+    """Add UNIQUE constraint to words table for (word, language, native_language)"""
+    try:
+        import os
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        
+        # Get database connection
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL environment variable not set'
+            }), 500
+        
+        conn = psycopg2.connect(database_url)
+        
+        try:
+            print("🚀 Adding UNIQUE constraint to words table...")
+            cursor = conn.cursor()
+            
+            # Check if constraint already exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE table_name = 'words' 
+                    AND constraint_type = 'UNIQUE'
+                    AND constraint_name LIKE '%word%language%native_language%'
+                );
+            """)
+            constraint_exists = cursor.fetchone()[0]
+            
+            if not constraint_exists:
+                # Add the UNIQUE constraint
+                cursor.execute("""
+                    ALTER TABLE words 
+                    ADD CONSTRAINT words_word_language_native_language_unique 
+                    UNIQUE (word, language, native_language);
+                """)
+                print("✅ Added UNIQUE constraint to words table")
+            else:
+                print("ℹ️ UNIQUE constraint already exists on words table")
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'UNIQUE constraint added successfully' if not constraint_exists else 'UNIQUE constraint already exists'
+            })
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Failed to add UNIQUE constraint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/run-database-schema-migration')
 def debug_run_database_schema_migration():
     """Run database schema migration to fix missing columns and schema issues"""
@@ -6552,7 +6615,8 @@ def api_setup_database():
                         cefr VARCHAR(10), 
                         freq_rank INTEGER,
                         tags TEXT, 
-                        note TEXT
+                        note TEXT,
+                        UNIQUE(word, language, native_language)
                     );
                 """)
                 
@@ -6773,7 +6837,8 @@ def api_create_postgresql_tables():
                 cefr VARCHAR(10), 
                 freq_rank INTEGER,
                 tags TEXT, 
-                note TEXT
+                note TEXT,
+                UNIQUE(word, language, native_language)
             );
         """)
         
