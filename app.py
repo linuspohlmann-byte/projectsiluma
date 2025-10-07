@@ -7360,3 +7360,63 @@ def debug_simple_test():
         "message": "Debug endpoint working",
         "timestamp": "2024-01-01T00:00:00Z"
     })
+
+@app.route("/api/debug/create-user-familiarity-table", methods=["POST"])
+def debug_create_user_familiarity_table():
+    """Debug endpoint to create user_word_familiarity table"""
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                # Create user_word_familiarity table for PostgreSQL
+                execute_query(conn, """
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL,
+                        word_id INTEGER NOT NULL,
+                        familiarity INTEGER DEFAULT 0,
+                        seen_count INTEGER DEFAULT 0,
+                        correct_count INTEGER DEFAULT 0,
+                        user_comment TEXT,
+                        last_seen TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        UNIQUE(user_id, word_id)
+                    );
+                """)
+                conn.commit()
+                print("✅ Created user_word_familiarity table (PostgreSQL)")
+            else:
+                # Create user_word_familiarity table for SQLite
+                cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        word_id INTEGER NOT NULL,
+                        familiarity INTEGER DEFAULT 0,
+                        seen_count INTEGER DEFAULT 0,
+                        correct_count INTEGER DEFAULT 0,
+                        user_comment TEXT,
+                        last_seen TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                        UNIQUE(user_id, word_id)
+                    );
+                """)
+                conn.commit()
+                print("✅ Created user_word_familiarity table (SQLite)")
+                
+        finally:
+            conn.close()
+            
+        return jsonify({'success': True, 'message': 'user_word_familiarity table created successfully'})
+    except Exception as e:
+        print(f"Error creating user_word_familiarity table: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
