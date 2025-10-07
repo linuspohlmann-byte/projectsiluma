@@ -2355,10 +2355,23 @@ def api_get_custom_level_group_progress_cache(group_id):
         if not user_id:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
-        from server.db_progress_cache import get_custom_level_group_progress
+        from server.db_progress_cache import (
+            create_custom_level_progress_table,
+            get_custom_level_group_progress,
+            refresh_custom_level_group_progress,
+        )
+
+        # Ensure cache table exists
+        create_custom_level_progress_table()
         
         # Get cached progress data for all levels in the group
         progress_data = get_custom_level_group_progress(user_id, group_id)
+
+        # If cache is empty, refresh it once on-demand
+        if not progress_data:
+            refreshed = refresh_custom_level_group_progress(user_id, group_id)
+            if refreshed:
+                progress_data = get_custom_level_group_progress(user_id, group_id)
         
         print(f"🚀 Returning cached progress data for group {group_id}: {len(progress_data)} levels")
         
