@@ -350,6 +350,7 @@ def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, cont
                             INSERT INTO user_word_familiarity 
                             (user_id, word_id, familiarity, seen_count, correct_count, created_at, updated_at)
                             VALUES (%s, %s, 0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            ON CONFLICT (user_id, word_id) DO NOTHING
                         """, (user_id_val, word_id))
                     user_words_added = len(new_user_words)
             else:
