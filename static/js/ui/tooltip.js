@@ -23,15 +23,10 @@ export async function ttSave(){
   if(!word) return;
   const language = (document.getElementById('target-lang')?.value||'').trim();
   const native_language = (localStorage.getItem('siluma_native')||'').trim();
-  const translation = (document.getElementById('tt-translation')?.value||'').trim();
   const familiarity = parseInt(document.getElementById('tt-fam')?.value||'0',10)||0;
-  const ipa = (document.getElementById('tt-ipa')?.value||'').trim();
-  const example_native = (document.getElementById('tt-example-native')?.value||'').trim();
-  const pos = (document.getElementById('tt-pos')?.value||'').trim();
-  const synRaw = (document.getElementById('tt-syn')?.value||'').trim();
-  const synonyms = synRaw ? synRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
-  const gender = (document.getElementById('tt-gender')?.value||'none');
-  const payload = { word, language, native_language, translation, example_native, ipa, pos, gender, synonyms, familiarity };
+  
+  // Only save familiarity - other fields are read-only
+  const payload = { word, language, native_language, familiarity };
   try{
     // Add native language header for unauthenticated users
     const headers = { 'Content-Type': 'application/json' };
@@ -117,21 +112,71 @@ export async function openTooltip(anchor, word){
 
   const fill = (js)=>{
     if(!js) return;
-    if(tIn) tIn.value = js.translation || tIn.value || '';
-    if(exIn) exIn.value = js.example || exIn.value || '';
-    if(exN) exN.value = js.example_native || exN.value || '';
-    const fam = $('#tt-fam'); if(fam) fam.value = String(js.familiarity ?? fam.value ?? 0);
-    const lem = $('#tt-lemma'); if(lem) lem.value = js.lemma || lem.value || '';
-    const pos = $('#tt-pos'); if(pos) pos.value = (js.pos||'').toUpperCase();
-    const ipa = $('#tt-ipa'); if(ipa) ipa.value = js.ipa || ipa.value || '';
+    
+    // Fill text fields (read-only)
+    const translationEl = $('#tt-translation');
+    if(translationEl) translationEl.textContent = js.translation || '–';
+    
+    const ipaEl = $('#tt-ipa');
+    if(ipaEl) ipaEl.textContent = js.ipa || '–';
+    
+    const genderEl = $('#tt-gender');
+    if(genderEl) {
+      const genderMap = {
+        'masc': 'Maskulin',
+        'fem': 'Feminin', 
+        'neut': 'Neutrum',
+        'common': 'Utrum',
+        'none': 'Kein Genus'
+      };
+      genderEl.textContent = genderMap[js.gender] || 'Kein Genus';
+    }
+    
+    const exampleNativeEl = $('#tt-example-native');
+    if(exampleNativeEl) exampleNativeEl.textContent = js.example_native || '–';
+    
+    const synEl = $('#tt-syn');
+    if(synEl) synEl.textContent = Array.isArray(js.synonyms) ? js.synonyms.join(', ') : '–';
+    
+    const posEl = $('#tt-pos');
+    if(posEl) {
+      const posMap = {
+        'NOUN': 'Nomen',
+        'VERB': 'Verb',
+        'ADJ': 'Adjektiv',
+        'ADV': 'Adverb',
+        'PRON': 'Pronomen',
+        'DET': 'Artikel/Det',
+        'PREP': 'Präposition',
+        'CONJ': 'Konjunktion',
+        'NUM': 'Numerale',
+        'PART': 'Partikel',
+        'INTJ': 'Interjektion'
+      };
+      posEl.textContent = posMap[js.pos] || '–';
+    }
+    
+    // Fill editable field (familiarity)
+    const fam = $('#tt-fam'); 
+    if(fam) fam.value = String(js.familiarity ?? fam.value ?? 0);
+    
+    // Audio handling
     const a = $('#tt-audio-el');
     if(a){
       if((js.audio_url||'').trim()){ a.src = js.audio_url; a.style.display='block'; }
       else { a.removeAttribute('src'); a.style.display='none'; }
     }
-    const syn = $('#tt-syn'); if(syn) syn.value = Array.isArray(js.synonyms) ? js.synonyms.join(', ') : (syn.value||'');
+    
+    // Keep hidden elements for compatibility
+    if(tIn) tIn.value = js.translation || tIn.value || '';
+    if(exIn) exIn.value = js.example || exIn.value || '';
+    if(exN) exN.value = js.example_native || exN.value || '';
+    const lem = $('#tt-lemma'); if(lem) lem.value = js.lemma || lem.value || '';
+    const pos = $('#tt-pos-select'); if(pos) pos.value = (js.pos||'').toUpperCase();
+    const ipa = $('#tt-ipa-input'); if(ipa) ipa.value = js.ipa || ipa.value || '';
+    const syn = $('#tt-syn-input'); if(syn) syn.value = Array.isArray(js.synonyms) ? js.synonyms.join(', ') : (syn.value||'');
     const col = $('#tt-col'); if(col) col.value = Array.isArray(js.collocations) ? js.collocations.join(', ') : (col.value||'');
-    const gSel = $('#tt-gender'); if(gSel){
+    const gSel = $('#tt-gender-select'); if(gSel){
       const allowed = new Set(['masc','fem','neut','common','none']);
       const v = String(js.gender||'none').toLowerCase();
       gSel.value = allowed.has(v) ? v : 'none';

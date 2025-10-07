@@ -2723,6 +2723,54 @@
       font-size:11px; color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:.5px; 
     }
     
+    /* Tooltip field styling */
+    .tooltip-field {
+      margin-bottom: 16px;
+    }
+    
+    .tooltip-field label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    
+    .tooltip-text-field {
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--fg);
+      min-height: 20px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+    
+    .tooltip-text-field:empty::before {
+      content: "–";
+      color: var(--text-tertiary);
+      font-style: italic;
+    }
+    
+    .tooltip-editable {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: var(--card);
+      color: var(--fg);
+      box-sizing: border-box;
+    }
+    
+    .tooltip-editable:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
     /* Responsive tooltip adjustments */
     @media (max-width: 768px) {
       #tooltip, #level-tip {
@@ -2730,11 +2778,11 @@
         max-width: 90vw;
         margin: 0 auto;
       }
-      
+
       #tooltip .body, #level-tip .body {
         padding: 16px 20px;
       }
-      
+
       #tooltip header, #level-tip header {
         padding: 16px 20px 12px;
       }
@@ -5631,11 +5679,13 @@
     </header>
     <audio id="tt-audio-el" style="display:none" preload="none"></audio>
     <div class="body">
-      <label>Übersetzung
-        <input id="tt-translation" placeholder="Übersetzung eingeben" />
-      </label>
-      <label>Bekanntheit
-        <select id="tt-fam">
+      <div class="tooltip-field">
+      <div class="tooltip-field">
+        <label>Übersetzung</label>
+        <div id="tt-translation" class="tooltip-text-field">–</div>
+      <div class="tooltip-field">
+        <label>Bekanntheit</label>
+        <select id="tt-fam" class="tooltip-editable">
           <option value="0" data-i18n="familiarity.unknown">Unbekannt</option>
           <option value="1" data-i18n="familiarity.seen">Gesehen</option>
           <option value="2" data-i18n="familiarity.learning">Lernen</option>
@@ -5643,37 +5693,48 @@
           <option value="4" data-i18n="familiarity.strong">Stark</option>
           <option value="5" data-i18n="familiarity.memorized">Auswendig</option>
         </select>
-      </label>
-      <label>Aussprache (IPA) <span id="tt-badge-ipa" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span>
-        <input id="tt-ipa" placeholder="z. B. ɡeːn" />
-      </label>
-      <label>Genus
-        <select id="tt-gender"></select>
-      </label>
-      <!-- Beispielsatz ausgeblendet, Element bleibt für eventuelle JS-Zugriffe erhalten -->
+      </div>      </div>
+      <div class="tooltip-field">
+        <label>Aussprache (IPA) <span id="tt-badge-ipa" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
+        <div id="tt-ipa" class="tooltip-text-field">–</div>
+      <div class="tooltip-field">
+        <label>Genus</label>
+        <div id="tt-gender" class="tooltip-text-field">–</div>
+      </div>      <!-- Beispielsatz ausgeblendet, Element bleibt für eventuelle JS-Zugriffe erhalten -->
       <label style="display:none">Beispielsatz
         <textarea id="tt-example" placeholder="Beispiel eingeben"></textarea>
       </label>
-      <label>Beispiel-Übersetzung <span id="tt-badge-example-native" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Muttersprache</span>
-        <textarea id="tt-example-native" placeholder="Beispielsatz in Muttersprache"></textarea>
-      </label>
-      <label>Synonyme (Komma-getrennt) <span id="tt-badge-syn" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span>
-        <input id="tt-syn" placeholder="ähnliche Wörter" />
-      </label>
-      <label>Wortart
-        <select id="tt-pos">
-          <option value="">–</option>
-          <option value="NOUN">Nomen</option>
-          <option value="VERB">Verb</option>
-          <option value="ADJ">Adjektiv</option>
-          <option value="ADV">Adverb</option>
-          <option value="PRON">Pronomen</option>
-          <option value="DET">Artikel/Det</option>
-          <option value="PREP">Präposition</option>
-          <option value="CONJ">Konjunktion</option>
-          <option value="NUM">Numerale</option>
-          <option value="PART">Partikel</option>
-          <option value="INTJ">Interjektion</option>
+      <div class="tooltip-field">
+        <label>Beispiel-Übersetzung <span id="tt-badge-example-native" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Muttersprache</span></label>
+        <div id="tt-example-native" class="tooltip-text-field">–</div>
+      <div class="tooltip-field">
+        <label>Synonyme <span id="tt-badge-syn" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
+        <div id="tt-syn" class="tooltip-text-field">–</div>
+      <div class="tooltip-field">
+        <label>Wortart</label>
+        <div id="tt-pos" class="tooltip-text-field">–</div>
+      </div>
+      
+      <!-- Hidden elements for JS compatibility -->
+      <input id="tt-translation-input" style="display:none" />
+      <input id="tt-ipa-input" style="display:none" />
+      <select id="tt-gender-select" style="display:none"></select>
+      <textarea id="tt-example-native-textarea" style="display:none"></textarea>
+      <input id="tt-syn-input" style="display:none" />
+      <select id="tt-pos-select" style="display:none">
+        <option value="">–</option>
+        <option value="NOUN">Nomen</option>
+        <option value="VERB">Verb</option>
+        <option value="ADJ">Adjektiv</option>
+        <option value="ADV">Adverb</option>
+        <option value="PRON">Pronomen</option>
+        <option value="DET">Artikel/Det</option>
+        <option value="PREP">Präposition</option>
+        <option value="CONJ">Konjunktion</option>
+        <option value="NUM">Numerale</option>
+        <option value="PART">Partikel</option>
+        <option value="INTJ">Interjektion</option>
+      </select>          <option value="INTJ">Interjektion</option>
         </select>
       </label>
     </div>

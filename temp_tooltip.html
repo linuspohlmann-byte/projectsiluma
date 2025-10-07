@@ -1,0 +1,82 @@
+  <div id="tooltip" role="dialog" aria-modal="false" style="position:fixed;z-index:200">
+    <header>
+      <h4 id="tt-title">Wort</h4>
+      <div class="row" style="gap:8px;align-items:center">
+        <button id="tt-enrich" class="icon-btn" title="Befüllen">
+          <span aria-hidden="true">✨</span>
+        </button>
+        <button id="tt-save" class="icon-btn" title="Speichern" style="display:none" aria-hidden="true">
+          <span aria-hidden="true">💾</span>
+        </button>
+        <button id="tt-audio-btn" class="icon-btn" title="Audio abspielen">
+          <span aria-hidden="true">🔊</span>
+        </button>
+        <div id="tt-close" class="x">×</div>
+      </div>
+    </header>
+    <audio id="tt-audio-el" style="display:none" preload="none"></audio>
+    <div class="body">
+      <div class="tooltip-field">
+        <label>Übersetzung</label>
+        <div id="tt-translation" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Bekanntheit</label>
+        <select id="tt-fam" class="tooltip-editable">
+          <option value="0" data-i18n="familiarity.unknown">Unbekannt</option>
+          <option value="1" data-i18n="familiarity.seen">Gesehen</option>
+          <option value="2" data-i18n="familiarity.learning">Lernen</option>
+          <option value="3" data-i18n="familiarity.familiar">Vertraut</option>
+          <option value="4" data-i18n="familiarity.strong">Stark</option>
+          <option value="5" data-i18n="familiarity.memorized">Auswendig</option>
+        </select>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Aussprache (IPA) <span id="tt-badge-ipa" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
+        <div id="tt-ipa" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Genus</label>
+        <div id="tt-gender" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Beispiel-Übersetzung <span id="tt-badge-example-native" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Muttersprache</span></label>
+        <div id="tt-example-native" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Synonyme <span id="tt-badge-syn" class="pill" style="margin-left:6px;background:var(--surface);color:var(--text-secondary)">Zielsprache</span></label>
+        <div id="tt-syn" class="tooltip-text-field">–</div>
+      </div>
+      
+      <div class="tooltip-field">
+        <label>Wortart</label>
+        <div id="tt-pos" class="tooltip-text-field">–</div>
+      </div>
+      
+      <!-- Hidden elements for JS compatibility -->
+      <input id="tt-translation-input" style="display:none" />
+      <input id="tt-ipa-input" style="display:none" />
+      <select id="tt-gender-select" style="display:none"></select>
+      <textarea id="tt-example-native-textarea" style="display:none"></textarea>
+      <input id="tt-syn-input" style="display:none" />
+      <select id="tt-pos-select" style="display:none">
+        <option value="">–</option>
+        <option value="NOUN">Nomen</option>
+        <option value="VERB">Verb</option>
+        <option value="ADJ">Adjektiv</option>
+        <option value="ADV">Adverb</option>
+        <option value="PRON">Pronomen</option>
+        <option value="DET">Artikel/Det</option>
+        <option value="PREP">Präposition</option>
+        <option value="CONJ">Konjunktion</option>
+        <option value="NUM">Numerale</option>
+        <option value="PART">Partikel</option>
+        <option value="INTJ">Interjektion</option>
+      </select>
+    </div>
+  </div>
