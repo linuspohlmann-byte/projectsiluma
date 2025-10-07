@@ -3874,6 +3874,7 @@ def api_words_delete():
 
 
 @words_bp.get('/api/word')
+@require_auth(optional=True)
 def api_word_get():
     word = (request.args.get('word') or '').strip()
     language = (request.args.get('language') or '').strip()
