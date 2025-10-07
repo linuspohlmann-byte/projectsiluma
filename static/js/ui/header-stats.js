@@ -98,14 +98,9 @@ export async function updateStats(force = false) {
   
   // Batch all stats updates in a single operation
   try {
-    if (isUserAuthenticated) {
-      // For authenticated users, use the more accurate words data
-      await updateFromWordsData();
-    } else {
-      // For unauthenticated users, use the bulk API data (fallback)
-      // This will be called from the levels module when bulk data is available
-      console.log('User not authenticated - using bulk API data for stats');
-    }
+    // Always use the words data API for both authenticated and unauthenticated users
+    // The API endpoints handle both cases appropriately
+    await updateFromWordsData();
     await updateLearningProgress();
   } catch (error) {
     console.error('Error updating header stats:', error);
@@ -161,12 +156,6 @@ export async function updateFromWordsData() {
     return;
   }
   
-  // Only update from words data if user is authenticated
-  if (!isUserAuthenticated) {
-    console.log('📊 Skipping words data update - user not authenticated');
-    return;
-  }
-  
   console.log('📊 Starting words data update for language:', currentLanguage, 'user authenticated:', isUserAuthenticated);
   
   try {
@@ -190,11 +179,14 @@ export async function updateFromWordsData() {
       signal: controller.signal
     });
     
-    // Get learned words count (familiarity = 5)
-    const learnedResponse = await fetch(`/api/words/count_learned?language=${encodeURIComponent(currentLanguage)}`, { 
-      headers,
-      signal: controller.signal
-    });
+    // Get learned words count (familiarity = 5) - only for authenticated users
+    let learnedResponse = null;
+    if (isUserAuthenticated) {
+      learnedResponse = await fetch(`/api/words/count_learned?language=${encodeURIComponent(currentLanguage)}`, { 
+        headers,
+        signal: controller.signal
+      });
+    }
     
     clearTimeout(timeoutId);
     
@@ -209,12 +201,15 @@ export async function updateFromWordsData() {
       console.error('Failed to fetch total words count:', totalResponse.status, totalResponse.statusText);
     }
     
-    if (learnedResponse.ok) {
+    if (learnedResponse && learnedResponse.ok) {
       const learnedData = await learnedResponse.json();
       learnedWords = learnedData.count || 0;
       console.log('📊 Learned words API response:', learnedData);
-    } else {
+    } else if (learnedResponse) {
       console.error('Failed to fetch learned words count:', learnedResponse.status, learnedResponse.statusText);
+    } else {
+      console.log('📊 Skipping learned words count - user not authenticated');
+      learnedWords = 0;
     }
     
     // Update UI elements
