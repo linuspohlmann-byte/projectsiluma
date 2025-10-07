@@ -4005,17 +4005,17 @@ def api_words_get_many():
         conn = get_db_connection()
         
         try:
-        if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            result = execute_query(conn, '''
-                SELECT * FROM words 
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, '''
+                    SELECT * FROM words 
                     WHERE word = ANY(%s) AND language = %s AND native_language = %s
                 ''', (words, language, native_language))
-            rows = result.fetchall()
-        else:
+                rows = result.fetchall()
+            else:
                 # SQLite syntax (fallback)
-            cur = conn.cursor()
-            placeholders = ','.join('?' for _ in words)
+                cur = conn.cursor()
+                placeholders = ','.join('?' for _ in words)
                 rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND language=? AND native_language=?', (*words, language, native_language)).fetchall()
             
             # Convert to dict with word as key
