@@ -476,8 +476,9 @@ class MultiUserDBManager:
                         insert_values.append(0)
                         insert_updates.append('correct_count')
                     
-                    insert_values.append(now)  # unlocked_at
-                    insert_updates.append('unlocked_at')
+                    # Note: unlocked_at column doesn't exist in PostgreSQL user_word_familiarity table
+                    # insert_values.append(now)  # unlocked_at
+                    # insert_updates.append('unlocked_at')
                     
                     print(f"🔧 INSERT values: {insert_values}")
                     print(f"🔧 INSERT columns: {insert_updates}")
@@ -549,8 +550,9 @@ class MultiUserDBManager:
                         insert_values.append(0)
                         insert_updates.append('correct_count')
                     
-                    insert_values.append(now)  # unlocked_at
-                    insert_updates.append('unlocked_at')
+                    # Note: unlocked_at column doesn't exist in PostgreSQL user_word_familiarity table
+                    # insert_values.append(now)  # unlocked_at
+                    # insert_updates.append('unlocked_at')
                     
                     placeholders = ','.join(['?' for _ in insert_values])
                     cur.execute(f"""
