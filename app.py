@@ -364,6 +364,93 @@ def debug_run_progress_cache_migration():
             'success': False
         }), 500
 
+@app.get('/api/debug/check-progress-cache-table')
+def debug_check_progress_cache_table():
+    """Check if custom_level_progress table exists and show its structure"""
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                # Check if table exists
+                result = execute_query(conn, """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'custom_level_progress'
+                    );
+                """)
+                table_exists = result.fetchone()['exists']
+                
+                if table_exists:
+                    # Get table structure
+                    result = execute_query(conn, """
+                        SELECT column_name, data_type, is_nullable, column_default
+                        FROM information_schema.columns
+                        WHERE table_name = 'custom_level_progress'
+                        ORDER BY ordinal_position;
+                    """)
+                    columns = [dict(row) for row in result.fetchall()]
+                    
+                    # Get row count
+                    result = execute_query(conn, "SELECT COUNT(*) as count FROM custom_level_progress")
+                    row_count = result.fetchone()['count']
+                    
+                    return jsonify({
+                        'success': True,
+                        'table_exists': True,
+                        'columns': columns,
+                        'row_count': row_count,
+                        'message': 'Table exists and is accessible'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'table_exists': False,
+                        'message': 'Table does not exist'
+                    })
+            else:
+                # SQLite check
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='custom_level_progress'")
+                table_exists = cursor.fetchone() is not None
+                
+                if table_exists:
+                    cursor.execute("PRAGMA table_info(custom_level_progress)")
+                    columns = [{'column_name': row[1], 'data_type': row[2], 'is_nullable': 'YES' if row[3] == 0 else 'NO', 'column_default': row[4]} for row in cursor.fetchall()]
+                    
+                    cursor.execute("SELECT COUNT(*) FROM custom_level_progress")
+                    row_count = cursor.fetchone()[0]
+                    
+                    return jsonify({
+                        'success': True,
+                        'table_exists': True,
+                        'columns': columns,
+                        'row_count': row_count,
+                        'message': 'Table exists and is accessible'
+                    })
+                else:
+                    return jsonify({
+                        'success': False,
+                        'table_exists': False,
+                        'message': 'Table does not exist'
+                    })
+                    
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"❌ Error checking progress cache table: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/create-progress-cache-table')
 def debug_create_progress_cache_table():
     """Create custom_level_progress table for caching familiarity data"""
