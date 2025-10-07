@@ -21,18 +21,43 @@ export async function ttSave(){
   const wordEl = document.getElementById('tt-title');
   const word = (wordEl?.textContent||'').trim();
   if(!word) return;
-  const language = (document.getElementById('target-lang')?.value||'').trim();
-  const native_language = (localStorage.getItem('siluma_native')||'').trim();
+  
+  // Use stored context information for reliable identification
+  const context = TT.wordContext || {};
+  const language = context.language || (document.getElementById('target-lang')?.value||'').trim();
+  const native_language = context.native_language || (localStorage.getItem('siluma_native')||'').trim();
+  const user_id = context.user_id;
   const familiarity = parseInt(document.getElementById('tt-fam')?.value||'0',10)||0;
   const user_comment = (document.getElementById('tt-user-comment')?.value||'').trim();
   
-  // Save familiarity and user comment
-  const payload = { word, language, native_language, familiarity, user_comment };
+  // Only save if we have all required context information
+  if (!language || !native_language) {
+    console.warn('⚠️ Missing language context for tooltip save:', { language, native_language });
+    return;
+  }
+  
+  // Save familiarity and user comment with full context
+  const payload = { 
+    word, 
+    language, 
+    native_language, 
+    user_id,
+    familiarity, 
+    user_comment 
+  };
+  
+  console.log('🔧 Saving tooltip data:', payload);
   try{
-    // Add native language header for unauthenticated users
+    // Add headers for authentication and native language
     const headers = { 'Content-Type': 'application/json' };
     const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
     headers['X-Native-Language'] = nativeLanguage;
+    
+    // Add authentication header if available
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
     
     await fetch('/api/word/upsert', {
       method:'POST', headers,
@@ -52,18 +77,67 @@ export async function ttSave(){
 export async function closeTooltip(doSave=true){
   const tip = TT.el || document.getElementById('tooltip');
   if(!tip) return;
-  if(doSave){ await ttSave(); }
+  
+  // Always save when closing tooltip to ensure data persistence
+  if(doSave){ 
+    console.log('🔧 Closing tooltip, saving data...');
+    await ttSave(); 
+  }
+  
   tip.style.display = 'none';
-  TT.word=''; TT.anchor=null;
+  TT.word=''; TT.anchor=null; TT.wordContext=null;
   document.removeEventListener('click', onDocClick, {capture:false});
 }
 
 // --- Open tooltip anchored to a word ------------------------------------------
 export async function openTooltip(anchor, word){
+  // Save current tooltip data before opening new one
+  if (TT.word && TT.word !== word) {
+    console.log('🔧 Opening new tooltip, saving previous data...');
+    await ttSave();
+  }
+  
   TT.word = word; TT.anchor = anchor;
   TT.el = document.getElementById('tooltip');
   const tip = TT.el;
   if(!tip) return;
+  
+  // Extract and store all 4 required attributes for reliable identification
+  TT.wordContext = {
+    word: word,
+    language: null,
+    native_language: null,
+    user_id: null
+  };
+  
+  // 1. Get target language (from current lesson or dropdown)
+  TT.wordContext.language = window.RUN?.target || document.getElementById('target-lang')?.value || 'en';
+  
+  // 2. Get native language (from localStorage or user context)
+  TT.wordContext.native_language = localStorage.getItem('siluma_native') || 'en';
+  
+  // 3. Get user ID (from auth context)
+  try {
+    // First try to get from global auth state
+    if (window.authManager && window.authManager.currentUser) {
+      TT.wordContext.user_id = window.authManager.currentUser.id;
+    } else {
+      // Fallback: try to decode from session token
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        try {
+          const userInfo = JSON.parse(atob(sessionToken.split('.')[1]));
+          TT.wordContext.user_id = userInfo.user_id || userInfo.id;
+        } catch (e) {
+          console.warn('⚠️ Could not decode session token:', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Could not get user ID:', e);
+  }
+  
+  console.log('🔧 Tooltip context:', TT.wordContext);
   
   // Extract sentence context from the lesson if available
   TT.sentenceContext = null;

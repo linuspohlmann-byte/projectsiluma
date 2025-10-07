@@ -4085,14 +4085,16 @@ def api_word_upsert():
         # Save to PostgreSQL user_word_familiarity table
         try:
             language = payload.get('language', 'en')
-            native_language = user_context.get('native_language', 'en')
+            native_language = payload.get('native_language') or user_context.get('native_language', 'en')
             familiarity = payload.get('familiarity', 0)
             user_comment = payload.get('user_comment', '')
+            # Use user_id from payload if provided, otherwise use context user_id
+            target_user_id = payload.get('user_id') or user_id
                 
             # Update word familiarity in PostgreSQL database
             from server.db import update_user_word_familiarity_by_word
             success = update_user_word_familiarity_by_word(
-                user_id=user_id,
+                user_id=target_user_id,
                 word=word,
                 language=language,
                 native_language=native_language,
