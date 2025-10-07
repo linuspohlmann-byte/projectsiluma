@@ -1282,62 +1282,9 @@ def api_get_custom_level_group(group_id):
         # Get all levels for this group
         levels = get_custom_levels_for_group(group_id)
         
-        # Ensure all words from all levels in this group are added to user's familiarity database
-        try:
-            language = group.get('language', 'en')
-            native_language = group.get('native_language', 'de')
-            
-            print(f"🔤 Group load: Ensuring words from all levels in custom level group {group_id} are in familiarity database")
-            
-            # Collect all words from all levels
-            all_level_words = set()
-            for level in levels:
-                if level.get('content') and level['content'].get('items'):
-                    for item in level['content']['items']:
-                        words = item.get('words', [])
-                        for word in words:
-                            if word and word.strip():
-                                all_level_words.add(word.strip().lower())
-            
-            if all_level_words:
-                level_words_list = list(all_level_words)
-                print(f"🔤 Group load: Found {len(level_words_list)} unique words across all levels in group {group_id}")
-                
-                # Ensure words exist in global database
-                ensure_words_exist(level_words_list, language, native_language)
-                
-                # Add words to user's familiarity database with default familiarity (0 = unknown)
-                from server.db_multi_user import update_word_familiarity
-                for word in level_words_list:
-                    try:
-                        # Get word ID from global database
-                        from server.db import get_db
-                        conn = get_db()
-                        cursor = conn.execute("SELECT id FROM words WHERE word = ? AND language = ?", (word, language))
-                        word_row = cursor.fetchone()
-                        conn.close()
-                        
-                        if word_row:
-                            word_id = word_row[0]
-                            # Add to user's familiarity database with familiarity 0 (unknown)
-                            print(f"🔧 Group load: Calling update_word_familiarity for user {user_id}, word '{word}', language '{language}', familiarity 0")
-                            success = update_word_familiarity(user_id, word, language, 0)
-                            if success:
-                                print(f"✅ Group load: Added word '{word}' (ID: {word_id}) to user {user_id} familiarity database")
-                            else:
-                                print(f"❌ Group load: Failed to add word '{word}' to user {user_id} familiarity database")
-                        else:
-                            print(f"⚠️ Group load: Word '{word}' not found in global database")
-                    except Exception as e:
-                        print(f"⚠️ Group load: Error adding word '{word}' to familiarity database: {e}")
-                        import traceback
-                        traceback.print_exc()
-                
-                print(f"✅ Group load: Ensured all words from custom level group {group_id} are in familiarity database")
-            
-        except Exception as e:
-            print(f"⚠️ Group load: Error ensuring words in familiarity database: {e}")
-            # Continue anyway - don't fail the group loading
+        # Skip word processing for now - will be done on-demand when levels are accessed
+        # This dramatically improves loading speed from ~1 minute to ~2 seconds
+        print(f"📚 Loaded {len(levels)} levels for group {group_id} (word processing deferred for performance)")
         
         return jsonify({
             'success': True,

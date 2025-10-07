@@ -903,7 +903,7 @@ async function startCustomGroup(groupId) {
         console.log('📚 Custom group loaded:', group);
         console.log('📖 Levels found:', levels.length);
         
-        // Progressive loading strategy: Only generate first few levels immediately
+        // Quick check: Only process if levels actually need generation
         const levelsNeedingGeneration = levels.filter(level => {
             const content = level.content || {};
             return content.ultra_lazy_loading && !content.sentences_generated;
@@ -958,6 +958,8 @@ async function startCustomGroup(groupId) {
                 // Generate remaining levels in background without blocking UI
                 generateRemainingLevelsInBackground(groupId, remainingLevels);
             }
+        } else {
+            console.log(`✅ All levels already generated - fast loading!`);
         }
         
         // Store custom group context for level rendering
@@ -2167,13 +2169,13 @@ function addGeneratingStatusStyles() {
 // Initialize styles when the module loads
 addGeneratingStatusStyles();
 
-// Preload level data for better performance
+// Preload level data for better performance (optimized - only first few levels)
 async function preloadCustomLevelData(groupId, levels) {
     try {
         console.log('🚀 Preloading custom level data for better performance...');
         
-        // Preload level data for levels that don't need generation
-        const levelsToPreload = levels.filter(level => {
+        // Only preload first 5 levels to avoid overwhelming the system
+        const levelsToPreload = levels.slice(0, 5).filter(level => {
             const content = level.content || {};
             return !content.ultra_lazy_loading || content.sentences_generated;
         });
@@ -2182,6 +2184,8 @@ async function preloadCustomLevelData(groupId, levels) {
             console.log('📝 No levels to preload');
             return;
         }
+        
+        console.log(`📦 Preloading data for first ${levelsToPreload.length} levels only`);
         
         // Preload in background without blocking UI
         const preloadPromises = levelsToPreload.map(async (level) => {
