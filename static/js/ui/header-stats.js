@@ -43,11 +43,14 @@ export function initHeaderStats() {
   if (window.authManager) {
     // Check initial state
     isUserAuthenticated = window.authManager.isAuthenticated();
+    console.log('📊 Header stats: Initial auth state:', isUserAuthenticated);
     
     // Listen for auth state changes
     document.addEventListener('authStateChanged', () => {
-      isUserAuthenticated = window.authManager.isAuthenticated();
-      updateStats();
+      const newAuthState = window.authManager.isAuthenticated();
+      console.log('📊 Header stats: Auth state changed to:', newAuthState);
+      isUserAuthenticated = newAuthState;
+      updateStats(true); // Force update when auth state changes
     });
   }
   
@@ -66,7 +69,8 @@ export function initHeaderStats() {
     if (targetLangSelect && targetLangSelect.value) {
       currentLanguage = targetLangSelect.value;
     }
-    updateStats();
+    console.log('📊 Initial header stats update - language:', currentLanguage, 'authenticated:', isUserAuthenticated);
+    updateStats(true); // Force update on initialization
   }, 100);
 }
 
@@ -152,13 +156,18 @@ export function updateFromBulkData(headerStats) {
  * Update header stats from actual words data (more accurate)
  */
 export async function updateFromWordsData() {
-  if (!currentLanguage) return;
+  if (!currentLanguage) {
+    console.log('📊 Skipping words data update - no current language');
+    return;
+  }
   
   // Only update from words data if user is authenticated
   if (!isUserAuthenticated) {
-    console.log('Skipping words data update - user not authenticated');
+    console.log('📊 Skipping words data update - user not authenticated');
     return;
   }
+  
+  console.log('📊 Starting words data update for language:', currentLanguage, 'user authenticated:', isUserAuthenticated);
   
   try {
     // Get actual words data from the Words tab
@@ -195,6 +204,7 @@ export async function updateFromWordsData() {
     if (totalResponse.ok) {
       const totalData = await totalResponse.json();
       totalWords = totalData.count || 0;
+      console.log('📊 Total words API response:', totalData);
     } else {
       console.error('Failed to fetch total words count:', totalResponse.status, totalResponse.statusText);
     }
@@ -202,6 +212,7 @@ export async function updateFromWordsData() {
     if (learnedResponse.ok) {
       const learnedData = await learnedResponse.json();
       learnedWords = learnedData.count || 0;
+      console.log('📊 Learned words API response:', learnedData);
     } else {
       console.error('Failed to fetch learned words count:', learnedResponse.status, learnedResponse.statusText);
     }
