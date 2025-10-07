@@ -365,6 +365,90 @@ def debug_run_progress_cache_migration():
         }), 500
 
 
+@app.post('/api/debug/cleanup-duplicate-words')
+def debug_cleanup_duplicate_words():
+    """Clean up duplicate entries in words table before adding UNIQUE constraint"""
+    try:
+        import os
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        
+        # Get database connection
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL environment variable not set'
+            }), 500
+        
+        conn = psycopg2.connect(database_url)
+        
+        try:
+            print("🚀 Cleaning up duplicate words...")
+            cursor = conn.cursor()
+            
+            # Find duplicates
+            cursor.execute("""
+                SELECT word, language, native_language, COUNT(*) as count
+                FROM words 
+                WHERE word IS NOT NULL AND language IS NOT NULL AND native_language IS NOT NULL
+                GROUP BY word, language, native_language 
+                HAVING COUNT(*) > 1
+                ORDER BY count DESC;
+            """)
+            duplicates = cursor.fetchall()
+            
+            print(f"📊 Found {len(duplicates)} duplicate word groups")
+            
+            cleaned_count = 0
+            for word, language, native_language, count in duplicates:
+                print(f"🔧 Cleaning duplicates for '{word}' ({language} -> {native_language}): {count} entries")
+                
+                # Keep the most recent entry (highest id) and delete the rest
+                cursor.execute("""
+                    DELETE FROM words 
+                    WHERE word = %s AND language = %s AND native_language = %s
+                    AND id NOT IN (
+                        SELECT MAX(id) 
+                        FROM words 
+                        WHERE word = %s AND language = %s AND native_language = %s
+                    );
+                """, (word, language, native_language, word, language, native_language))
+                
+                deleted_rows = cursor.rowcount
+                cleaned_count += deleted_rows
+                print(f"✅ Deleted {deleted_rows} duplicate entries for '{word}'")
+            
+            # Also clean up entries with NULL values
+            cursor.execute("""
+                DELETE FROM words 
+                WHERE word IS NULL OR language IS NULL OR native_language IS NULL;
+            """)
+            null_cleaned = cursor.rowcount
+            print(f"✅ Deleted {null_cleaned} entries with NULL values")
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Cleaned up {cleaned_count} duplicate entries and {null_cleaned} NULL entries',
+                'duplicates_found': len(duplicates),
+                'duplicates_cleaned': cleaned_count,
+                'null_entries_cleaned': null_cleaned
+            })
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Failed to cleanup duplicates: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/add-words-unique-constraint')
 def debug_add_words_unique_constraint():
     """Add UNIQUE constraint to words table for (word, language, native_language)"""
