@@ -155,12 +155,15 @@ let isApplyingLevelStates = false;
 function refreshLevelStates() {
   console.log('Refreshing level states due to auth change...');
   
+  // Apply immediate feedback first
+  applyImmediateLevelStates();
+  
   // Clear existing timeout
   if (applyLevelStatesTimeout) {
     clearTimeout(applyLevelStatesTimeout);
   }
   
-  // Debounce the call
+  // Debounce the full API call
   applyLevelStatesTimeout = setTimeout(() => {
     applyLevelStates();
     // Group stats will be updated automatically by applyLevelStates
@@ -168,14 +171,17 @@ function refreshLevelStates() {
   }, 100);
 }
 
-// Debounced version of applyLevelStates
+// Debounced version of applyLevelStates with immediate feedback
 function debouncedApplyLevelStates() {
+  // Apply immediate feedback first
+  applyImmediateLevelStates();
+  
   // Clear existing timeout
   if (applyLevelStatesTimeout) {
     clearTimeout(applyLevelStatesTimeout);
   }
   
-  // Debounce the call
+  // Debounce the full API call
   applyLevelStatesTimeout = setTimeout(() => {
     applyLevelStates();
     // Group stats will be updated automatically by applyLevelStates
@@ -217,6 +223,153 @@ async function syncUserData() {
 // Expose sync function globally
 window.syncUserData = syncUserData;
 
+// Fast path: Apply immediate visual feedback for level states
+function applyImmediateLevelStates() {
+  try {
+    console.log('⚡ Applying immediate level states for fast feedback...');
+    
+    const nodes = Array.from(document.querySelectorAll('.level-card'));
+    if (!nodes.length) return;
+    
+    const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+    
+    // Apply immediate visual feedback based on cached data or defaults
+    nodes.forEach(node => {
+      const levelNum = parseInt(node.dataset.level || '0', 10);
+      if (!levelNum) return;
+      
+      // Check if we have cached data
+      const cachedData = node.dataset.bulkData;
+      if (cachedData) {
+        try {
+          const data = JSON.parse(cachedData);
+          applyLevelStateFromCache(node, levelNum, data);
+          return;
+        } catch (error) {
+          console.log('Error parsing cached data for level', levelNum, error);
+        }
+      }
+      
+      // Apply default states for immediate feedback
+      applyDefaultLevelState(node, levelNum, isUserAuthenticated);
+    });
+    
+    console.log('✅ Immediate level states applied');
+    
+  } catch (error) {
+    console.error('Error applying immediate level states:', error);
+  }
+}
+
+// Apply level state from cached data
+function applyLevelStateFromCache(node, levelNum, data) {
+  const status = data.status || 'not_started';
+  const score = data.last_score || 0;
+  
+  // Remove all state classes
+  node.classList.remove('locked', 'unlocked', 'done', 'active');
+  
+  if (status === 'completed' && Number(score) > 0.6) {
+    node.classList.add('done');
+    node.dataset.allowStart = 'true';
+  } else if (levelNum === 1) {
+    node.classList.add('unlocked');
+    node.dataset.allowStart = 'true';
+  } else {
+    // For other levels, check if previous level is completed
+    const prevNode = document.querySelector(`.level-card[data-level="${levelNum - 1}"]`);
+    if (prevNode && prevNode.classList.contains('done')) {
+      node.classList.add('unlocked');
+      node.dataset.allowStart = 'true';
+    } else {
+      node.classList.add('locked');
+    }
+  }
+  
+  // Update visual indicators
+  updateLevelVisualIndicators(node, data);
+}
+
+// Apply default level state for immediate feedback
+function applyDefaultLevelState(node, levelNum, isUserAuthenticated) {
+  // Remove all state classes
+  node.classList.remove('locked', 'unlocked', 'done', 'active');
+  
+  if (!isUserAuthenticated) {
+    // For unauthenticated users, only level 1 is available
+    if (levelNum === 1) {
+      node.classList.add('unlocked');
+      node.dataset.allowStart = 'true';
+    } else {
+      node.classList.add('locked');
+    }
+  } else {
+    // For authenticated users, apply smart defaults
+    if (levelNum === 1) {
+      node.classList.add('unlocked');
+      node.dataset.allowStart = 'true';
+    } else {
+      // Mark as locked initially, will be updated by API call
+      node.classList.add('locked');
+    }
+  }
+  
+  // Set default visual indicators
+  setDefaultVisualIndicators(node);
+}
+
+// Update visual indicators from cached data
+function updateLevelVisualIndicators(node, data) {
+  const wordsText = node.querySelector('.words-text');
+  const learnedText = node.querySelector('.learned-text');
+  const completionText = node.querySelector('.completion-circle-text');
+  const progressFill = node.querySelector('.level-progress-fill');
+  
+  if (wordsText && data.total_words) {
+    wordsText.textContent = data.total_words;
+  }
+  
+  if (learnedText && data.completed_words !== undefined) {
+    learnedText.textContent = data.completed_words;
+  }
+  
+  if (completionText && data.last_score !== undefined) {
+    const score = Math.round((data.last_score || 0) * 100);
+    completionText.textContent = `${score}%`;
+  }
+  
+  if (progressFill && data.total_words && data.completed_words !== undefined) {
+    const progress = data.total_words > 0 ? 
+      Math.round((data.completed_words / data.total_words) * 100) : 0;
+    progressFill.style.width = `${progress}%`;
+  }
+}
+
+// Set default visual indicators
+function setDefaultVisualIndicators(node) {
+  const wordsText = node.querySelector('.words-text');
+  const learnedText = node.querySelector('.learned-text');
+  const completionText = node.querySelector('.completion-circle-text');
+  const progressFill = node.querySelector('.level-progress-fill');
+  
+  // Set default values for immediate feedback
+  if (wordsText && !wordsText.textContent) {
+    wordsText.textContent = '0';
+  }
+  
+  if (learnedText && !learnedText.textContent) {
+    learnedText.textContent = '0';
+  }
+  
+  if (completionText && !completionText.textContent) {
+    completionText.textContent = '0%';
+  }
+  
+  if (progressFill && !progressFill.style.width) {
+    progressFill.style.width = '0%';
+  }
+}
+
 async function applyLevelStates(){
   // Prevent multiple simultaneous calls
   if (isApplyingLevelStates) {
@@ -225,6 +378,9 @@ async function applyLevelStates(){
   }
   
   isApplyingLevelStates = true;
+  
+  // Fast path: Apply immediate visual feedback first
+  applyImmediateLevelStates();
   
   try {
     const nodes = Array.from(document.querySelectorAll('.level-card'));
@@ -918,6 +1074,9 @@ function applyButtonHighlighting(levelElement, isCompleted, progressPercent) {
 if(typeof window!=='undefined'){ 
   window.applyLevelStates = applyLevelStates;
   window.updateGroupStatsInOverview = updateGroupStatsInOverview;
+  window.applyImmediateLevelStates = applyImmediateLevelStates;
+  window.applyLevelStateFromCache = applyLevelStateFromCache;
+  window.applyDefaultLevelState = applyDefaultLevelState;
 }
 
 
