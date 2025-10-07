@@ -903,54 +903,60 @@ async function startCustomGroup(groupId) {
         console.log('📚 Custom group loaded:', group);
         console.log('📖 Levels found:', levels.length);
         
-        // Check if any levels need content generation (ultra-lazy loading)
+        // Progressive loading strategy: Only generate first few levels immediately
         const levelsNeedingGeneration = levels.filter(level => {
             const content = level.content || {};
             return content.ultra_lazy_loading && !content.sentences_generated;
         });
         
         if (levelsNeedingGeneration.length > 0) {
-            console.log(`🚀 Generating content for ${levelsNeedingGeneration.length} levels...`);
+            console.log(`🚀 Progressive loading: ${levelsNeedingGeneration.length} levels need generation`);
             
-            // Show progress message with more details
-            if (window.showLoader) {
-                window.showLoader(`Generiere ${levelsNeedingGeneration.length} Level mit AI-Inhalten...`);
-            }
+            // Only generate first 3 levels immediately for fast initial load
+            const immediateLevels = levelsNeedingGeneration.slice(0, 3);
+            const remainingLevels = levelsNeedingGeneration.slice(3);
             
-            try {
-                // Generate content for all levels that need it
-                const generationResult = await generateAllCustomLevelsContent(groupId, levelsNeedingGeneration);
+            if (immediateLevels.length > 0) {
+                console.log(`⚡ Generating first ${immediateLevels.length} levels immediately...`);
                 
-                // Show success/failure summary
-                if (generationResult.successful > 0) {
-                    console.log(`✅ Successfully generated content for ${generationResult.successful} levels`);
-                }
-                if (generationResult.failed > 0) {
-                    console.warn(`⚠️ Failed to generate content for ${generationResult.failed} levels`);
+                // Show quick progress message
+                if (window.showLoader) {
+                    window.showLoader(`Generiere erste ${immediateLevels.length} Level...`);
                 }
                 
-                // Reload the group data to get updated levels
-                const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                try {
+                    // Generate only first few levels for immediate availability
+                    const generationResult = await generateAllCustomLevelsContent(groupId, immediateLevels);
+                    
+                    if (generationResult.successful > 0) {
+                        console.log(`✅ Generated ${generationResult.successful} levels for immediate use`);
                     }
-                });
-                
-                if (reloadResponse.ok) {
-                    const reloadData = await reloadResponse.json();
-                    if (reloadData.success) {
-                        levels.splice(0, levels.length, ...reloadData.levels);
-                        console.log('✅ Reloaded levels with generated content');
-                        
-                        // Show success notification
-                        if (generationResult.successful > 0) {
-                            showNotification(`✅ ${generationResult.successful} Level erfolgreich generiert!`, 'success');
+                    
+                    // Reload the group data to get updated levels
+                    const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                        }
+                    });
+                    
+                    if (reloadResponse.ok) {
+                        const reloadData = await reloadResponse.json();
+                        if (reloadData.success) {
+                            levels.splice(0, levels.length, ...reloadData.levels);
+                            console.log('✅ Reloaded levels with immediate content');
                         }
                     }
+                } catch (error) {
+                    console.error('❌ Error during immediate content generation:', error);
                 }
-            } catch (error) {
-                console.error('❌ Error during content generation:', error);
-                showNotification('⚠️ Einige Level konnten nicht generiert werden. Sie werden beim Start erstellt.', 'warning');
+            }
+            
+            // Start background generation for remaining levels (non-blocking)
+            if (remainingLevels.length > 0) {
+                console.log(`🔄 Starting background generation for ${remainingLevels.length} remaining levels...`);
+                
+                // Generate remaining levels in background without blocking UI
+                generateRemainingLevelsInBackground(groupId, remainingLevels);
             }
         }
         
@@ -2052,6 +2058,8 @@ window.generateAllCustomLevelsContent = generateAllCustomLevelsContent;
 window.generateAllCustomLevelsContentFallback = generateAllCustomLevelsContentFallback;
 window.preloadCustomLevelData = preloadCustomLevelData;
 window.renderCustomLevelsWithPreloading = renderCustomLevelsWithPreloading;
+window.generateRemainingLevelsInBackground = generateRemainingLevelsInBackground;
+window.updateLevelGenerationProgress = updateLevelGenerationProgress;
 
 // Show creation progress modal
 function showCreationProgressModal() {
@@ -2140,6 +2148,16 @@ function addGeneratingStatusStyles() {
                 opacity: 0.6;
                 pointer-events: none;
             }
+            
+            .level-status.error {
+                color: #dc3545;
+                font-weight: 600;
+            }
+            
+            .level-card.error {
+                border: 2px solid #dc3545;
+                opacity: 0.7;
+            }
         </style>
     `;
     
@@ -2202,6 +2220,88 @@ async function preloadCustomLevelData(groupId, levels) {
     } catch (error) {
         console.log('⚠️ Error in preloading:', error);
     }
+}
+
+// Generate remaining levels in background without blocking UI
+async function generateRemainingLevelsInBackground(groupId, remainingLevels) {
+    try {
+        console.log(`🔄 Background generation started for ${remainingLevels.length} levels`);
+        
+        // Process levels in smaller batches to avoid overwhelming the system
+        const batchSize = 2; // Generate 2 levels at a time
+        const batches = [];
+        
+        for (let i = 0; i < remainingLevels.length; i += batchSize) {
+            batches.push(remainingLevels.slice(i, i + batchSize));
+        }
+        
+        console.log(`📦 Processing ${batches.length} batches of ${batchSize} levels each`);
+        
+        // Process batches with delays between them
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            console.log(`🔄 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} levels)`);
+            
+            try {
+                // Generate batch
+                const batchResult = await generateAllCustomLevelsContent(groupId, batch);
+                
+                if (batchResult.successful > 0) {
+                    console.log(`✅ Batch ${batchIndex + 1} completed: ${batchResult.successful} levels generated`);
+                    
+                    // Update UI to show progress
+                    updateLevelGenerationProgress(groupId, batch, true);
+                }
+                
+                if (batchResult.failed > 0) {
+                    console.warn(`⚠️ Batch ${batchIndex + 1} had ${batchResult.failed} failures`);
+                    updateLevelGenerationProgress(groupId, batch, false);
+                }
+                
+            } catch (error) {
+                console.error(`❌ Error in batch ${batchIndex + 1}:`, error);
+                updateLevelGenerationProgress(groupId, batch, false);
+            }
+            
+            // Add delay between batches to avoid overwhelming the system
+            if (batchIndex < batches.length - 1) {
+                console.log(`⏳ Waiting 2 seconds before next batch...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+        
+        console.log(`🎉 Background generation completed for all ${remainingLevels.length} levels`);
+        
+        // Show completion notification
+        showNotification(`✅ Alle ${remainingLevels.length} Level wurden im Hintergrund generiert!`, 'success');
+        
+    } catch (error) {
+        console.error('❌ Error in background generation:', error);
+        showNotification('⚠️ Einige Level konnten nicht im Hintergrund generiert werden.', 'warning');
+    }
+}
+
+// Update level generation progress in UI
+function updateLevelGenerationProgress(groupId, levels, success) {
+    levels.forEach(level => {
+        const levelCard = document.querySelector(`.level-card[data-level="${level.level_number}"][data-custom-group-id="${groupId}"]`);
+        if (levelCard) {
+            if (success) {
+                levelCard.classList.remove('generating');
+                const statusElement = levelCard.querySelector('.level-status');
+                if (statusElement) {
+                    statusElement.textContent = 'Bereit';
+                    statusElement.classList.remove('generating');
+                }
+            } else {
+                const statusElement = levelCard.querySelector('.level-status');
+                if (statusElement) {
+                    statusElement.textContent = 'Fehler beim Generieren';
+                    statusElement.classList.add('error');
+                }
+            }
+        }
+    });
 }
 
 // Enhanced level rendering with preloading

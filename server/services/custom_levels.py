@@ -1259,9 +1259,9 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
             # Enrich words using batch processing (this ensures Railway sync)
             word_hashes = batch_enrich_words_for_custom_levels(list(all_words), language, native_language, sentence_contexts)
             
-            # Generate audio for all sentences and words (this ensures S3 upload)
-            print(f"🎵 Generating audio for {len(sentence_contexts)} sentences and {len(all_words)} words...")
-            batch_generate_audio_for_custom_levels(sentence_contexts, all_words, language, native_language)
+            # Generate audio for sentences only (words will be generated on-demand for faster initial load)
+            print(f"🎵 Generating audio for {len(sentence_contexts)} sentences...")
+            batch_generate_audio_for_custom_levels(sentence_contexts, set(), language, native_language)
             
             # Update the level content with word hashes
             content['word_hashes'] = word_hashes

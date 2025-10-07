@@ -1849,7 +1849,7 @@ def api_generate_all_custom_levels_content(group_id):
         from server.services.custom_levels import enrich_custom_level_words_on_demand
         
         results = []
-        with ThreadPoolExecutor(max_workers=3) as executor:  # Limit concurrency to avoid overwhelming the system
+        with ThreadPoolExecutor(max_workers=2) as executor:  # Reduced concurrency for faster individual completion
             # Submit all generation tasks
             future_to_level = {
                 executor.submit(enrich_custom_level_words_on_demand, group_id, level['level_number'], language, native_language): level
