@@ -529,6 +529,7 @@ class MultiUserDBManager:
                     insert_result = execute_query(conn, f"""
                         INSERT INTO user_word_familiarity ({', '.join(insert_updates)})
                         VALUES ({placeholders})
+                        ON CONFLICT (user_id, word_id) DO NOTHING
                     """, insert_values)
                     
                     print(f"🔧 INSERT result rowcount: {insert_result.rowcount}")
