@@ -284,6 +284,59 @@ def debug_tts_status():
             'success': False
         }), 500
 
+@app.post('/api/debug/migrate-word-count')
+def debug_migrate_word_count():
+    """Add word_count column to custom_levels table and populate existing data"""
+    try:
+        from server.db import migrate_custom_levels_add_word_count, calculate_and_update_word_count
+        from server.services.custom_levels import get_custom_levels_for_group
+        
+        # Add the word_count column
+        migrate_custom_levels_add_word_count()
+        
+        # Populate word counts for existing levels
+        print("🔄 Populating word counts for existing custom levels...")
+        
+        # Get all custom level groups
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            if config['type'] == 'postgresql':
+                result = execute_query(conn, "SELECT id FROM custom_level_groups")
+                groups = [row['id'] for row in result.fetchall()]
+            else:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM custom_level_groups")
+                groups = [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+        
+        updated_count = 0
+        for group_id in groups:
+            levels = get_custom_levels_for_group(group_id)
+            for level in levels:
+                if level.get('content') and level.get('content', {}).get('items'):
+                    word_count = calculate_and_update_word_count(group_id, level['level_number'], level['content'])
+                    if word_count > 0:
+                        updated_count += 1
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully migrated word counts for {updated_count} levels',
+            'updated_levels': updated_count
+        })
+        
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/migrate-data')
 def debug_migrate_data():
     """Debug endpoint to migrate data to Railway PostgreSQL"""
@@ -1424,19 +1477,15 @@ def api_get_custom_level_progress(group_id, level_number):
         if not level_data:
             return jsonify({'success': False, 'error': 'Level not found'}), 404
         
-        # Extract content length for total words
-        total_words = 0
-        if level_data.get('content') and level_data['content'].get('items'):
-            # Count unique words from all items, not just number of items
-            all_words = set()
-            for item in level_data['content']['items']:
-                words = item.get('words', [])
-                for word in words:
-                    if word and word.strip():
-                        all_words.add(word.strip().lower())
-            total_words = len(all_words)
+        # Get word count from database column (much faster than calculating)
+        total_words = level_data.get('word_count', 0)
         
-        # If no content yet (ultra-lazy loading), use estimated values
+        # If no word count in database yet, calculate and store it
+        if total_words == 0 and level_data.get('content') and level_data['content'].get('items'):
+            from server.db import calculate_and_update_word_count
+            total_words = calculate_and_update_word_count(group_id, level_number, level_data['content'])
+        
+        # If still no content (ultra-lazy loading), use estimated values
         if total_words == 0:
             total_words = 25  # Estimated for ultra-lazy levels
         
@@ -1534,22 +1583,17 @@ def api_get_custom_level_bulk_stats(group_id):
         for level_num in range(1, 11):  # Assuming 10 levels per group
             level_data = get_custom_level(group_id, level_num, user_id)
             if level_data:
-                # Calculate actual word count from level content
-                total_words = 0
+                # Get word count from database column (much faster than calculating)
+                total_words = level_data.get('word_count', 0)
                 fam_counts = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
                 
                 if level_data.get('content'):
                     content = level_data['content']
                     
-                    # Get actual word count from content
-                    if content.get('items'):
-                        all_words = set()
-                        for item in content['items']:
-                            words = item.get('words', [])
-                            for word in words:
-                                if word and word.strip():
-                                    all_words.add(word.strip().lower())
-                        total_words = len(all_words)
+                    # If no word count in database yet, calculate and store it
+                    if total_words == 0 and content.get('items'):
+                        from server.db import calculate_and_update_word_count
+                        total_words = calculate_and_update_word_count(group_id, level_num, content)
                     
                     # Get actual fam_counts from content
                     if content.get('fam_counts'):

@@ -159,6 +159,7 @@ def create_custom_levels_table():
                     title VARCHAR(255) NOT NULL,
                     topic VARCHAR(255) NOT NULL,
                     content TEXT NOT NULL,
+                    word_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
@@ -175,6 +176,7 @@ def create_custom_levels_table():
                     title TEXT NOT NULL,
                     topic TEXT NOT NULL,
                     content TEXT NOT NULL,  -- JSON content
+                    word_count INTEGER DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
@@ -182,6 +184,95 @@ def create_custom_levels_table():
                 )
             ''')
             conn.commit()
+    finally:
+        conn.close()
+
+def migrate_custom_levels_add_word_count():
+    """Add word_count column to existing custom_levels table"""
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax - check if column exists first
+            result = execute_query(conn, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'custom_levels' AND column_name = 'word_count'
+            ''')
+            
+            if not result.fetchone():
+                print("Adding word_count column to custom_levels table...")
+                execute_query(conn, '''
+                    ALTER TABLE custom_levels 
+                    ADD COLUMN word_count INTEGER DEFAULT 0
+                ''')
+                print("✅ Added word_count column to custom_levels table")
+            else:
+                print("word_count column already exists in custom_levels table")
+        else:
+            # SQLite syntax - check if column exists first
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(custom_levels)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'word_count' not in columns:
+                print("Adding word_count column to custom_levels table...")
+                cursor.execute('''
+                    ALTER TABLE custom_levels 
+                    ADD COLUMN word_count INTEGER DEFAULT 0
+                ''')
+                conn.commit()
+                print("✅ Added word_count column to custom_levels table")
+            else:
+                print("word_count column already exists in custom_levels table")
+                
+    except Exception as e:
+        print(f"Error adding word_count column: {e}")
+    finally:
+        conn.close()
+
+def calculate_and_update_word_count(group_id: int, level_number: int, content: dict) -> int:
+    """Calculate word count from content and update the database"""
+    if not content or not content.get('items'):
+        return 0
+    
+    # Calculate unique words from content
+    all_words = set()
+    for item in content['items']:
+        words = item.get('words', [])
+        for word in words:
+            if word and word.strip():
+                all_words.add(word.strip().lower())
+    
+    word_count = len(all_words)
+    
+    # Update database with calculated word count
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        if config['type'] == 'postgresql':
+            execute_query(conn, '''
+                UPDATE custom_levels 
+                SET word_count = %s, updated_at = %s
+                WHERE group_id = %s AND level_number = %s
+            ''', (word_count, datetime.now(UTC).isoformat(), group_id, level_number))
+        else:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE custom_levels 
+                SET word_count = ?, updated_at = ?
+                WHERE group_id = ? AND level_number = ?
+            ''', (word_count, datetime.now(UTC).isoformat(), group_id, level_number))
+            conn.commit()
+        
+        print(f"✅ Updated word count for level {group_id}/{level_number}: {word_count} words")
+        return word_count
+        
+    except Exception as e:
+        print(f"Error updating word count: {e}")
+        return 0
     finally:
         conn.close()
 

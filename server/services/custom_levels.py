@@ -1277,6 +1277,10 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
             
             print(f"✅ Completed enrichment for level {group_id}/{level_number}: {len(word_hashes)} words enriched, audio generated")
         
+        # Calculate and update word count in database
+        from server.db import calculate_and_update_word_count
+        word_count = calculate_and_update_word_count(group_id, level_number, content)
+        
         # Save the updated level content
         from server.db_config import get_database_config, get_db_connection, execute_query
         import json
@@ -1303,7 +1307,7 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
                 """, (content_json, datetime.now(UTC).isoformat(), group_id, level_number))
             
             conn.commit()
-            print(f"✅ Updated level {group_id}/{level_number} with enriched content")
+            print(f"✅ Updated level {group_id}/{level_number} with enriched content and word count: {word_count}")
             return True
             
         finally:
