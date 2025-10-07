@@ -2072,14 +2072,27 @@ def api_get_custom_level_bulk_stats(group_id):
                         for word in level_words:
                             try:
                                 # Get word ID from global database
-                                from server.db import get_db
-                                conn = get_db()
-                                cursor = conn.execute("SELECT id FROM words WHERE word = ? AND language = ?", (word, language))
-                                word_row = cursor.fetchone()
-                                conn.close()
+                                from server.db_config import get_database_config, get_db_connection, execute_query
+                                config = get_database_config()
+                                conn = get_db_connection()
+                                
+                                try:
+                                    if config['type'] == 'postgresql':
+                                        result = execute_query(conn, "SELECT id FROM words WHERE word = %s AND language = %s", (word, language))
+                                        word_row = result.fetchone()
+                                    else:
+                                        cursor = conn.execute("SELECT id FROM words WHERE word = ? AND language = ?", (word, language))
+                                        word_row = cursor.fetchone()
+                                    
+                                    if word_row:
+                                        if config['type'] == 'postgresql':
+                                            word_id = word_row['id']
+                                        else:
+                                            word_id = word_row[0]
+                                finally:
+                                    conn.close()
                                 
                                 if word_row:
-                                    word_id = word_row[0]
                                     # Add to user's familiarity database with familiarity 0 (unknown)
                                     print(f"🔧 Bulk stats: Calling update_word_familiarity for user {user_id}, word '{word}', language '{language}', familiarity 0")
                                     success = update_word_familiarity(user_id, word, language, 0)
