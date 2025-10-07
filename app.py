@@ -364,28 +364,6 @@ def debug_run_progress_cache_migration():
             'success': False
         }), 500
 
-@app.post('/api/debug/create-global-words-table')
-def debug_create_global_words_table():
-    """Create global_words table for global tooltip storage"""
-    try:
-        from server.global_words_db import ensure_global_words_table
-        
-        print("🚀 Creating global_words table...")
-        ensure_global_words_table()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Global words table created successfully'
-        })
-        
-    except Exception as e:
-        print(f"❌ Failed to create global_words table: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'error': str(e),
-            'success': False
-        }), 500
 
 @app.post('/api/debug/run-database-schema-migration')
 def debug_run_database_schema_migration():
@@ -3062,12 +3040,32 @@ def api_enrich_custom_level_words(group_id, level_number):
                 
             word = word.strip()
             
-            # Check if word already exists in database
+            # Check if word already exists in PostgreSQL words table
             try:
-                existing_word = get_word_row(word, language)
-                if existing_word and existing_word['translation']:
-                    # Word already has translation, skip
-                    continue
+                from server.db_config import get_database_config, get_db_connection, execute_query
+                
+                config = get_database_config()
+                conn = get_db_connection()
+                
+                try:
+                    if config['type'] == 'postgresql':
+                        result = execute_query(conn, '''
+                            SELECT translation FROM words 
+                            WHERE word = %s AND language = %s AND native_language = %s
+                        ''', (word, language, native_language))
+                        existing = result.fetchone()
+                    else:
+                        cur = conn.cursor()
+                        existing = cur.execute('SELECT translation FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
+                    
+                    if existing and existing.get('translation'):
+                        # Word already has translation, skip
+                        print(f"Word '{word}' already exists in words table, skipping enrichment")
+                        continue
+                        
+                finally:
+                    conn.close()
+                    
             except Exception as e:
                 print(f"Error checking existing word '{word}': {e}")
                 continue
@@ -3083,59 +3081,152 @@ def api_enrich_custom_level_words(group_id, level_number):
                 )
                 
                 if enriched_data and enriched_data.get('translation'):
-                    # Store in global database
-                    upsert_word_row({
-                        'word': word,
-                        'language': language,
-                        'native_language': native_language,
-                        'translation': enriched_data.get('translation', ''),
-                        'pos': enriched_data.get('pos', ''),
-                        'ipa': enriched_data.get('ipa', ''),
-                        'example_native': enriched_data.get('example_native', ''),
-                        'synonyms': enriched_data.get('synonyms', []),
-                        'collocations': enriched_data.get('collocations', []),
-                        'gender': enriched_data.get('gender', 'none'),
-                        'familiarity': 0
-                    })
-                    enriched_count += 1
-                    print(f"Enriched custom level word: {word} -> {enriched_data.get('translation', '')}")
+                    # Store in PostgreSQL words table
+                    from server.db_config import get_database_config, get_db_connection, execute_query
+                    import json
+                    
+                    config = get_database_config()
+                    conn = get_db_connection()
+                    
+                    try:
+                        # Prepare data for insertion
+                        insert_data = {
+                            'word': word,
+                            'language': language,
+                            'native_language': native_language,
+                            'translation': enriched_data.get('translation', ''),
+                            'example': enriched_data.get('example', ''),
+                            'example_native': enriched_data.get('example_native', ''),
+                            'lemma': enriched_data.get('lemma', ''),
+                            'pos': enriched_data.get('pos', ''),
+                            'ipa': enriched_data.get('ipa', ''),
+                            'audio_url': enriched_data.get('audio_url', ''),
+                            'gender': enriched_data.get('gender', 'none'),
+                            'plural': enriched_data.get('plural', ''),
+                            'conj': json.dumps(enriched_data.get('conj', {})) if enriched_data.get('conj') else None,
+                            'comp': json.dumps(enriched_data.get('comp', {})) if enriched_data.get('comp') else None,
+                            'synonyms': json.dumps(enriched_data.get('synonyms', [])) if enriched_data.get('synonyms') else None,
+                            'collocations': json.dumps(enriched_data.get('collocations', [])) if enriched_data.get('collocations') else None,
+                            'cefr': enriched_data.get('cefr', ''),
+                            'freq_rank': enriched_data.get('freq_rank'),
+                            'tags': json.dumps(enriched_data.get('tags', [])) if enriched_data.get('tags') else None,
+                            'note': enriched_data.get('note', ''),
+                            'info': json.dumps(enriched_data.get('info', {})) if enriched_data.get('info') else None
+                        }
+                        
+                        if config['type'] == 'postgresql':
+                            execute_query(conn, '''
+                                INSERT INTO words (
+                                    word, language, native_language, translation, example, example_native,
+                                    lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                                    collocations, cefr, freq_rank, tags, note, info
+                                ) VALUES (
+                                    %(word)s, %(language)s, %(native_language)s, %(translation)s, %(example)s, %(example_native)s,
+                                    %(lemma)s, %(pos)s, %(ipa)s, %(audio_url)s, %(gender)s, %(plural)s, %(conj)s, %(comp)s, %(synonyms)s,
+                                    %(collocations)s, %(cefr)s, %(freq_rank)s, %(tags)s, %(note)s, %(info)s
+                                )
+                                ON CONFLICT (word, language, native_language) 
+                                DO UPDATE SET
+                                    translation = EXCLUDED.translation,
+                                    example = EXCLUDED.example,
+                                    example_native = EXCLUDED.example_native,
+                                    lemma = EXCLUDED.lemma,
+                                    pos = EXCLUDED.pos,
+                                    ipa = EXCLUDED.ipa,
+                                    audio_url = EXCLUDED.audio_url,
+                                    gender = EXCLUDED.gender,
+                                    plural = EXCLUDED.plural,
+                                    conj = EXCLUDED.conj,
+                                    comp = EXCLUDED.comp,
+                                    synonyms = EXCLUDED.synonyms,
+                                    collocations = EXCLUDED.collocations,
+                                    cefr = EXCLUDED.cefr,
+                                    freq_rank = EXCLUDED.freq_rank,
+                                    tags = EXCLUDED.tags,
+                                    note = EXCLUDED.note,
+                                    info = EXCLUDED.info,
+                                    updated_at = CURRENT_TIMESTAMP
+                            ''', insert_data)
+                        else:
+                            # SQLite fallback
+                            cur = conn.cursor()
+                            cur.execute('''
+                                INSERT OR REPLACE INTO words (
+                                    word, language, native_language, translation, example, example_native,
+                                    lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                                    collocations, cefr, freq_rank, tags, note, info
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                insert_data['word'], insert_data['language'], insert_data['native_language'],
+                                insert_data['translation'], insert_data['example'], insert_data['example_native'],
+                                insert_data['lemma'], insert_data['pos'], insert_data['ipa'], insert_data['audio_url'],
+                                insert_data['gender'], insert_data['plural'], insert_data['conj'], insert_data['comp'],
+                                insert_data['synonyms'], insert_data['collocations'], insert_data['cefr'],
+                                insert_data['freq_rank'], insert_data['tags'], insert_data['note'], insert_data['info']
+                            ))
+                        
+                        conn.commit()
+                        enriched_count += 1
+                        print(f"Enriched custom level word: {word} -> {enriched_data.get('translation', '')}")
+                        
+                    finally:
+                        conn.close()
+                        
                 else:
                     print(f"No enrichment data returned for word: {word}")
                     # Create a basic entry with just the word
-                    upsert_word_row({
-                        'word': word,
-                        'language': language,
-                        'native_language': native_language,
-                        'translation': '',  # Will be filled later
-                        'pos': '',
-                        'ipa': '',
-                        'example_native': '',
-                        'synonyms': [],
-                        'collocations': [],
-                        'gender': 'none',
-                        'familiarity': 0
-                    })
-                    enriched_count += 1
+                    from server.db_config import get_database_config, get_db_connection, execute_query
+                    
+                    config = get_database_config()
+                    conn = get_db_connection()
+                    
+                    try:
+                        if config['type'] == 'postgresql':
+                            execute_query(conn, '''
+                                INSERT INTO words (word, language, native_language, translation, gender)
+                                VALUES (%s, %s, %s, %s, %s)
+                                ON CONFLICT (word, language, native_language) DO NOTHING
+                            ''', (word, language, native_language, '', 'none'))
+                        else:
+                            cur = conn.cursor()
+                            cur.execute('''
+                                INSERT OR IGNORE INTO words (word, language, native_language, translation, gender)
+                                VALUES (?, ?, ?, ?, ?)
+                            ''', (word, language, native_language, '', 'none'))
+                        
+                        conn.commit()
+                        
+                    finally:
+                        conn.close()
                     
             except Exception as e:
                 print(f"Error enriching word '{word}': {e}")
                 # Create a basic entry even if enrichment fails
                 try:
-                    upsert_word_row({
-                        'word': word,
-                        'language': language,
-                        'native_language': native_language,
-                        'translation': '',  # Will be filled later
-                        'pos': '',
-                        'ipa': '',
-                        'example_native': '',
-                        'synonyms': [],
-                        'collocations': [],
-                        'gender': 'none',
-                        'familiarity': 0
-                    })
-                    enriched_count += 1
-                    print(f"Created basic entry for word: {word}")
+                    from server.db_config import get_database_config, get_db_connection, execute_query
+                    
+                    config = get_database_config()
+                    conn = get_db_connection()
+                    
+                    try:
+                        if config['type'] == 'postgresql':
+                            execute_query(conn, '''
+                                INSERT INTO words (word, language, native_language, translation, gender)
+                                VALUES (%s, %s, %s, %s, %s)
+                                ON CONFLICT (word, language, native_language) DO NOTHING
+                            ''', (word, language, native_language, '', 'none'))
+                        else:
+                            cur = conn.cursor()
+                            cur.execute('''
+                                INSERT OR IGNORE INTO words (word, language, native_language, translation, gender)
+                                VALUES (?, ?, ?, ?, ?)
+                            ''', (word, language, native_language, '', 'none'))
+                        
+                        conn.commit()
+                        
+                    finally:
+                        conn.close()
+                        
                 except Exception as db_error:
                     print(f"Error creating basic entry for word '{word}': {db_error}")
                 continue
@@ -3600,20 +3691,38 @@ def api_word_get():
     # Get native language from user context or default
     native_language = user_context.get('native_language', 'en')
     
-    # Get word data from global PostgreSQL database
-    from server.global_words_db import get_global_word
+    # Get word data from existing PostgreSQL words table
+    from server.db_config import get_database_config, get_db_connection, execute_query
     
-    word_data = get_global_word(word, language, native_language)
-    if not word_data:
-        # Return empty word data if not found in global database
-        return jsonify({
-          'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
-          'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
-          'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
-          'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
-        })
+    config = get_database_config()
+    conn = get_db_connection()
     
-    data = word_data
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax
+            result = execute_query(conn, '''
+                SELECT * FROM words 
+                WHERE word = %s AND language = %s AND native_language = %s
+            ''', (word, language, native_language))
+            row = result.fetchone()
+        else:
+            # SQLite syntax (fallback)
+            cur = conn.cursor()
+            row = cur.execute('SELECT * FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
+        
+        if not row:
+            # Return empty word data if not found
+            return jsonify({
+              'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
+              'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
+              'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
+              'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
+            })
+        
+        data = dict(row)
+        
+    finally:
+        conn.close()
     
     # Get user-specific familiarity data if authenticated
     is_authenticated = user_id is not None
@@ -3694,31 +3803,65 @@ def api_words_get_many():
         user_context = get_user_context()
         native_language = user_context.get('native_language', 'en')
         
-        # Get words from global PostgreSQL database
-        from server.global_words_db import get_global_words_batch
+        # Get words from existing PostgreSQL words table
+        from server.db_config import get_database_config, get_db_connection, execute_query
         
-        word_data_map = get_global_words_batch(words, language, native_language)
+        config = get_database_config()
+        conn = get_db_connection()
         
-        # Convert to list format expected by frontend
-        out = []
-        for word in words:
-            if word in word_data_map:
-                word_data = word_data_map[word]
-                # Ensure all required fields exist
-                word_data.setdefault('familiarity', 0)
-                word_data.setdefault('seen_count', 0)
-                word_data.setdefault('correct_count', 0)
-                out.append(word_data)
+        try:
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax
+                result = execute_query(conn, '''
+                    SELECT * FROM words 
+                    WHERE word = ANY(%s) AND language = %s AND native_language = %s
+                ''', (words, language, native_language))
+                rows = result.fetchall()
             else:
-                # Return empty data for words not found
-                out.append({
-                    'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
-                    'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
-                    'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
-                    'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
-                })
-        
-        return jsonify({'success': True, 'data': out})
+                # SQLite syntax (fallback)
+                cur = conn.cursor()
+                placeholders = ','.join('?' for _ in words)
+                rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND language=? AND native_language=?', (*words, language, native_language)).fetchall()
+            
+            # Convert to dict with word as key
+            word_data_map = {}
+            for row in rows:
+                word_data = dict(row)
+                # Parse JSON fields
+                for json_field in ['conj', 'comp', 'synonyms', 'collocations', 'tags', 'info']:
+                    if word_data.get(json_field):
+                        try:
+                            word_data[json_field] = json.loads(word_data[json_field]) if isinstance(word_data[json_field], str) else word_data[json_field]
+                        except (json.JSONDecodeError, TypeError):
+                            word_data[json_field] = None
+                    else:
+                        word_data[json_field] = None
+                
+                word_data_map[word_data['word']] = word_data
+            
+            # Convert to list format expected by frontend
+            out = []
+            for word in words:
+                if word in word_data_map:
+                    word_data = word_data_map[word]
+                    # Ensure all required fields exist
+                    word_data.setdefault('familiarity', 0)
+                    word_data.setdefault('seen_count', 0)
+                    word_data.setdefault('correct_count', 0)
+                    out.append(word_data)
+                else:
+                    # Return empty data for words not found
+                    out.append({
+                        'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
+                        'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
+                        'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
+                        'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
+                    })
+            
+            return jsonify({'success': True, 'data': out})
+            
+        finally:
+            conn.close()
         
     except Exception as e:
         print(f"❌ Error in get_many: {e}")
@@ -3773,43 +3916,103 @@ def api_word_upsert():
         # User not authenticated - don't save word familiarity updates
         print(f"Word familiarity update by unauthenticated user - not saved: {word}")
     
-    # Always update the global word data in PostgreSQL (for word enrichment, etc.)
+    # Always update the global word data in existing PostgreSQL words table
     try:
-        from server.global_words_db import upsert_global_word
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        import json
         
         language = payload.get('language', 'en')
         native_language = user_context.get('native_language', 'en')
         
-        # Prepare word data for global storage
-        word_data = {
-            'translation': payload.get('translation', ''),
-            'example': payload.get('example', ''),
-            'example_native': payload.get('example_native', ''),
-            'lemma': payload.get('lemma', ''),
-            'pos': payload.get('pos', ''),
-            'ipa': payload.get('ipa', ''),
-            'audio_url': payload.get('audio_url', ''),
-            'gender': payload.get('gender', 'none'),
-            'plural': payload.get('plural', ''),
-            'conj': payload.get('conj', {}),
-            'comp': payload.get('comp', {}),
-            'synonyms': payload.get('synonyms', []),
-            'collocations': payload.get('collocations', []),
-            'cefr': payload.get('cefr', ''),
-            'freq_rank': payload.get('freq_rank'),
-            'tags': payload.get('tags', []),
-            'note': payload.get('note', ''),
-            'info': payload.get('info', {})
-        }
+        config = get_database_config()
+        conn = get_db_connection()
         
-        success = upsert_global_word(word, language, native_language, word_data)
-        if success:
-            print(f"Word upserted to global PostgreSQL database: {word} ({language} -> {native_language})")
-        else:
-            print(f"Failed to upsert word to global PostgreSQL database: {word}")
+        try:
+            # Prepare data for insertion/update
+            insert_data = {
+                'word': word,
+                'language': language,
+                'native_language': native_language,
+                'translation': payload.get('translation', ''),
+                'example': payload.get('example', ''),
+                'example_native': payload.get('example_native', ''),
+                'lemma': payload.get('lemma', ''),
+                'pos': payload.get('pos', ''),
+                'ipa': payload.get('ipa', ''),
+                'audio_url': payload.get('audio_url', ''),
+                'gender': payload.get('gender', 'none'),
+                'plural': payload.get('plural', ''),
+                'conj': json.dumps(payload.get('conj', {})) if payload.get('conj') else None,
+                'comp': json.dumps(payload.get('comp', {})) if payload.get('comp') else None,
+                'synonyms': json.dumps(payload.get('synonyms', [])) if payload.get('synonyms') else None,
+                'collocations': json.dumps(payload.get('collocations', [])) if payload.get('collocations') else None,
+                'cefr': payload.get('cefr', ''),
+                'freq_rank': payload.get('freq_rank'),
+                'tags': json.dumps(payload.get('tags', [])) if payload.get('tags') else None,
+                'note': payload.get('note', ''),
+                'info': json.dumps(payload.get('info', {})) if payload.get('info') else None
+            }
+            
+            if config['type'] == 'postgresql':
+                # PostgreSQL syntax - use INSERT ... ON CONFLICT for upsert
+                execute_query(conn, '''
+                    INSERT INTO words (
+                        word, language, native_language, translation, example, example_native,
+                        lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                        collocations, cefr, freq_rank, tags, note, info
+                    ) VALUES (
+                        %(word)s, %(language)s, %(native_language)s, %(translation)s, %(example)s, %(example_native)s,
+                        %(lemma)s, %(pos)s, %(ipa)s, %(audio_url)s, %(gender)s, %(plural)s, %(conj)s, %(comp)s, %(synonyms)s,
+                        %(collocations)s, %(cefr)s, %(freq_rank)s, %(tags)s, %(note)s, %(info)s
+                    )
+                    ON CONFLICT (word, language, native_language) 
+                    DO UPDATE SET
+                        translation = EXCLUDED.translation,
+                        example = EXCLUDED.example,
+                        example_native = EXCLUDED.example_native,
+                        lemma = EXCLUDED.lemma,
+                        pos = EXCLUDED.pos,
+                        ipa = EXCLUDED.ipa,
+                        audio_url = EXCLUDED.audio_url,
+                        gender = EXCLUDED.gender,
+                        plural = EXCLUDED.plural,
+                        conj = EXCLUDED.conj,
+                        comp = EXCLUDED.comp,
+                        synonyms = EXCLUDED.synonyms,
+                        collocations = EXCLUDED.collocations,
+                        cefr = EXCLUDED.cefr,
+                        freq_rank = EXCLUDED.freq_rank,
+                        tags = EXCLUDED.tags,
+                        note = EXCLUDED.note,
+                        info = EXCLUDED.info,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', insert_data)
+            else:
+                # SQLite syntax (fallback)
+                cur = conn.cursor()
+                cur.execute('''
+                    INSERT OR REPLACE INTO words (
+                        word, language, native_language, translation, example, example_native,
+                        lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                        collocations, cefr, freq_rank, tags, note, info
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    insert_data['word'], insert_data['language'], insert_data['native_language'],
+                    insert_data['translation'], insert_data['example'], insert_data['example_native'],
+                    insert_data['lemma'], insert_data['pos'], insert_data['ipa'], insert_data['audio_url'],
+                    insert_data['gender'], insert_data['plural'], insert_data['conj'], insert_data['comp'],
+                    insert_data['synonyms'], insert_data['collocations'], insert_data['cefr'],
+                    insert_data['freq_rank'], insert_data['tags'], insert_data['note'], insert_data['info']
+                ))
+            
+            conn.commit()
+            print(f"Word upserted to PostgreSQL words table: {word} ({language} -> {native_language})")
+            
+        finally:
+            conn.close()
         
     except Exception as e:
-        print(f"Error upserting word to global PostgreSQL database: {e}")
+        print(f"Error upserting word to PostgreSQL words table: {e}")
         # Fallback to old system for compatibility
         try:
             upsert_word_row(payload)
