@@ -358,7 +358,7 @@ def update_word_familiarity(user_id: int, word: str, language: str,
     print(f"🔧 Generated word hash for '{word}': {word_hash}")
     
     result = db_manager.update_user_word_familiarity(
-        user_id, native_language, word_hash, familiarity, seen_count, correct_count
+        user_id, native_language, word_hash, familiarity, seen_count, correct_count, word=word, language=language
     )
     
     print(f"🔧 update_user_word_familiarity result: {result}")

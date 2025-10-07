@@ -411,7 +411,8 @@ class MultiUserDBManager:
     
     def update_user_word_familiarity(self, user_id: int, native_language: str, 
                                    word_hash: str, familiarity: int, 
-                                   seen_count: int = None, correct_count: int = None) -> bool:
+                                   seen_count: int = None, correct_count: int = None,
+                                   word: str = None, language: str = None) -> bool:
         """Update user's word familiarity data"""
         print(f"🔧 MultiUserDBManager.update_user_word_familiarity called: user_id={user_id}, native_language={native_language}, word_hash={word_hash}, familiarity={familiarity}")
         
@@ -430,6 +431,36 @@ class MultiUserDBManager:
             conn = get_db_connection()
             try:
                 now = datetime.now(UTC).isoformat()
+
+                # Resolve word_id by word/language if available; fallback to words table by hash join
+                word_id = None
+                try:
+                    if word and language:
+                        # Try direct lookup by word + language
+                        res = execute_query(conn, """
+                            SELECT id FROM words WHERE word = %s AND language = %s
+                        """, (word, language))
+                        row = res.fetchone()
+                        if row:
+                            word_id = row['id']
+                        else:
+                            # Ensure the word exists in words table (minimal insert)
+                            execute_query(conn, """
+                                INSERT INTO words (word, language, created_at, updated_at)
+                                VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                ON CONFLICT DO NOTHING
+                            """, (word, language))
+                            res = execute_query(conn, "SELECT id FROM words WHERE word = %s AND language = %s", (word, language))
+                            row = res.fetchone()
+                            if row:
+                                word_id = row['id']
+                    if word_id is None:
+                        # Fallback: try match by word_hash if schema has word_hash in words (optional)
+                        # or skip setting word_id (will be handled below)
+                        pass
+                except Exception as _:
+                    # Non-fatal; continue without word_id
+                    word_id = None
                 
                 # Build update query dynamically
                 updates = ['familiarity = %s', 'updated_at = %s']
@@ -459,8 +490,19 @@ class MultiUserDBManager:
                 # If no rows were affected, insert new record
                 if result.rowcount == 0:
                     print(f"🔧 No rows updated, attempting INSERT")
-                    insert_values = [user_id, word_hash, native_language, familiarity, now, now]
-                    insert_updates = ['user_id', 'word_hash', 'native_language', 'familiarity', 'created_at', 'updated_at']
+                    insert_values = [user_id, familiarity, now, now]
+                    insert_updates = ['user_id', 'familiarity', 'created_at', 'updated_at']
+
+                    # Prefer inserting with word_id when available to satisfy NOT NULL constraints
+                    if word_id is not None:
+                        insert_updates.append('word_id')
+                        insert_values.append(word_id)
+                    else:
+                        # If word_id is required (NOT NULL), fallback to inserting by join approach:
+                        # Use separate insert that sets word_id via a SELECT when possible.
+                        # As a safer default, also keep word_hash/native_language to allow later backfill.
+                        insert_updates.extend(['word_hash', 'native_language'])
+                        insert_values.extend([word_hash, native_language])
                     
                     if seen_count is not None:
                         insert_values.append(seen_count)
