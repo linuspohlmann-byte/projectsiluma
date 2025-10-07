@@ -7359,6 +7359,10 @@ def debug_test_update_familiarity():
             user_comment=user_comment
         )
         
+        # Also test reading the data back immediately
+        from server.db import get_user_word_familiarity_by_word
+        read_back = get_user_word_familiarity_by_word(user_id, word, language, native_language)
+        
         return jsonify({
             "success": success,
             "word": word,
@@ -7367,7 +7371,8 @@ def debug_test_update_familiarity():
             "native_language": native_language,
             "familiarity": familiarity,
             "user_comment": user_comment,
-            "message": "Update successful" if success else "Update failed"
+            "message": "Update successful" if success else "Update failed",
+            "read_back": dict(read_back) if read_back else None
         })
         
     except Exception as e:
