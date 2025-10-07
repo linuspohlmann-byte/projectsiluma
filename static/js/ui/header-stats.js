@@ -171,30 +171,40 @@ export async function updateFromWordsData() {
     const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
     headers['X-Native-Language'] = nativeLanguage;
     
-    // Add language parameter as required by the API
-    // Use a timeout to prevent hanging requests
+    // Use separate API endpoints for better performance
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
-    const response = await fetch(`/api/words?language=${encodeURIComponent(currentLanguage)}`, { 
+    // Get total words count
+    const totalResponse = await fetch(`/api/words/count?language=${encodeURIComponent(currentLanguage)}`, { 
+      headers,
+      signal: controller.signal
+    });
+    
+    // Get learned words count (familiarity = 5)
+    const learnedResponse = await fetch(`/api/words/count_learned?language=${encodeURIComponent(currentLanguage)}`, { 
       headers,
       signal: controller.signal
     });
     
     clearTimeout(timeoutId);
     
-    if (!response.ok) {
-      console.error('Failed to fetch words data for stats:', response.status, response.statusText);
-      return;
+    let totalWords = 0;
+    let learnedWords = 0;
+    
+    if (totalResponse.ok) {
+      const totalData = await totalResponse.json();
+      totalWords = totalData.count || 0;
+    } else {
+      console.error('Failed to fetch total words count:', totalResponse.status, totalResponse.statusText);
     }
     
-    const words = await response.json();
-    
-    // Count total words
-    const totalWords = words.length;
-    
-    // Count learned words (familiarity = 5)
-    const learnedWords = words.filter(word => word.familiarity === 5).length;
+    if (learnedResponse.ok) {
+      const learnedData = await learnedResponse.json();
+      learnedWords = learnedData.count || 0;
+    } else {
+      console.error('Failed to fetch learned words count:', learnedResponse.status, learnedResponse.statusText);
+    }
     
     // Update UI elements
     if (totalWordsEl) {
