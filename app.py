@@ -284,6 +284,27 @@ def debug_tts_status():
             'success': False
         }), 500
 
+@app.post('/api/debug/create-progress-cache-table')
+def debug_create_progress_cache_table():
+    """Create custom_level_progress table for caching familiarity data"""
+    try:
+        from server.db_progress_cache import create_custom_level_progress_table
+        
+        # Create the progress cache table
+        create_custom_level_progress_table()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Custom level progress cache table created successfully'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error creating progress cache table: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/migrate-word-count')
 def debug_migrate_word_count():
     """Add word_count column to custom_levels table and populate existing data"""
