@@ -4209,11 +4209,8 @@ def api_word_upsert():
         
     except Exception as e:
         print(f"Error upserting word to PostgreSQL words table: {e}")
-        # Fallback to old system for compatibility
-        try:
-            upsert_word_row(payload)
-        except Exception as fallback_error:
-            print(f"Fallback to old system also failed: {fallback_error}")
+        # Don't use fallback to old system as it creates duplicates
+        print(f"Word upsert failed for: {word} ({language} -> {native_language})")
     
     # For unauthenticated users, we still save to global database but not user-specific data
         # and use multi-user system if possible
@@ -4252,13 +4249,9 @@ def api_word_upsert():
                 print(f"Word added to global database for unauthenticated user (native: {native_language}): {word}")
             else:
                 print(f"Failed to add word to global database for unauthenticated user (native: {native_language}): {word}")
-                # Fallback to old system
-                upsert_word_row(payload)
             
         except Exception as e:
             print(f"Error adding word to global database for unauthenticated user: {e}")
-            # Fallback to old system
-            upsert_word_row(payload)
     
     return jsonify({'success': True})
 
@@ -4915,7 +4908,7 @@ def api_level_submit():
             langs_seen = set()
             for it in (items or []):
                 for w in (it.get('words') or []):
-                    r = get_word_row(str(w), '')
+                    r = get_word_row(str(w), '', None)
                     if r and (r.get('language') or '').strip():
                         langs_seen.add((r.get('language') or '').strip().lower())
             if langs_seen:
@@ -5014,7 +5007,7 @@ def api_level_submit():
         try:
             langs_seen=set()
             for w in all_words:
-                r = get_word_row(str(w), '')
+                r = get_word_row(str(w), '', None)
                 if r and (r.get('language') or '').strip():
                     langs_seen.add((r.get('language') or '').strip().lower())
             if langs_seen: tl = sorted(list(langs_seen))[0]

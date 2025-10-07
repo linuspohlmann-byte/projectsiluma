@@ -958,7 +958,7 @@ def list_words_rows():
         conn.close()
 
 
-def get_word_row(word: str, language: str):
+def get_word_row(word: str, language: str, native_language: str = None):
     from server.db_config import get_database_config
     
     config = get_database_config()
@@ -967,18 +967,30 @@ def get_word_row(word: str, language: str):
     try:
         if config['type'] == 'postgresql':
             cur = conn.cursor()
-            cur.execute(
-                'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=%s AND (language=%s OR %s=\'\') LIMIT 1',
-                (word, language, language)
-            )
+            if native_language:
+                cur.execute(
+                    'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=%s AND language=%s AND native_language=%s LIMIT 1',
+                    (word, language, native_language)
+                )
+            else:
+                cur.execute(
+                    'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=%s AND (language=%s OR %s=\'\') LIMIT 1',
+                    (word, language, language)
+                )
             row = cur.fetchone()
             cur.close()
             return row
         else:
-            row = conn.execute(
-                'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=? AND (language=? OR ?="") LIMIT 1',
-                (word, language, language)
-            ).fetchone()
+            if native_language:
+                row = conn.execute(
+                    'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=? AND language=? AND native_language=? LIMIT 1',
+                    (word, language, native_language)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    'SELECT word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, updated_at FROM words WHERE word=? AND (language=? OR ?="") LIMIT 1',
+                    (word, language, language)
+                ).fetchone()
             return row
     finally:
         conn.close()
@@ -1069,41 +1081,37 @@ def upsert_word_row(payload: dict) -> None:
     conn = get_db_connection()
     try:
         if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            # Try UPDATE first
-            result = execute_query(conn, '''
-                UPDATE words SET 
-                    language=COALESCE(%s, language), 
-                    native_language=COALESCE(%s, native_language), 
-                    translation=COALESCE(%s, translation), 
-                    example=COALESCE(%s, example), 
-                    example_native=COALESCE(%s, example_native), 
-                    lemma=COALESCE(%s, lemma), 
-                    pos=COALESCE(%s, pos), 
-                    ipa=COALESCE(%s, ipa), 
-                    audio_url=COALESCE(%s, audio_url), 
-                    gender=COALESCE(%s, gender), 
-                    plural=COALESCE(%s, plural), 
-                    conj=COALESCE(%s, conj), 
-                    comp=COALESCE(%s, comp), 
-                    synonyms=COALESCE(%s, synonyms), 
-                    collocations=COALESCE(%s, collocations), 
-                    cefr=COALESCE(%s, cefr), 
-                    freq_rank=COALESCE(%s, freq_rank), 
-                    tags=COALESCE(%s, tags), 
-                    note=COALESCE(%s, note), 
-                    info=COALESCE(%s, info), 
-                    updated_at=%s 
-                WHERE word=%s AND (language=%s OR %s='')
-            ''', (language or None, native_language or None, translation or None, example or None, example_native or None,
-                 lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, word, language, language))
-            
-            # If no rows updated, insert new row
-            if result.rowcount == 0:
-                execute_query(conn, '''
-                    INSERT INTO words (word, language, native_language, translation, example, example_native, lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms, collocations, cefr, freq_rank, tags, note, info, created_at, updated_at) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ''', (word, language or None, native_language or None, translation or None, example or None, example_native or None, lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, now))
+            # PostgreSQL syntax - use INSERT ... ON CONFLICT for proper upsert
+            execute_query(conn, '''
+                INSERT INTO words (
+                    word, language, native_language, translation, example, example_native,
+                    lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                    collocations, cefr, freq_rank, tags, note, info, created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                ON CONFLICT (word, language, native_language) 
+                DO UPDATE SET
+                    translation = COALESCE(EXCLUDED.translation, words.translation),
+                    example = COALESCE(EXCLUDED.example, words.example),
+                    example_native = COALESCE(EXCLUDED.example_native, words.example_native),
+                    lemma = COALESCE(EXCLUDED.lemma, words.lemma),
+                    pos = COALESCE(EXCLUDED.pos, words.pos),
+                    ipa = COALESCE(EXCLUDED.ipa, words.ipa),
+                    audio_url = COALESCE(EXCLUDED.audio_url, words.audio_url),
+                    gender = COALESCE(EXCLUDED.gender, words.gender),
+                    plural = COALESCE(EXCLUDED.plural, words.plural),
+                    conj = COALESCE(EXCLUDED.conj, words.conj),
+                    comp = COALESCE(EXCLUDED.comp, words.comp),
+                    synonyms = COALESCE(EXCLUDED.synonyms, words.synonyms),
+                    collocations = COALESCE(EXCLUDED.collocations, words.collocations),
+                    cefr = COALESCE(EXCLUDED.cefr, words.cefr),
+                    freq_rank = COALESCE(EXCLUDED.freq_rank, words.freq_rank),
+                    tags = COALESCE(EXCLUDED.tags, words.tags),
+                    note = COALESCE(EXCLUDED.note, words.note),
+                    info = COALESCE(EXCLUDED.info, words.info),
+                    updated_at = EXCLUDED.updated_at
+            ''', (word, language or None, native_language or None, translation or None, example or None, example_native or None, lemma or None, pos or None, ipa or None, audio_url or None, gender or None, plural or None, conj_json, comp_json, syn_json, coll_json, cefr or None, freq_rank, tags_json, note or None, info_json, now, now))
         else:
             # SQLite syntax
             cur = conn.cursor()
