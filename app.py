@@ -2365,13 +2365,18 @@ def api_get_custom_level_group_progress_cache(group_id):
         create_custom_level_progress_table()
         
         # Get cached progress data for all levels in the group
+        print(f"🔎 progress-cache: user_id={user_id}, group_id={group_id} - reading cache")
         progress_data = get_custom_level_group_progress(user_id, group_id)
+        print(f"🔎 progress-cache: initial cached_levels={len(progress_data)}")
 
         # If cache is empty, refresh it once on-demand
         if not progress_data:
+            print(f"🔁 progress-cache: empty cache detected → refreshing for user={user_id}, group={group_id}")
             refreshed = refresh_custom_level_group_progress(user_id, group_id)
+            print(f"🔁 progress-cache: refresh result={refreshed}")
             if refreshed:
                 progress_data = get_custom_level_group_progress(user_id, group_id)
+                print(f"🔁 progress-cache: post-refresh cached_levels={len(progress_data)}")
         
         print(f"🚀 Returning cached progress data for group {group_id}: {len(progress_data)} levels")
         

@@ -120,6 +120,7 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
         
         try:
             if config['type'] == 'postgresql':
+                print(f"📝 cache: upsert row user={user_id} group={group_id} level={level_number} counts={familiarity_counts}")
                 execute_query(conn, """
                     INSERT INTO custom_level_progress 
                     (user_id, group_id, level_number, total_words, 
@@ -320,9 +321,11 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
         
         # Get level content to extract words
         levels = get_custom_levels_for_group(group_id)
+        print(f"🧮 cache: calculating counts for user={user_id} group={group_id} level={level_number}, levels_found={len(levels) if levels else 0}")
         level = next((l for l in levels if l['level_number'] == level_number), None)
         
         if not level or not level.get('content', {}).get('items'):
+            print(f"🧮 cache: no level content found for group={group_id} level={level_number}")
             return {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         
         # Extract unique words from level content
@@ -334,6 +337,7 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
                     all_words.add(word.strip().lower())
         
         if not all_words:
+            print(f"🧮 cache: no words extracted for group={group_id} level={level_number}")
             return {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         
         # Get familiarity data from user_word_familiarity table
@@ -364,6 +368,7 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
                 missing_words = len(all_words) - found_words
                 if missing_words > 0:
                     familiarity_counts[0] += missing_words
+                print(f"🧮 cache: computed counts for group={group_id} level={level_number}: {familiarity_counts}")
                     
             else:
                 # SQLite version
