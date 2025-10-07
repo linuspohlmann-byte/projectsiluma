@@ -2062,6 +2062,7 @@ window.preloadCustomLevelData = preloadCustomLevelData;
 window.renderCustomLevelsWithPreloading = renderCustomLevelsWithPreloading;
 window.generateRemainingLevelsInBackground = generateRemainingLevelsInBackground;
 window.updateLevelGenerationProgress = updateLevelGenerationProgress;
+window.applyBasicCustomLevelProgression = applyBasicCustomLevelProgression;
 
 // Show creation progress modal
 function showCreationProgressModal() {
@@ -2187,14 +2188,21 @@ async function preloadCustomLevelData(groupId, levels) {
         
         console.log(`📦 Preloading data for first ${levelsToPreload.length} levels only`);
         
-        // Preload in background without blocking UI
+        // Preload in background without blocking UI (with timeout to prevent hanging)
         const preloadPromises = levelsToPreload.map(async (level) => {
             try {
+                // Add timeout to prevent hanging requests
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                
                 const response = await fetch(`/api/custom-levels/${groupId}/${level.level_number}/progress`, {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                    }
+                    },
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
                 
                 if (response.ok) {
                     const data = await response.json();
@@ -2212,7 +2220,11 @@ async function preloadCustomLevelData(groupId, levels) {
                     }
                 }
             } catch (error) {
-                console.log(`⚠️ Failed to preload data for level ${level.level_number}:`, error);
+                if (error.name === 'AbortError') {
+                    console.log(`⏰ Preload timeout for level ${level.level_number}`);
+                } else {
+                    console.log(`⚠️ Failed to preload data for level ${level.level_number}:`, error);
+                }
             }
         });
         
@@ -2308,12 +2320,15 @@ function updateLevelGenerationProgress(groupId, levels, success) {
     });
 }
 
-// Enhanced level rendering with preloading
+// Enhanced level rendering with preloading (optimized for speed)
 function renderCustomLevelsWithPreloading(groupId, levels) {
     // Render levels first
     renderCustomLevels(groupId, levels);
     
-    // Then preload data in background
+    // Apply basic progression immediately (fast path)
+    applyBasicCustomLevelProgression(groupId, levels);
+    
+    // Then preload detailed data in background (non-blocking)
     setTimeout(() => {
         preloadCustomLevelData(groupId, levels);
     }, 100);
@@ -2494,6 +2509,57 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
 
 // Export the function globally
 window.applyCustomLevelProgression = applyCustomLevelProgression;
+
+// Fast basic progression (immediate, no API calls)
+function applyBasicCustomLevelProgression(groupId, levels) {
+    try {
+        console.log('⚡ Applying basic custom level progression (fast path)');
+        
+        const levelsContainer = document.getElementById('levels');
+        if (!levelsContainer) return;
+        
+        const levelCards = levelsContainer.querySelectorAll('.level-card[data-custom-group-id="' + groupId + '"]');
+        const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+        
+        levelCards.forEach(card => {
+            const levelNumber = parseInt(card.dataset.level);
+            
+            if (!isUserAuthenticated) {
+                // For unauthenticated users, only level 1 is available
+                if (levelNumber === 1) {
+                    card.classList.add('unlocked');
+                    card.classList.remove('locked', 'done');
+                    card.dataset.allowStart = 'true';
+                } else {
+                    card.classList.add('locked');
+                    card.classList.remove('unlocked', 'done');
+                }
+            } else {
+                // For authenticated users, unlock level 1 immediately
+                // Other levels will be unlocked after bulk stats API call
+                if (levelNumber === 1) {
+                    card.classList.add('unlocked');
+                    card.classList.remove('locked', 'done');
+                    card.dataset.allowStart = 'true';
+                } else {
+                    // Mark as locked initially, will be updated by bulk API
+                    card.classList.add('locked');
+                    card.classList.remove('unlocked', 'done');
+                }
+            }
+        });
+        
+        console.log('✅ Basic progression applied - Level 1 unlocked immediately');
+        
+        // Start detailed progression in background (non-blocking)
+        setTimeout(() => {
+            applyCustomLevelProgressionBulk(levelsContainer, groupId);
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error applying basic custom level progression:', error);
+    }
+}
 
 // Bulk apply custom level progression (performance optimized)
 async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
