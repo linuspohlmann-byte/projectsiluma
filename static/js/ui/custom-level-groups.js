@@ -2089,7 +2089,7 @@ window.updateLevelCardWordCount = updateLevelCardWordCount;
 window.determineLevelsToGenerate = determineLevelsToGenerate;
 window.getUserProgressForGroup = getUserProgressForGroup;
 window.determineUnlockedLevels = determineUnlockedLevels;
-window.findNextLevelToUnlock = findNextLevelToUnlock;
+window.findCurrentActiveLevel = findCurrentActiveLevel;
 
 // Smart level generation: Determine which levels to generate based on user progress
 async function determineLevelsToGenerate(groupId, allLevels, levelsNeedingGeneration) {
@@ -2117,30 +2117,24 @@ async function determineLevelsToGenerate(groupId, allLevels, levelsNeedingGenera
             levelsNeedingGeneration: levelsNeedingGeneration.length
         });
         
-        // Find the next level that should be unlocked but needs generation
-        const nextLevelToUnlock = findNextLevelToUnlock(unlockedLevels, levelsNeedingGeneration);
+        // Find the current active level (highest unlocked) that needs generation
+        const currentActiveLevel = findCurrentActiveLevel(unlockedLevels, levelsNeedingGeneration);
         
         // Determine immediate and background generation
         const immediate = [];
         const background = [];
         
-        if (nextLevelToUnlock) {
-            // Generate the next level that should be unlocked
-            immediate.push(nextLevelToUnlock);
-            console.log(`🎯 Next level to generate: Level ${nextLevelToUnlock.level_number}`);
-            
-            // Also generate the level after that for smooth progression
-            const nextNextLevel = levelsNeedingGeneration.find(level => 
-                level.level_number === nextLevelToUnlock.level_number + 1
-            );
-            if (nextNextLevel) {
-                immediate.push(nextNextLevel);
-                console.log(`🎯 Also generating next level: Level ${nextNextLevel.level_number}`);
-            }
+        if (currentActiveLevel) {
+            // Generate only the current active level (highest unlocked)
+            immediate.push(currentActiveLevel);
+            console.log(`🎯 Current active level to generate: Level ${currentActiveLevel.level_number}`);
         } else {
-            // If no specific level needs immediate generation, generate first few
-            immediate.push(...levelsNeedingGeneration.slice(0, 2));
-            console.log(`🎯 No specific level needed, generating first 2 levels`);
+            // If no specific level needs immediate generation, generate first level only
+            const firstLevel = levelsNeedingGeneration.find(level => level.level_number === 1);
+            if (firstLevel) {
+                immediate.push(firstLevel);
+                console.log(`🎯 No specific level needed, generating Level 1 only`);
+            }
         }
         
         // Put remaining levels in background
@@ -2149,9 +2143,10 @@ async function determineLevelsToGenerate(groupId, allLevels, levelsNeedingGenera
             !immediateLevelNumbers.includes(level.level_number)
         ));
         
-        console.log(`📋 Smart generation plan:`, {
+        console.log(`📋 Smart generation plan (current active level only):`, {
             immediate: immediate.map(l => l.level_number),
-            background: background.map(l => l.level_number)
+            background: background.map(l => l.level_number),
+            strategy: 'Generate only current active level for optimal resource usage'
         });
         
         return { immediate, background };
@@ -2223,17 +2218,17 @@ function determineUnlockedLevels(userProgress, totalLevels) {
     return unlockedLevels;
 }
 
-// Find the next level that should be unlocked but needs generation
-function findNextLevelToUnlock(unlockedLevels, levelsNeedingGeneration) {
+// Find the current active level (highest unlocked) that needs generation
+function findCurrentActiveLevel(unlockedLevels, levelsNeedingGeneration) {
     // Find the highest unlocked level
     const highestUnlocked = Math.max(...unlockedLevels, 0);
     
-    // Find the next level that needs generation
-    const nextLevel = levelsNeedingGeneration.find(level => 
-        level.level_number === highestUnlocked + 1
+    // Find the current active level (highest unlocked) that needs generation
+    const currentActiveLevel = levelsNeedingGeneration.find(level => 
+        level.level_number === highestUnlocked
     );
     
-    return nextLevel;
+    return currentActiveLevel;
 }
 
 // Progressive word count updates (one level at a time for better UX)
