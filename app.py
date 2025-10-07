@@ -284,6 +284,37 @@ def debug_tts_status():
             'success': False
         }), 500
 
+@app.post('/api/debug/fix-database-schema')
+def debug_fix_database_schema():
+    """Emergency endpoint to fix database schema issues"""
+    try:
+        print("🚨 Emergency database schema fix requested")
+        
+        # Import the fix function
+        from run_database_fix import run_emergency_database_fix
+        
+        # Run the fix
+        success = run_emergency_database_fix()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Database schema fixed successfully',
+                'details': 'user_word_familiarity table now has correct schema with word_hash and native_language columns'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Database schema fix failed'
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Error in database schema fix endpoint: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.post('/api/debug/migrate-data')
 def debug_migrate_data():
     """Debug endpoint to migrate data to Railway PostgreSQL"""
