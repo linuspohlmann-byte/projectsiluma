@@ -4035,7 +4035,7 @@ def api_words_get_many():
                 word_data_map[word_data['word']] = word_data
             
             # Convert to list format expected by frontend
-        out = []
+            out = []
             for word in words:
                 if word in word_data_map:
                     word_data = word_data_map[word]
@@ -4053,7 +4053,7 @@ def api_words_get_many():
                         'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
                     })
             
-        return jsonify({'success': True, 'data': out})
+            return jsonify({'success': True, 'data': out})
             
         finally:
             conn.close()
