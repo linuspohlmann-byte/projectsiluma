@@ -3255,9 +3255,9 @@ def api_enrich_custom_level_words(group_id, level_number):
                         existing = cur.execute('SELECT translation FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
                     
                     if existing and existing.get('translation'):
-                    # Word already has translation, skip
+                        # Word already has translation, skip
                         print(f"Word '{word}' already exists in words table, skipping enrichment")
-                    continue
+                        continue
                         
                 finally:
                     conn.close()
@@ -3287,17 +3287,17 @@ def api_enrich_custom_level_words(group_id, level_number):
                     try:
                         # Prepare data for insertion
                         insert_data = {
-                        'word': word,
-                        'language': language,
-                        'native_language': native_language,
-                        'translation': enriched_data.get('translation', ''),
+                            'word': word,
+                            'language': language,
+                            'native_language': native_language,
+                            'translation': enriched_data.get('translation', ''),
                             'example': enriched_data.get('example', ''),
                             'example_native': enriched_data.get('example_native', ''),
                             'lemma': enriched_data.get('lemma', ''),
-                        'pos': enriched_data.get('pos', ''),
-                        'ipa': enriched_data.get('ipa', ''),
+                            'pos': enriched_data.get('pos', ''),
+                            'ipa': enriched_data.get('ipa', ''),
                             'audio_url': enriched_data.get('audio_url', ''),
-                        'gender': enriched_data.get('gender', 'none'),
+                            'gender': enriched_data.get('gender', 'none'),
                             'plural': enriched_data.get('plural', ''),
                             'conj': json.dumps(enriched_data.get('conj', {})) if enriched_data.get('conj') else None,
                             'comp': json.dumps(enriched_data.get('comp', {})) if enriched_data.get('comp') else None,
@@ -3909,14 +3909,14 @@ def api_word_get():
         
         if not row:
             # Return empty word data if not found
-            data = {
-                'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
-                'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
-                'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
-                'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0, 'user_comment': ''
-            }
-        else:
-            data = dict(row)
+            return jsonify({
+              'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
+              'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
+              'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
+              'info': {}, 'familiarity': 0, 'seen_count': 0, 'correct_count': 0
+            })
+        
+        data = dict(row)
         
     finally:
         conn.close()
@@ -4092,7 +4092,7 @@ def api_word_upsert():
             # Update word familiarity in PostgreSQL database
             from server.db import update_user_word_familiarity_by_word
             success = update_user_word_familiarity_by_word(
-                    user_id=user_id,
+                user_id=user_id,
                 word=word,
                 language=language,
                 native_language=native_language,
@@ -4206,14 +4206,52 @@ def api_word_upsert():
             
         finally:
             conn.close()
-            
+        
     except Exception as e:
         print(f"Error upserting word to PostgreSQL words table: {e}")
         # Don't use fallback to old system as it creates duplicates
         print(f"Word upsert failed for: {word} ({language} -> {native_language})")
     
     # For unauthenticated users, we still save to global database but not user-specific data
-    # The global word data is already saved above, so we don't need to do anything else here
+        # and use multi-user system if possible
+        try:
+            # Try to get native language from request headers (sent by frontend)
+            native_language = request.headers.get('X-Native-Language', 'en')
+            
+            from server.multi_user_db import db_manager
+            
+            language = payload.get('language', 'en')
+            
+            # Add word to global database for this native language
+            word_data = {
+                'translation': payload.get('translation', ''),
+                'example': payload.get('example', ''),
+                'example_native': payload.get('example_native', ''),
+                'lemma': payload.get('lemma', ''),
+                'pos': payload.get('pos', ''),
+                'ipa': payload.get('ipa', ''),
+                'audio_url': payload.get('audio_url', ''),
+                'gender': payload.get('gender', ''),
+                'plural': payload.get('plural', ''),
+                'conj': payload.get('conj', {}),
+                'comp': payload.get('comp', {}),
+                'synonyms': payload.get('synonyms', []),
+                'collocations': payload.get('collocations', []),
+                'cefr': payload.get('cefr', ''),
+                'freq_rank': payload.get('freq_rank'),
+                'tags': payload.get('tags', []),
+                'note': payload.get('note', ''),
+                'info': payload.get('info', {})
+            }
+            
+            word_hash = db_manager.add_word_to_global(word, language, native_language, word_data)
+            if word_hash:
+                print(f"Word added to global database for unauthenticated user (native: {native_language}): {word}")
+            else:
+                print(f"Failed to add word to global database for unauthenticated user (native: {native_language}): {word}")
+            
+        except Exception as e:
+            print(f"Error adding word to global database for unauthenticated user: {e}")
     
     return jsonify({'success': True})
 
@@ -7258,221 +7296,37 @@ def debug_check_word_familiarity():
         except ValueError:
             return jsonify({"success": False, "error": "user_id must be a number"}), 400
         
-        # Simple test first - check if tables exist
-        from server.db_config import get_database_config, get_db_connection, execute_query
+        # Check familiarity using the new function
+        from server.db import get_user_word_familiarity_by_word
+        familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
         
-        config = get_database_config()
-        conn = get_db_connection()
-        
-        try:
-            if config['type'] == 'postgresql':
-                # Check if user_word_familiarity table exists
-                result = execute_query(conn, '''
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = 'user_word_familiarity'
-                    );
-                ''')
-                table_exists = result.fetchone()[0]
-                
-                if not table_exists:
-                    return jsonify({
-                        "success": False, 
-                        "error": "user_word_familiarity table does not exist",
-                        "word": word,
-                        "user_id": user_id
-                    }), 404
-                
-                # Check if word exists in words table
-                result = execute_query(conn, '''
-                    SELECT id FROM words 
-                    WHERE word = %s AND language = %s AND native_language = %s
-                ''', (word, language, native_language))
-                word_row = result.fetchone()
-                
-                if not word_row:
-                    return jsonify({
-                        "success": True,
-                        "word": word,
-                        "user_id": user_id,
-                        "language": language,
-                        "native_language": native_language,
-                        "familiarity": 0,
-                        "seen_count": 0,
-                        "correct_count": 0,
-                        "user_comment": '',
-                        "found": False,
-                        "reason": "Word not found in words table"
-                    })
-                
-                word_id = word_row[0]
-                
-                # Check familiarity
-                result = execute_query(conn, '''
-                    SELECT familiarity, seen_count, correct_count, user_comment
-                    FROM user_word_familiarity 
-                    WHERE user_id = %s AND word_id = %s
-                ''', (user_id, word_id))
-                familiarity_row = result.fetchone()
-                
-                if familiarity_row:
-                    return jsonify({
-                        "success": True,
-                        "word": word,
-                        "user_id": user_id,
-                        "language": language,
-                        "native_language": native_language,
-                        "familiarity": familiarity_row[0] or 0,
-                        "seen_count": familiarity_row[1] or 0,
-                        "correct_count": familiarity_row[2] or 0,
-                        "user_comment": familiarity_row[3] or '',
-                        "found": True
-                    })
-                else:
-                    return jsonify({
-                        "success": True,
-                        "word": word,
-                        "user_id": user_id,
-                        "language": language,
-                        "native_language": native_language,
-                        "familiarity": 0,
-                        "seen_count": 0,
-                        "correct_count": 0,
-                        "user_comment": '',
-                        "found": False,
-                        "reason": "No familiarity data found"
-                    })
-            else:
-                return jsonify({"success": False, "error": "SQLite not supported in this debug endpoint"}), 400
-                
-        finally:
-            conn.close()
+        if familiarity_data:
+            return jsonify({
+                "success": True,
+                "word": word,
+                "user_id": user_id,
+                "language": language,
+                "native_language": native_language,
+                "familiarity": familiarity_data['familiarity'] or 0,
+                "seen_count": familiarity_data['seen_count'] or 0,
+                "correct_count": familiarity_data['correct_count'] or 0,
+                "user_comment": familiarity_data['user_comment'] or '',
+                "found": True
+            })
+        else:
+            return jsonify({
+                "success": True,
+                "word": word,
+                "user_id": user_id,
+                "language": language,
+                "native_language": native_language,
+                "familiarity": 0,
+                "seen_count": 0,
+                "correct_count": 0,
+                "user_comment": '',
+                "found": False,
+                "reason": "No familiarity data found"
+            })
             
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/debug/simple-test", methods=["GET"])
-def debug_simple_test():
-    """Simple debug endpoint to test if the app is working"""
-    return jsonify({
-        "success": True,
-        "message": "Debug endpoint working",
-        "timestamp": "2024-01-01T00:00:00Z"
-    })
-
-@app.route("/api/debug/create-user-familiarity-table", methods=["POST"])
-def debug_create_user_familiarity_table():
-    """Debug endpoint to create user_word_familiarity table"""
-    try:
-        from server.db_config import get_database_config, get_db_connection, execute_query
-        
-        config = get_database_config()
-        conn = get_db_connection()
-        
-        try:
-            if config['type'] == 'postgresql':
-                # Create user_word_familiarity table for PostgreSQL
-                execute_query(conn, """
-                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
-                        id SERIAL PRIMARY KEY,
-                        user_id INTEGER NOT NULL,
-                        word_id INTEGER NOT NULL,
-                        familiarity INTEGER DEFAULT 0,
-                        seen_count INTEGER DEFAULT 0,
-                        correct_count INTEGER DEFAULT 0,
-                        user_comment TEXT,
-                        last_seen TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-                        UNIQUE(user_id, word_id)
-                    );
-                """)
-                conn.commit()
-                print("✅ Created user_word_familiarity table (PostgreSQL)")
-            else:
-                # Create user_word_familiarity table for SQLite
-                cur = conn.cursor()
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS user_word_familiarity (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER NOT NULL,
-                        word_id INTEGER NOT NULL,
-                        familiarity INTEGER DEFAULT 0,
-                        seen_count INTEGER DEFAULT 0,
-                        correct_count INTEGER DEFAULT 0,
-                        user_comment TEXT,
-                        last_seen TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-                        UNIQUE(user_id, word_id)
-                    );
-                """)
-                conn.commit()
-                print("✅ Created user_word_familiarity table (SQLite)")
-                
-        finally:
-            conn.close()
-            
-        return jsonify({'success': True, 'message': 'user_word_familiarity table created successfully'})
-    except Exception as e:
-        print(f"Error creating user_word_familiarity table: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route("/api/debug/add-user-comment-column", methods=["POST"])
-def debug_add_user_comment_column():
-    """Debug endpoint to add user_comment column to user_word_familiarity table"""
-    try:
-        from server.db_config import get_database_config, get_db_connection, execute_query
-        
-        config = get_database_config()
-        conn = get_db_connection()
-        
-        try:
-            if config['type'] == 'postgresql':
-                # Check if column exists
-                result = execute_query(conn, """
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'user_word_familiarity' AND column_name = 'user_comment'
-                """)
-                
-                if not result.fetchone():
-                    print("Adding user_comment column to user_word_familiarity table...")
-                    execute_query(conn, """
-                        ALTER TABLE user_word_familiarity 
-                        ADD COLUMN user_comment TEXT
-                    """)
-                    conn.commit()
-                    print("✅ Added user_comment column to user_word_familiarity table")
-                    return jsonify({"success": True, "message": "user_comment column added successfully"})
-                else:
-                    print("user_comment column already exists in user_word_familiarity table")
-                    return jsonify({"success": True, "message": "user_comment column already exists"})
-            else:
-                # SQLite syntax - check if column exists first
-                cur = conn.cursor()
-                cur.execute("PRAGMA table_info(user_word_familiarity)")
-                columns = [column[1] for column in cur.fetchall()]
-                
-                if "user_comment" not in columns:
-                    print("Adding user_comment column to user_word_familiarity table...")
-                    cur.execute("""
-                        ALTER TABLE user_word_familiarity 
-                        ADD COLUMN user_comment TEXT
-                    """)
-                    conn.commit()
-                    print("✅ Added user_comment column to user_word_familiarity table")
-                    return jsonify({"success": True, "message": "user_comment column added successfully"})
-                else:
-                    print("user_comment column already exists in user_word_familiarity table")
-                    return jsonify({"success": True, "message": "user_comment column already exists"})
-                    
-        finally:
-            conn.close()
-            
-    except Exception as e:
-        print(f"Error adding user_comment column: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
