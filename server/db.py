@@ -1859,14 +1859,31 @@ def update_user_word_familiarity_by_word(user_id: int, word: str, language: str,
         
         word_id = word_row['id'] if config['type'] == 'postgresql' else word_row[0]
         
-        # Get current values
-        current = get_user_word_familiarity(user_id, word_id)
-        seen_count = current['seen_count'] if current else 0
-        correct_count = current['correct_count'] if current else 0
-        user_comment = user_comment or (current.get('user_comment', '') if current else '')
+        # Get current values by querying the database directly
+        if config['type'] == 'postgresql':
+            result = execute_query(conn, '''
+                SELECT seen_count, correct_count, user_comment
+                FROM user_word_familiarity
+                WHERE user_id = %s AND word_id = %s
+            ''', (user_id, word_id))
+            current_row = result.fetchone()
+        else:
+            cur = conn.cursor()
+            current_row = cur.execute('''
+                SELECT seen_count, correct_count, user_comment
+                FROM user_word_familiarity
+                WHERE user_id = ? AND word_id = ?
+            ''', (user_id, word_id)).fetchone()
+        
+        seen_count = current_row['seen_count'] if current_row else 0
+        correct_count = current_row['correct_count'] if current_row else 0
+        current_user_comment = current_row['user_comment'] if current_row else ''
+        
+        # Use provided user_comment or keep existing one
+        final_user_comment = user_comment if user_comment is not None else current_user_comment
         
         # Update familiarity
-        update_user_word_familiarity(user_id, word_id, familiarity, seen_count, correct_count, user_comment)
+        update_user_word_familiarity(user_id, word_id, familiarity, seen_count, correct_count, final_user_comment)
         return True
         
     except Exception as e:

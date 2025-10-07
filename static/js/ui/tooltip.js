@@ -233,10 +233,16 @@ export async function openTooltip(anchor, word){
     
     // Fill editable fields (familiarity and user comment)
     const fam = $('#tt-fam'); 
-    if(fam) fam.value = String(js.familiarity ?? fam.value ?? 0);
+    if(fam) {
+      // Always reset to the value from the data, default to 0 if not available
+      fam.value = String(js.familiarity ?? 0);
+    }
     
     const userComment = $('#tt-user-comment');
-    if(userComment) userComment.value = js.user_comment || '';
+    if(userComment) {
+      // Always reset to the value from the data, default to empty string if not available
+      userComment.value = js.user_comment || '';
+    }
     
     // Audio handling
     const a = $('#tt-audio-el');
