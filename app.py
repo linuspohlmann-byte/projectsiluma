@@ -7296,37 +7296,95 @@ def debug_check_word_familiarity():
         except ValueError:
             return jsonify({"success": False, "error": "user_id must be a number"}), 400
         
-        from server.db import get_user_word_familiarity_by_word
+        # Simple test first - check if tables exist
+        from server.db_config import get_database_config, get_db_connection, execute_query
         
-        # Get familiarity data
-        familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
+        config = get_database_config()
+        conn = get_db_connection()
         
-        if familiarity_data:
-            return jsonify({
-                "success": True,
-                "word": word,
-                "user_id": user_id,
-                "language": language,
-                "native_language": native_language,
-                "familiarity": familiarity_data['familiarity'],
-                "seen_count": familiarity_data['seen_count'],
-                "correct_count": familiarity_data['correct_count'],
-                "user_comment": familiarity_data['user_comment'] or '',
-                "found": True
-            })
-        else:
-            return jsonify({
-                "success": True,
-                "word": word,
-                "user_id": user_id,
-                "language": language,
-                "native_language": native_language,
-                "familiarity": 0,
-                "seen_count": 0,
-                "correct_count": 0,
-                "user_comment": '',
-                "found": False
-            })
+        try:
+            if config['type'] == 'postgresql':
+                # Check if user_word_familiarity table exists
+                result = execute_query(conn, '''
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'user_word_familiarity'
+                    );
+                ''')
+                table_exists = result.fetchone()[0]
+                
+                if not table_exists:
+                    return jsonify({
+                        "success": False, 
+                        "error": "user_word_familiarity table does not exist",
+                        "word": word,
+                        "user_id": user_id
+                    }), 404
+                
+                # Check if word exists in words table
+                result = execute_query(conn, '''
+                    SELECT id FROM words 
+                    WHERE word = %s AND language = %s AND native_language = %s
+                ''', (word, language, native_language))
+                word_row = result.fetchone()
+                
+                if not word_row:
+                    return jsonify({
+                        "success": True,
+                        "word": word,
+                        "user_id": user_id,
+                        "language": language,
+                        "native_language": native_language,
+                        "familiarity": 0,
+                        "seen_count": 0,
+                        "correct_count": 0,
+                        "user_comment": '',
+                        "found": False,
+                        "reason": "Word not found in words table"
+                    })
+                
+                word_id = word_row[0]
+                
+                # Check familiarity
+                result = execute_query(conn, '''
+                    SELECT familiarity, seen_count, correct_count, user_comment
+                    FROM user_word_familiarity 
+                    WHERE user_id = %s AND word_id = %s
+                ''', (user_id, word_id))
+                familiarity_row = result.fetchone()
+                
+                if familiarity_row:
+                    return jsonify({
+                        "success": True,
+                        "word": word,
+                        "user_id": user_id,
+                        "language": language,
+                        "native_language": native_language,
+                        "familiarity": familiarity_row[0] or 0,
+                        "seen_count": familiarity_row[1] or 0,
+                        "correct_count": familiarity_row[2] or 0,
+                        "user_comment": familiarity_row[3] or '',
+                        "found": True
+                    })
+                else:
+                    return jsonify({
+                        "success": True,
+                        "word": word,
+                        "user_id": user_id,
+                        "language": language,
+                        "native_language": native_language,
+                        "familiarity": 0,
+                        "seen_count": 0,
+                        "correct_count": 0,
+                        "user_comment": '',
+                        "found": False,
+                        "reason": "No familiarity data found"
+                    })
+            else:
+                return jsonify({"success": False, "error": "SQLite not supported in this debug endpoint"}), 400
+                
+        finally:
+            conn.close()
             
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
