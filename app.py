@@ -7285,7 +7285,13 @@ def debug_add_user_comment_column():
 def debug_check_word_familiarity():
     """Debug endpoint to check familiarity for a specific word and user"""
     try:
+        # Properly decode URL parameters
         word = request.args.get('word', '').strip()
+        if word:
+            # Decode URL encoding if present
+            import urllib.parse
+            word = urllib.parse.unquote(word)
+        
         user_id = request.args.get('user_id', '').strip()
         language = request.args.get('language', 'ka').strip()
         native_language = request.args.get('native_language', 'de').strip()
