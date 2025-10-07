@@ -3877,6 +3877,7 @@ def api_words_delete():
 def api_word_get():
     word = (request.args.get('word') or '').strip()
     language = (request.args.get('language') or '').strip()
+    native_language_param = (request.args.get('native_language') or '').strip()
     if not word:
         return jsonify({'error': 'word required'}), 400
     
@@ -3884,8 +3885,8 @@ def api_word_get():
     user_context = get_user_context()
     user_id = user_context['user_id']
     
-    # Get native language from user context or default
-    native_language = user_context.get('native_language', 'en')
+    # Get native language from URL parameter, user context, or default
+    native_language = native_language_param or user_context.get('native_language', 'en')
     
     # Get word data from existing PostgreSQL words table
     from server.db_config import get_database_config, get_db_connection, execute_query

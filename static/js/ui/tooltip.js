@@ -192,7 +192,7 @@ export async function openTooltip(anchor, word){
     // If we don't have word data yet, try to fetch from global database
     if (!js1) {
       console.log('🔧 Fetching word data for:', w);
-      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`);
+      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`);
       js1 = await r1.json();
       console.log('🔧 Fetched word data:', js1);
     }
@@ -239,7 +239,7 @@ export async function openTooltip(anchor, word){
         
         // Try to fetch the enriched word data
         console.log('🔧 Fetching enriched word data for:', w);
-        const r2 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`);
+        const r2 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`);
         const js2 = await r2.json();
         console.log('🔧 Fetched enriched word data:', js2);
         
