@@ -50,6 +50,8 @@
     /* Ensure app content fills the stage and ignores previous width caps */
     .stage-16x9 .shell{width:100%;max-width:none;min-height:100%;margin:0;padding:24px 20px 24px}
     .stage-16x9 .card.eval, .stage-16x9 #lesson.card{width:100%;max-width:none}
+    /* Keep topbar visible when the inner stage scrolls */
+    .stage-16x9 .main-navigation{position:sticky;top:0;z-index:500}
 
     /* Header */
     header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
