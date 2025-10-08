@@ -145,12 +145,29 @@ function renderCustomLevelGroups() {
     }
     
     console.log(`🎨 Rendering ${customLevelGroups.length} custom groups`);
+    const gridHTML = customLevelGroups.map(group => renderCustomGroupCard(group)).join('');
+    console.log('📝 First group card HTML length:', gridHTML.substring(0, 200).length, 'chars');
+    
     container.innerHTML = `
         <div class="level-groups-grid">
-            ${customLevelGroups.map(group => renderCustomGroupCard(group)).join('')}
+            ${gridHTML}
         </div>
     `;
     console.log('✅ Custom groups rendered successfully');
+    
+    // Debug: Check the grid element
+    const grid = container.querySelector('.level-groups-grid');
+    if (grid) {
+        const gridRect = grid.getBoundingClientRect();
+        const gridStyles = window.getComputedStyle(grid);
+        console.log('📊 Grid element check:', {
+            display: gridStyles.display,
+            gridTemplateColumns: gridStyles.gridTemplateColumns,
+            width: gridRect.width,
+            height: gridRect.height,
+            childCount: grid.children.length
+        });
+    }
     
     // Debug: Check if container is visible
     const containerStyles = window.getComputedStyle(container);
