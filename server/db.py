@@ -326,10 +326,12 @@ def submit_level_rating(user_id: int, level: int, language: str, rating: int) ->
 # --- Marketplace Ratings ---
 ############################
 
-def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | None) -> bool:
-    """Create or update a rating for a marketplace custom level group."""
+def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | None) -> tuple[bool, str | None]:
+    """Create or update a rating for a marketplace custom level group.
+    Returns (ok, error_code). error_code None on success.
+    """
     if not group_id or not user_id:
-        return False
+        return False, 'stars_invalid'
     try:
         stars_int = int(stars)
     except Exception:
@@ -341,6 +343,23 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
     conn = get_db_connection()
     try:
         now = datetime.now(UTC).isoformat()
+        # Pre-check FKs to provide clearer errors
+        try:
+            # Check group exists
+            execute_query(conn, 'SELECT id FROM custom_level_groups WHERE id = %s' if config['type']=='postgresql' else 'SELECT id FROM custom_level_groups WHERE id = ?', (group_id,))
+            if not getattr(conn, 'fetchone', None):
+                # For execute_query we must fetch from returned cursor
+                pass
+            cur = execute_query(conn, 'SELECT id FROM custom_level_groups WHERE id = %s' if config['type']=='postgresql' else 'SELECT id FROM custom_level_groups WHERE id = ?', (group_id,))
+            if not cur.fetchone():
+                return False, 'fk_group_missing'
+            # Check user exists
+            cur = execute_query(conn, 'SELECT id FROM users WHERE id = %s' if config['type']=='postgresql' else 'SELECT id FROM users WHERE id = ?', (user_id,))
+            if not cur.fetchone():
+                return False, 'fk_user_missing'
+        except Exception as _e:
+            # If pre-check fails unexpectedly, continue to attempt write; DB will enforce
+            pass
         if config['type'] == 'postgresql':
             # Try update first
             updated = execute_query(conn, '''
@@ -366,10 +385,19 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                     VALUES (?, ?, ?, ?, ?, ?)
                 ''', (group_id, user_id, stars_int, comment, now, now))
         conn.commit()
-        return True
+        return True, None
     except Exception as e:
         print(f"Error upserting group rating: {e}")
-        return False
+        # Try to map common PG error codes
+        try:
+            pgcode = getattr(getattr(e, 'pgcode', None), 'strip', lambda: None)()
+        except Exception:
+            pgcode = None
+        if pgcode == '23503':
+            return False, 'fk_violation'
+        if pgcode == '23505':
+            return False, 'unique_violation'
+        return False, 'db_error'
     finally:
         conn.close()
 

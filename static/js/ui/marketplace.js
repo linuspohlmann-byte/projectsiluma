@@ -272,7 +272,7 @@ async function startMarketplaceGroup(groupId) {
 
         let data = await response.json().catch(()=>({ success:false, error:'Unbekannter Fehler' }));
         if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Failed to import group');
+            throw new Error((data.code ? `[${data.code}] ` : '') + (data.error || 'Failed to import group'));
         }
         
         showNotification('Level-Gruppe erfolgreich importiert! Du findest sie jetzt in deiner Bibliothek.', 'success');
@@ -587,9 +587,10 @@ function wireRatingControls(groupId){
                 },
                 body: JSON.stringify({ stars: current, comment: commentEl.value || '' })
             });
-            const data = await res.json();
+            const data = await res.json().catch(()=>({ success:false, error:'Unbekannter Fehler' }));
             if(!res.ok || !data.success){
-                throw new Error(data.error || 'Fehler beim Senden');
+                const code = data && data.code ? ` [${data.code}]` : '';
+                throw new Error((data.error || 'Fehler beim Senden') + code);
             }
             statusEl.textContent = 'Danke für deine Bewertung!';
         }catch(err){
