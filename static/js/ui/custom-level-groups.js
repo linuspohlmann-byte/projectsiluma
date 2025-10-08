@@ -169,8 +169,29 @@ function renderCustomLevelGroups() {
         left: rect.left,
         bottom: rect.bottom,
         right: rect.right,
+        width: rect.width,
+        height: rect.height,
         isInViewport: rect.top >= 0 && rect.bottom <= window.innerHeight
     });
+    
+    // Debug: Check parent chain
+    let parent = container.parentElement;
+    let parentChain = [];
+    while (parent && parentChain.length < 5) {
+        const pRect = parent.getBoundingClientRect();
+        const pStyles = window.getComputedStyle(parent);
+        parentChain.push({
+            tag: parent.tagName,
+            id: parent.id,
+            class: parent.className,
+            display: pStyles.display,
+            width: pRect.width,
+            height: pRect.height,
+            overflow: pStyles.overflow
+        });
+        parent = parent.parentElement;
+    }
+    console.log('🔍 Parent chain:', parentChain);
     
     // Force scroll into view if not visible
     if (rect.top < 0 || rect.bottom > window.innerHeight) {
