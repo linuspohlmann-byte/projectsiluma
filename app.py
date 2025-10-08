@@ -10,9 +10,10 @@ from server.db import (
     list_words_rows, get_word_row, count_words_fam5, delete_words_by_ids, upsert_word_row,
     get_localization_entry, upsert_localization_entry, get_all_localization_entries,
     get_localization_for_language, get_missing_translations,
+    get_user_word_familiarity_by_word, update_user_word_familiarity_by_word,
 )
 from server.db_multi_user import (
-    get_level_words_with_familiarity, unlock_level_words, update_word_familiarity,
+    get_level_words_with_familiarity, unlock_level_words,
     get_familiarity_counts_for_level, get_user_level_stats, get_global_level_stats,
     get_user_native_language, ensure_user_databases
 )
@@ -67,6 +68,69 @@ def calculate_translation_similarity(user_text, correct_text):
         return min(0.8, jaccard_similarity + 0.05)
     else:
         return jaccard_similarity
+
+
+def _extract_row_value(row, key, default=0):
+    """Safely extract a column value from sqlite/psycopg rows."""
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, TypeError, IndexError):
+        return default
+
+
+def _adjust_user_word_familiarity(user_id, word, language, native_language, *, delta=None, set_value=None):
+    """Adjust familiarity for a user/word pair using the central PostgreSQL helper."""
+    if not user_id or not word or not language or not native_language:
+        return
+    word = (word or '').strip()
+    language = (language or '').strip()
+    native_language = (native_language or '').strip()
+    if not word or not language or not native_language:
+        return
+
+    try:
+        ensure_words_exist([word], language, native_language)
+    except Exception as e:
+        print(f"Error ensuring word '{word}' exists ({language}->{native_language}): {e}")
+
+    try:
+        current_row = get_user_word_familiarity_by_word(user_id, word, language, native_language)
+        current_familiarity = _extract_row_value(current_row, 'familiarity', 0) or 0
+    except Exception as e:
+        print(f"Error fetching familiarity for '{word}' ({language}->{native_language}): {e}")
+        current_familiarity = 0
+        current_row = None
+
+    if set_value is not None:
+        target_value = set_value
+    elif delta is not None:
+        target_value = (current_familiarity or 0) + delta
+    else:
+        target_value = current_familiarity or 0
+
+    target_value = max(0, min(5, target_value))
+    target_int = int(round(target_value + 1e-8))
+    target_int = max(0, min(5, target_int))
+
+    if current_row and _extract_row_value(current_row, 'familiarity', 0) == target_int:
+        return
+
+    try:
+        success = update_user_word_familiarity_by_word(
+            user_id=user_id,
+            word=word,
+            language=language,
+            native_language=native_language,
+            familiarity=target_int
+        )
+        if not success:
+            print(f"⚠️ Failed to update familiarity for '{word}' ({language}->{native_language}) to {target_int}")
+    except Exception as e:
+        print(f"Error updating familiarity for '{word}' ({language}->{native_language}): {e}")
 from server.database_sync import sync_databases_on_startup
 from server.services.llm import (
     llm_generate_sentences, llm_translate_batch, llm_similarity,
@@ -1923,8 +1987,8 @@ def api_level_finish():
     if is_authenticated and tl and lvl_val:
         # Save to user-specific data
         try:
-            from server.db import update_user_progress, update_user_word_familiarity
-            
+            from server.db import update_user_progress
+
             # Update user progress
             score = float(row['score']) if row['score'] is not None else 0.0
             # If score is 0.0 (None), assume the level was completed with a default score
@@ -1947,23 +2011,15 @@ def api_level_finish():
             
             # Update word familiarity for learned words (familiarity = 5)
             learned_words = fam_counts.get('5', 0)
-            if learned_words > 0:
-                # Get words for this level
-                from server.db import get_db
-                conn = get_db()
-                cursor = conn.execute("""
-                    SELECT id FROM words 
-                    WHERE language = ? AND level = ?
-                """, (tl, lvl_val))
-                word_ids = [row[0] for row in cursor.fetchall()]
-                conn.close()
-                
-                # Update word familiarity for each word
-                for word_id in word_ids:
-                    update_user_word_familiarity(
+            if learned_words > 0 and native_language and tl:
+                unique_words = all_words or []
+                for word in set(unique_words):
+                    _adjust_user_word_familiarity(
                         user_id=user_id,
-                        word_id=word_id,
-                        familiarity=5
+                        word=word,
+                        language=tl,
+                        native_language=native_language,
+                        set_value=5
                     )
             
             print(f"Level {lvl_val} results saved for user {user_id} (score: {score}, status: {status})")
@@ -2006,10 +2062,45 @@ def api_level_submit_mc():
         if not run_id:
             return jsonify({'success': False, 'error': 'run_id required'}), 400
         
-        # For standard levels, we don't need to do much - just return success
-        # The actual scoring is handled in the level finish endpoint
+        # Update familiarity for authenticated users
+        if is_authenticated and word and run_id:
+            target_lang = None
+            run_native = None
+            conn = None
+            try:
+                conn = get_db()
+                row = conn.execute(
+                    'SELECT target_lang, native_lang FROM level_runs WHERE id=?',
+                    (run_id,)
+                ).fetchone()
+                if row:
+                    target_lang = (_extract_row_value(row, 'target_lang', '') or '').strip()
+                    run_native = (_extract_row_value(row, 'native_lang', '') or '').strip()
+            except Exception as e:
+                print(f"Error loading run context for MC familiarity: {e}")
+                target_lang = None
+            finally:
+                if conn:
+                    conn.close()
+            try:
+                native_language = get_user_native_language(user_id) if user_id else None
+            except Exception as e:
+                print(f"Error resolving native language for MC familiarity: {e}")
+                native_language = None
+            native_language = native_language or run_native
+            if target_lang and native_language:
+                delta = 1 if correct else -1
+                _adjust_user_word_familiarity(
+                    user_id=user_id,
+                    word=word,
+                    language=target_lang,
+                    native_language=native_language,
+                    delta=delta
+                )
+
+        # For standard levels, we don't need to do much else - just return success
         print(f"MC answer submitted for run {run_id}, word: {word}, correct: {correct}")
-        
+
         return jsonify({'success': True, 'message': 'MC answer recorded'})
         
     except Exception as e:
@@ -2191,27 +2282,15 @@ def api_get_custom_level(group_id, level_number):
                 ensure_words_exist(level_words, language, native_language)
                 
                 # Add words to user's familiarity database with default familiarity (0 = unknown)
-                from server.db_multi_user import update_word_familiarity
                 for word in level_words:
                     try:
-                        # Get word ID from global database
-                        from server.db import get_db
-                        conn = get_db()
-                        cursor = conn.execute("SELECT id FROM words WHERE word = ? AND language = ?", (word, language))
-                        word_row = cursor.fetchone()
-                        conn.close()
-                        
-                        if word_row:
-                            word_id = word_row[0]
-                            # Add to user's familiarity database with familiarity 0 (unknown)
-                            print(f"🔧 Calling update_word_familiarity for user {user_id}, word '{word}', language '{language}', familiarity 0")
-                            success = update_word_familiarity(user_id, word, language, 0)
-                            if success:
-                                print(f"✅ Added word '{word}' (ID: {word_id}) to user {user_id} familiarity database")
-                            else:
-                                print(f"❌ Failed to add word '{word}' to user {user_id} familiarity database")
-                        else:
-                            print(f"⚠️ Word '{word}' not found in global database")
+                        _adjust_user_word_familiarity(
+                            user_id=user_id,
+                            word=word,
+                            language=language,
+                            native_language=native_language,
+                            set_value=0
+                        )
                     except Exception as e:
                         print(f"⚠️ Error adding word '{word}' to familiarity database: {e}")
                         import traceback
@@ -2423,54 +2502,13 @@ def api_get_custom_level_bulk_stats(group_id):
                     
                     # Get familiarity counts for these words
                     if level_words:
-                        # First, ensure all words are in the user's familiarity database
-                        print(f"🔤 Bulk stats: Ensuring {len(level_words)} words from custom level {group_id}/{level_num} are in familiarity database")
-                        
-                        # Ensure words exist in global database
+                        # Ensure words exist in the global database for later lookups
                         ensure_words_exist(level_words, language, native_language)
                         
-                        # Add words to user's familiarity database with default familiarity (0 = unknown)
-                        from server.db_multi_user import update_word_familiarity
-                        for word in level_words:
-                            try:
-                                # Get word ID from global database
-                                from server.db_config import get_database_config, get_db_connection, execute_query
-                                config = get_database_config()
-                                conn = get_db_connection()
-                                
-                                try:
-                                    if config['type'] == 'postgresql':
-                                        result = execute_query(conn, "SELECT id FROM words WHERE word = %s AND language = %s", (word, language))
-                                        word_row = result.fetchone()
-                                    else:
-                                        cursor = conn.execute("SELECT id FROM words WHERE word = ? AND language = ?", (word, language))
-                                        word_row = cursor.fetchone()
-                                    
-                                    if word_row:
-                                        if config['type'] == 'postgresql':
-                                            word_id = word_row['id']
-                                        else:
-                                            word_id = word_row[0]
-                                finally:
-                                    conn.close()
-                                
-                                if word_row:
-                                    # Add to user's familiarity database with familiarity 0 (unknown)
-                                    print(f"🔧 Bulk stats: Calling update_word_familiarity for user {user_id}, word '{word}', language '{language}', familiarity 0")
-                                    success = update_word_familiarity(user_id, word, language, 0)
-                                    if success:
-                                        print(f"✅ Bulk stats: Added word '{word}' (ID: {word_id}) to user {user_id} familiarity database")
-                                    else:
-                                        print(f"❌ Bulk stats: Failed to add word '{word}' to user {user_id} familiarity database")
-                                else:
-                                    print(f"⚠️ Bulk stats: Word '{word}' not found in global database")
-                            except Exception as e:
-                                print(f"⚠️ Bulk stats: Error adding word '{word}' to familiarity database: {e}")
-                                import traceback
-                                traceback.print_exc()
-                        
-                        # Now get familiarity counts for these words
-                        user_fam_counts = get_user_familiarity_counts_for_words(user_id, level_words, language, native_language)
+                        # Get familiarity counts for these words (defaults to unknown if none stored)
+                        user_fam_counts = get_user_familiarity_counts_for_words(
+                            user_id, level_words, language, native_language
+                        )
                         if user_fam_counts:
                             fam_counts = user_fam_counts
                             
@@ -3289,7 +3327,7 @@ def api_submit_custom_level(group_id, level_number):
         user_id = user['id'] if user else None
         
         # For custom level submit, authentication is optional
-        # This allows the feature to work even without login
+        # This allows the feature to work even without login 
         
         payload = request.get_json(force=True) or {}
         answers = payload.get('answers', [])
@@ -3299,6 +3337,27 @@ def api_submit_custom_level(group_id, level_number):
         if not level_data:
             return jsonify({'success': False, 'error': 'Level not found'}), 404
         
+        # Determine language context for familiarity updates
+        language = ''
+        native_language = ''
+        if level_data:
+            language = (level_data.get('language') or '').strip()
+            native_language = (level_data.get('native_language') or '').strip()
+        if user_id and (not language or not native_language):
+            try:
+                group_data = get_custom_level_group(group_id, user_id)
+            except Exception:
+                group_data = None
+            if group_data:
+                language = language or (group_data.get('language') or '').strip()
+                native_language = native_language or (group_data.get('native_language') or '').strip()
+        if user_id and not native_language:
+            try:
+                native_language = get_user_native_language(user_id)
+            except Exception as e:
+                print(f"Error resolving native language for custom submit: {e}")
+                native_language = ''
+
         # Calculate actual similarity scores
         results = []
         items = level_data.get('content', {}).get('items', [])
@@ -3324,6 +3383,17 @@ def api_submit_custom_level(group_id, level_number):
                 
                 # Calculate similarity (simple word-based comparison)
                 similarity = calculate_translation_similarity(user_translation, correct_translation)
+                passed = similarity >= 0.75
+
+                if user_id and language and native_language:
+                    for word in (item.get('words') or []):
+                        _adjust_user_word_familiarity(
+                            user_id=user_id,
+                            word=word,
+                            language=language,
+                            native_language=native_language,
+                            delta=1 if passed else -1
+                        )
                 
                 results.append({
                     'idx': idx,
@@ -3617,9 +3687,44 @@ def api_submit_custom_level_mc(group_id, level_number):
         payload = request.get_json(force=True) or {}
         answer = payload.get('answer', 0)
         correct_answer = payload.get('correct_answer', 0)
+        word = (payload.get('word') or '').strip()
         
         # Check if answer is correct
         is_correct = answer == correct_answer
+
+        # Update familiarity for authenticated users
+        if user_id and word:
+            language = None
+            native_language = None
+            try:
+                group_data = get_custom_level_group(group_id, user_id)
+            except Exception:
+                group_data = None
+            if group_data:
+                language = group_data.get('language')
+                native_language = group_data.get('native_language')
+            try:
+                level_data = get_custom_level(group_id, level_number, user_id)
+            except Exception:
+                level_data = None
+            if level_data:
+                language = language or level_data.get('language')
+                native_language = native_language or level_data.get('native_language')
+            if not native_language:
+                try:
+                    native_language = get_user_native_language(user_id)
+                except Exception as e:
+                    print(f"Error resolving native language for custom MC familiarity: {e}")
+                    native_language = None
+            if language and native_language:
+                delta = 1 if is_correct else -1
+                _adjust_user_word_familiarity(
+                    user_id=user_id,
+                    word=word,
+                    language=language,
+                    native_language=native_language,
+                    delta=delta
+                )
         
         return jsonify({
             'success': True,
@@ -3928,6 +4033,223 @@ def api_words_list():
         print(f"Error loading user words: {e}")
         return jsonify({'error': str(e)}), 500
 
+@words_bp.get('/api/words/learning')
+@require_auth()
+def api_words_learning():
+    """Return words that the authenticated user is currently learning (familiarity < 5)."""
+    user = g.current_user
+    if not user:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    
+    user_id = user['id']
+    language = request.args.get('language') or request.args.get('lang')
+    if not language:
+        return jsonify({'success': False, 'error': 'language parameter required'}), 400
+    
+    # Determine native language preference
+    native_language = request.headers.get('X-Native-Language')
+    if not native_language:
+        native_language = user.get('native_language') or get_user_native_language(user_id) or 'en'
+    
+    # Familiarity range (defaults to "learning" words: 0-4, excluding mastered 5)
+    def _parse_bound(value, default):
+        try:
+            return max(0, min(5, int(value)))
+        except (ValueError, TypeError):
+            return default
+    
+    min_fam = _parse_bound(request.args.get('min_familiarity'), 0)
+    max_fam = _parse_bound(request.args.get('max_familiarity'), 4)
+    if min_fam > max_fam:
+        min_fam, max_fam = max_fam, min_fam
+    max_fam = min(max_fam, 4)  # Exclude fully mastered by default
+    
+    # Pagination
+    def _parse_positive_int(value, default, upper=None):
+        try:
+            parsed = int(value)
+        except (ValueError, TypeError):
+            return default
+        parsed = max(0, parsed)
+        if upper is not None:
+            parsed = min(parsed, upper)
+        return parsed
+    
+    limit = _parse_positive_int(request.args.get('limit'), 100, 500)
+    if limit == 0:
+        limit = 100
+    offset = _parse_positive_int(request.args.get('offset'), 0)
+    
+    search_term = (request.args.get('q') or '').strip()
+    
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        try:
+            stats = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
+            total_count = 0
+            rows = []
+            
+            if config['type'] == 'postgresql':
+                filters = [
+                    "uwf.user_id = %s",
+                    "w.language = %s",
+                    "(uwf.native_language = %s OR uwf.native_language IS NULL)",
+                    "COALESCE(uwf.familiarity, 0) BETWEEN %s AND %s"
+                ]
+                params = [user_id, language, native_language, min_fam, max_fam]
+                
+                if search_term:
+                    filters.append("(w.word ILIKE %s OR w.translation ILIKE %s OR w.example ILIKE %s)")
+                    pattern = f"%{search_term}%"
+                    params.extend([pattern, pattern, pattern])
+                
+                filter_clause = " AND ".join(filters)
+                
+                # Distribution counts
+                dist_cursor = execute_query(conn, f"""
+                    SELECT COALESCE(uwf.familiarity, 0) AS familiarity, COUNT(*) AS count
+                    FROM user_word_familiarity uwf
+                    INNER JOIN words w ON w.id = uwf.word_id
+                    WHERE {filter_clause}
+                    GROUP BY COALESCE(uwf.familiarity, 0)
+                """, params)
+                for crow in dist_cursor.fetchall():
+                    fam_key = str(crow['familiarity'] or 0)
+                    stats[fam_key] = crow['count'] or 0
+                    total_count += crow['count'] or 0
+                
+                data_cursor = execute_query(conn, f"""
+                    SELECT 
+                        w.id AS word_id,
+                        w.word,
+                        w.translation,
+                        w.language,
+                        w.native_language,
+                        w.ipa,
+                        w.pos,
+                        w.cefr,
+                        w.example,
+                        w.example_native,
+                        w.audio_url,
+                        COALESCE(uwf.familiarity, 0) AS familiarity,
+                        COALESCE(uwf.seen_count, 0) AS seen_count,
+                        COALESCE(uwf.correct_count, 0) AS correct_count,
+                        COALESCE(uwf.updated_at, uwf.created_at) AS last_reviewed,
+                        uwf.created_at,
+                        uwf.user_comment
+                    FROM user_word_familiarity uwf
+                    INNER JOIN words w ON w.id = uwf.word_id
+                    WHERE {filter_clause}
+                    ORDER BY last_reviewed DESC NULLS LAST, COALESCE(uwf.seen_count, 0) DESC, w.word ASC
+                    LIMIT %s OFFSET %s
+                """, params + [limit, offset])
+                rows = data_cursor.fetchall()
+            else:
+                filters = [
+                    "uwf.user_id = ?",
+                    "w.language = ?",
+                    "(uwf.native_language = ? OR uwf.native_language IS NULL)",
+                    "COALESCE(uwf.familiarity, 0) BETWEEN ? AND ?"
+                ]
+                params = [user_id, language, native_language, min_fam, max_fam]
+                
+                if search_term:
+                    filters.append("(LOWER(w.word) LIKE ? OR LOWER(w.translation) LIKE ? OR LOWER(COALESCE(w.example, '')) LIKE ?)")
+                    pattern = f"%{search_term.lower()}%"
+                    params.extend([pattern, pattern, pattern])
+                
+                filter_clause = " AND ".join(filters)
+                
+                dist_cursor = execute_query(conn, f"""
+                    SELECT COALESCE(uwf.familiarity, 0) AS familiarity, COUNT(*) AS count
+                    FROM user_word_familiarity uwf
+                    INNER JOIN words w ON w.id = uwf.word_id
+                    WHERE {filter_clause}
+                    GROUP BY COALESCE(uwf.familiarity, 0)
+                """, params)
+                for crow in dist_cursor.fetchall():
+                    fam_key = str(crow['familiarity'] or 0)
+                    stats[fam_key] = crow['count'] or 0
+                    total_count += crow['count'] or 0
+                
+                data_cursor = execute_query(conn, f"""
+                    SELECT 
+                        w.id AS word_id,
+                        w.word,
+                        w.translation,
+                        w.language,
+                        w.native_language,
+                        w.ipa,
+                        w.pos,
+                        w.cefr,
+                        w.example,
+                        w.example_native,
+                        w.audio_url,
+                        COALESCE(uwf.familiarity, 0) AS familiarity,
+                        COALESCE(uwf.seen_count, 0) AS seen_count,
+                        COALESCE(uwf.correct_count, 0) AS correct_count,
+                        COALESCE(uwf.updated_at, uwf.created_at) AS last_reviewed,
+                        uwf.created_at,
+                        uwf.user_comment
+                    FROM user_word_familiarity uwf
+                    INNER JOIN words w ON w.id = uwf.word_id
+                    WHERE {filter_clause}
+                    ORDER BY last_reviewed DESC, COALESCE(uwf.seen_count, 0) DESC, w.word ASC
+                    LIMIT ? OFFSET ?
+                """, params + [limit, offset])
+                rows = data_cursor.fetchall()
+            
+            learning_words = []
+            for row in rows:
+                accessor = row.get if isinstance(row, dict) else row.__getitem__
+                familiarity = accessor('familiarity') or 0
+                last_reviewed = accessor('last_reviewed') or accessor('created_at')
+                if last_reviewed and hasattr(last_reviewed, 'isoformat'):
+                    last_reviewed = last_reviewed.isoformat()
+                
+                learning_words.append({
+                    'word_id': accessor('word_id'),
+                    'word': accessor('word'),
+                    'translation': accessor('translation'),
+                    'language': accessor('language'),
+                    'native_language': accessor('native_language'),
+                    'ipa': accessor('ipa'),
+                    'pos': accessor('pos'),
+                    'cefr': accessor('cefr'),
+                    'example': accessor('example'),
+                    'example_native': accessor('example_native'),
+                    'audio_url': accessor('audio_url'),
+                    'familiarity': familiarity,
+                    'seen_count': accessor('seen_count') or 0,
+                    'correct_count': accessor('correct_count') or 0,
+                    'last_reviewed': last_reviewed,
+                    'user_comment': accessor('user_comment')
+                })
+            
+            return jsonify({
+                'success': True,
+                'words': learning_words,
+                'total': total_count,
+                'stats': {
+                    'total': total_count,
+                    'by_familiarity': stats
+                },
+                'pagination': {
+                    'limit': limit,
+                    'offset': offset,
+                    'returned': len(learning_words),
+                    'has_more': (offset + len(learning_words)) < total_count
+                }
+            })
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"Error getting learning words: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @words_bp.get('/api/words/count')
 def api_words_count():
     """Get word count for a specific language (user-specific)"""
@@ -3951,15 +4273,16 @@ def api_words_count():
         conn = get_db_connection()
         
         if config['type'] == 'postgresql':
-            # PostgreSQL implementation - count words for user, language, native_language
+            # PostgreSQL implementation - count only words with familiarity >= 1
             result = execute_query(conn, """
                 SELECT COUNT(*) as count
-                FROM words w
-                LEFT JOIN user_word_familiarity uwf ON w.id = uwf.word_id 
-                    AND uwf.user_id = %s 
+                FROM user_word_familiarity uwf
+                INNER JOIN words w ON w.id = uwf.word_id
+                WHERE uwf.user_id = %s
                     AND uwf.native_language = %s
-                WHERE w.language = %s 
+                    AND w.language = %s
                     AND w.native_language = %s
+                    AND COALESCE(uwf.familiarity, 0) >= 1
             """, (user_id, native_language, language, native_language))
             
             row = result.fetchone()
@@ -3984,12 +4307,13 @@ def api_words_count():
             conn_sqlite.row_factory = sqlite3.Row
             cur = conn_sqlite.cursor()
             
-            # Count all words in local database for this language
+            # Count words with familiarity >= 1 in local database for this language
             cur.execute("""
                 SELECT COUNT(DISTINCT wl.word_hash) as count
                 FROM words_local wl
                 JOIN level_words lw ON lw.word_hashes LIKE '%' || wl.word_hash || '%'
                 WHERE lw.language = ?
+                  AND wl.familiarity >= 1
             """, (language,))
             
             row = cur.fetchone()
@@ -4004,6 +4328,7 @@ def api_words_count():
                 cur.execute("""
                     SELECT COUNT(*) as count
                     FROM words_local
+                    WHERE familiarity >= 1
                 """)
                 
                 row = cur.fetchone()
@@ -4151,7 +4476,6 @@ def api_word_get():
     if user_id:
         try:
             # Get familiarity from PostgreSQL user_word_familiarity table
-            from server.db import get_user_word_familiarity_by_word
             familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
             
             if familiarity_data:
@@ -4313,7 +4637,6 @@ def api_word_upsert():
             target_user_id = payload.get('user_id') or user_id
                 
             # Update word familiarity in PostgreSQL database
-            from server.db import update_user_word_familiarity_by_word
             success = update_user_word_familiarity_by_word(
                 user_id=target_user_id,
                 word=word,
@@ -5177,7 +5500,16 @@ def api_level_submit():
     except Exception:
         tl_submit = None
 
-    # Update word stats for current answers only - use local database for authenticated users
+    # Determine user's native language once
+    native_language = None
+    if user_id:
+        try:
+            native_language = get_user_native_language(user_id)
+        except Exception as e:
+            print(f"Error resolving native language for user {user_id}: {e}")
+            native_language = None
+
+    # Update word stats for current answers only - use PostgreSQL familiarity table for authenticated users
     now = datetime.now(UTC).isoformat()
     for a in (answers or []):
         try:
@@ -5196,25 +5528,18 @@ def api_level_submit():
             # seen +0,5, correct +0,5 if passed, familiarity bounded [0,5]
             delta = 1 if passed else -1
             
-            # Update local database for authenticated users
-            if user_id:
+            # Update familiarity for authenticated users via PostgreSQL helper
+            if user_id and native_language and tl_submit:
                 try:
-                    from server.db_multi_user import get_user_native_language
-                    from server.multi_user_db import db_manager
-                    
-                    native_language = get_user_native_language(user_id)
-                    word_hash = db_manager.generate_word_hash(w, tl_submit or '', native_language)
-                    
-                    # Update familiarity in local database
-                    db_manager.update_word_familiarity(
-                        user_id, 
-                        native_language, 
-                        word_hash, 
-                        delta, 
-                        passed
+                    _adjust_user_word_familiarity(
+                        user_id=user_id,
+                        word=w,
+                        language=tl_submit,
+                        native_language=native_language,
+                        delta=delta
                     )
                 except Exception as e:
-                    print(f"Error updating local familiarity for word {w}: {e}")
+                    print(f"Error updating familiarity for word '{w}': {e}")
             else:
                 # Fallback to global database for unauthenticated users
                 try:
@@ -5367,33 +5692,17 @@ def api_practice_grade():
     
     if is_authenticated:
         try:
-            from server.db_multi_user import get_user_native_language
-            from server.multi_user_db import db_manager
-            
             # Get user's native language
             native_language = get_user_native_language(user_id)
             
-            # Generate word hash for the word
-            word_hash = db_manager.generate_word_hash(word, lang, native_language)
-            
-            # Get current familiarity to calculate new value
-            familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, [word_hash])
-            current_familiarity = 0
-            if word_hash in familiarity_data:
-                current_familiarity = familiarity_data[word_hash]['familiarity']
-            
-            # Calculate new familiarity value
-            new_familiarity = max(0, min(5, current_familiarity + delta))
-            
-            # Update familiarity in user's local database
-            success = db_manager.update_user_word_familiarity(
-                user_id=user_id,
-                native_language=native_language,
-                word_hash=word_hash,
-                familiarity=new_familiarity
-            )
-            
-            # Success is handled silently - no need for debug output
+            if native_language:
+                _adjust_user_word_familiarity(
+                    user_id=user_id,
+                    word=word,
+                    language=lang,
+                    native_language=native_language,
+                    delta=delta
+                )
         except Exception as e:
             print(f"Error updating user word familiarity: {e}")
             import traceback
@@ -7564,7 +7873,6 @@ def debug_check_word_familiarity():
             return jsonify({"success": False, "error": "user_id must be a number"}), 400
         
         # Check familiarity using the new function
-        from server.db import get_user_word_familiarity_by_word
         familiarity_data = get_user_word_familiarity_by_word(user_id, word, language, native_language)
         
         if familiarity_data:
@@ -7614,7 +7922,6 @@ def debug_test_update_familiarity():
             return jsonify({"success": False, "error": "word and user_id required"}), 400
         
         # Test the update function directly
-        from server.db import update_user_word_familiarity_by_word
         success = update_user_word_familiarity_by_word(
             user_id=user_id,
             word=word,
@@ -7625,7 +7932,6 @@ def debug_test_update_familiarity():
         )
         
         # Also test reading the data back immediately
-        from server.db import get_user_word_familiarity_by_word
         read_back = get_user_word_familiarity_by_word(user_id, word, language, native_language)
         
         return jsonify({
