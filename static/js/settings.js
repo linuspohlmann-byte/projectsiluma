@@ -591,13 +591,13 @@ class SettingsManager {
                     }
                 }
                 
-                // Navigate to homepage after language change
+                // Navigate to library (homepage) after language change
                 if (window.showTab) {
                     try {
-                        window.showTab('levels'); // Use 'levels' instead of 'home'
-                        console.log('🌍 Navigated to homepage after language change');
+                        window.showTab('library'); // Show library tab (the new homepage)
+                        console.log('🌍 Navigated to library tab after language change');
                     } catch (error) {
-                        console.warn('⚠️ Failed to navigate to homepage:', error);
+                        console.warn('⚠️ Failed to navigate to library tab:', error);
                     }
                 }
                 
