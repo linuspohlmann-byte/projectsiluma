@@ -459,6 +459,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  
+  // Bind the back button to navigate to library/groups home
+  const wordsBackBtn = document.getElementById('words-back-button');
+  if (wordsBackBtn && !wordsBackBtn.dataset.bound) {
+    wordsBackBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🔙 Words back button clicked, navigating to library home');
+      
+      // Navigate to library tab (groups home)
+      if (typeof window.showTab === 'function') {
+        window.showTab('library');
+      }
+      
+      // Also show level groups home if function exists
+      if (typeof window.showLevelGroupsHome === 'function') {
+        window.showLevelGroupsHome();
+      }
+    });
+    wordsBackBtn.dataset.bound = 'true';
+  }
 });
 
 // Legacy für Inline-Nutzer
