@@ -8,57 +8,13 @@ import { wireEvaluationButtons, populateEvaluationScore, populateEvaluationStatu
 import { initAlphabet } from './ui/alphabet.js';
 import { initLocalization } from './ui/localization.js';
 import { initHeaderStats } from './ui/header-stats.js';
-import { loadWords, returnToLibraryHome } from './ui/words.js';
+import { returnToLibraryHome } from './ui/words.js';
 import './auth.js';
 import './settings.js';
 import './ui/marketplace.js';
 import './ui/custom-level-groups.js';
 
-// Initialize clickable statistics functionality
-function initClickableStats() {
-  // Words stat card - show all words for current course
-  const wordsStatCard = document.getElementById('words-stat-card');
-  if (wordsStatCard) {
-    wordsStatCard.addEventListener('click', async () => {
-      // Switch to words tab
-      showTab('words');
-      // Load all words for current course
-      await loadWords();
-    });
-  }
-
-  // Learned words stat card - show only learned words for current course
-  const learnedStatCard = document.getElementById('learned-stat-card');
-  if (learnedStatCard) {
-    learnedStatCard.addEventListener('click', async () => {
-      // Switch to words tab
-      showTab('words');
-      // Load words and filter to show only learned ones
-      await loadWords();
-      // Apply filter for learned words (familiarity = 5)
-      filterWordsByFamiliarity(5);
-    });
-  }
-}
-
-// Filter words by familiarity level
-function filterWordsByFamiliarity(familiarityLevel) {
-  // Get the filter input field
-  const filterInput = document.getElementById('wb-filter-q');
-  if (filterInput) {
-    // Set filter to show only words with specific familiarity
-    filterInput.value = String(familiarityLevel);
-    // Trigger filter update
-    filterInput.dispatchEvent(new Event('input'));
-  }
-  
-  // Also set the filter column to familiarity
-  const filterColumn = document.getElementById('wb-filter-col');
-  if (filterColumn) {
-    filterColumn.value = 'familiarity';
-    filterColumn.dispatchEvent(new Event('change'));
-  }
-}
+// Statistics cards are now non-clickable - just display stats
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Tooltip
@@ -113,9 +69,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('⚠️ Could not apply localization:', error);
   }
 
-  // Initialize clickable statistics
-  initClickableStats();
-  
   // Initialize navigation tabs to return to library home
   initNavigationHomeButtons();
 

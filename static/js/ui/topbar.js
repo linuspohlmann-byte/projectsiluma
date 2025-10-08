@@ -2,10 +2,9 @@
 
 // topbar.js — Navigation, language/topic prefs, header widgets
 // Public API: initTopbar(), refreshMaxFam()
-// Depends on: levels.js (showTab, setNativeDropdownVisible), words.js (loadWords)
+// Depends on: levels.js (showTab, setNativeDropdownVisible)
 
 import { showTab, setNativeDropdownVisible } from './levels.js';
-import { loadWords } from './words.js';
 import { t, setLocale, applyI18n, applySelectTranslations } from '../i18n.js';
 import { batchedFetch } from '../api-batcher.js';
 
@@ -346,12 +345,7 @@ function bindNav(){
   const setActive = (id)=>{ $$('.nav button').forEach(b=> b.classList.remove('active')); if(id) $(id)?.classList.add('active'); };
   // Home button removed, using library tab instead
   // Library tab is handled by the main navigation system
-  $('#show-words')?.addEventListener('click', ()=>{
-    setActive('#show-words');
-    showTab('words');
-    try{ loadWords(); }catch(_){ }
-    setNativeDropdownVisible(true);
-  });
+  // Words tab removed - no longer part of the app
   $('#nav-alphabet')?.addEventListener('click', ()=>{
     setActive('#nav-alphabet');
     try{ if(window.startAlphabet) window.startAlphabet(); }catch(_){ }

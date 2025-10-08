@@ -581,15 +581,8 @@ class SettingsManager {
                 // Reload all dynamic content that depends on language
                 await this.reloadAllLanguageDependentContent(nativeLang);
                 
-                // Reload words in background first to show new familiarity data for the new native language
-                if (window.loadWords) {
-                    try {
-                        await window.loadWords(false); // Don't switch to words tab
-                        console.log('🌍 Words reloaded for new native language:', nativeLang);
-                    } catch (error) {
-                        console.warn('⚠️ Failed to reload words for new native language:', error);
-                    }
-                }
+                // Words tab removed - no longer needed
+                console.log('🌍 Native language changed to:', nativeLang);
                 
                 // Don't force navigation after language change
                 // This was causing issues when users tried to switch tabs
@@ -667,9 +660,8 @@ class SettingsManager {
             navButtons.forEach(btn => {
                 if (btn.id === 'nav-alphabet') {
                     btn.textContent = window.t ? window.t('navigation.alphabet', 'Alphabet') : 'Alphabet';
-                } else if (btn.id === 'show-words') {
-                    btn.textContent = window.t ? window.t('navigation.words', 'Words') : 'Words';
                 }
+                // Words tab removed - no longer part of the app
             });
             
             // Update course configuration labels
@@ -1053,11 +1045,8 @@ SettingsManager.prototype.reloadAllLanguageDependentContent = async function(nat
             console.log('🌍 Header stats refreshed');
         }
         
-        // 5. Reload words data
-        if (window.loadWords) {
-            await window.loadWords(false);
-            console.log('🌍 Words data reloaded');
-        }
+        // 5. Words tab removed - no longer needed
+        console.log('🌍 Language-dependent content reloaded');
         
         // 6. Update all dropdowns and selects
         this.updateAllDropdowns(nativeLang);

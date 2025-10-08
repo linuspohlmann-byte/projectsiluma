@@ -2051,8 +2051,8 @@ export function setTopbarButtonsVisible(tab){
     const logoutBtn = document.getElementById('logout-btn');
     const loginBtn = document.getElementById('login-btn');
     
-    // Show buttons only on home page (levels) and words tab
-    const showButtons = tab === 'levels' || tab === 'words';
+    // Show buttons only on home page (levels)
+    const showButtons = tab === 'levels';
     
     if(settingsBtn) settingsBtn.style.display = showButtons ? '' : 'none';
     if(logoutBtn) logoutBtn.style.display = showButtons ? '' : 'none';
@@ -2063,7 +2063,6 @@ export function showTab(tab){
     const ids = {
     levels: '#levels-card',
     lesson: '#lesson',
-    words: '#words-tab',  // Now a modern tab
     evaluation: '#evaluation-card',
     practice: '#practice-card',
     library: '#library-tab',
@@ -2072,8 +2071,8 @@ export function showTab(tab){
     courses: '#courses-tab'
     };
     
-    // Handle new navigation tabs (including words)
-    if (['library', 'browse', 'settings', 'courses', 'words'].includes(tab)) {
+    // Handle new navigation tabs
+    if (['library', 'browse', 'settings', 'courses'].includes(tab)) {
         // Hide all legacy views (levels-card, lesson, evaluation, practice)
         // Note: words-card removed - words is now a modern tab
         ['#levels-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
@@ -2131,9 +2130,6 @@ export function showTab(tab){
             if (typeof window.loadCourseCards === 'function') {
                 window.loadCourseCards();
             }
-        } else if (tab === 'words') {
-            // Words tab is now a modern tab - no special handling needed
-            console.log('📚 Words tab activated');
         }
         
         return;
