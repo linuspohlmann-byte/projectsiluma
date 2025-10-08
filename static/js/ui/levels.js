@@ -2115,18 +2115,22 @@ export function showTab(tab){
         
         // Call specific tab activation functions
         if (tab === 'library') {
+            console.log('📚 Calling library callback...');
             if (typeof window.onLibraryTabActivated === 'function') {
                 window.onLibraryTabActivated();
             }
         } else if (tab === 'browse') {
+            console.log('🔍 Calling browse callback...');
             if (typeof window.initMarketplace === 'function') {
                 window.initMarketplace();
             }
         } else if (tab === 'settings') {
+            console.log('⚙️ Calling settings callback...');
             if (typeof window.loadSettings === 'function') {
                 window.loadSettings();
             }
         } else if (tab === 'courses') {
+            console.log('🌍 Calling courses callback...');
             if (typeof window.loadCourseCards === 'function') {
                 window.loadCourseCards();
             }

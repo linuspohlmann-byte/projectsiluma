@@ -7646,11 +7646,15 @@
         
         // Course cards functionality
         window.loadCourseCards = function() {
+          console.log('🌍 loadCourseCards called');
           const coursesGrid = document.getElementById('courses-grid');
           const coursesLoading = document.getElementById('courses-loading');
           const coursesError = document.getElementById('courses-error');
           
-          if (!coursesGrid || !coursesLoading || !coursesError) return;
+          if (!coursesGrid || !coursesLoading || !coursesError) {
+            console.error('❌ Courses tab elements not found!', {coursesGrid, coursesLoading, coursesError});
+            return;
+          }
           
           // Show loading state
           coursesGrid.style.display = 'none';
@@ -7661,9 +7665,11 @@
           const currentNativeLang = window.currentLocale || 'en';
           
           // Load available courses using the same logic as the dropdown
+          console.log('📡 Fetching courses for native lang:', currentNativeLang);
           fetch(`/api/available-courses?native_lang=${currentNativeLang}`)
             .then(response => response.json())
             .then(data => {
+              console.log('📡 Courses API response:', data);
               if (data.success && data.languages) {
                 // Store course data globally
                 window.courseData = {};
@@ -7671,6 +7677,7 @@
                   window.courseData[lang.code] = lang;
                 });
                 
+                console.log(`✅ Rendering ${data.languages.length} course cards`);
                 renderCourseCards(data.languages);
                 coursesLoading.style.display = 'none';
                 coursesGrid.style.display = 'grid';

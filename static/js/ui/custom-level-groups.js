@@ -98,6 +98,7 @@ async function loadCustomLevelGroups() {
         
         if (result.success) {
             customLevelGroups = result.groups;
+            console.log(`✅ Loaded ${customLevelGroups.length} custom level groups from API`);
         } else {
             console.error('Failed to load custom level groups:', result.error);
             customLevelGroups = [];
@@ -121,10 +122,15 @@ async function loadCustomLevelGroups() {
 
 // Render custom level groups
 function renderCustomLevelGroups() {
+    console.log('🎨 renderCustomLevelGroups called, groups:', customLevelGroups.length);
     const container = document.getElementById('custom-level-groups-container');
-    if (!container) return;
+    if (!container) {
+        console.error('❌ custom-level-groups-container not found!');
+        return;
+    }
     
     if (customLevelGroups.length === 0) {
+        console.log('📝 No custom groups, showing empty state');
         container.innerHTML = `
             <div class="no-custom-groups">
                 <div class="icon">🎯</div>
@@ -138,11 +144,13 @@ function renderCustomLevelGroups() {
         return;
     }
     
+    console.log(`🎨 Rendering ${customLevelGroups.length} custom groups`);
     container.innerHTML = `
         <div class="level-groups-grid">
             ${customLevelGroups.map(group => renderCustomGroupCard(group)).join('')}
         </div>
     `;
+    console.log('✅ Custom groups rendered successfully');
 }
 
 // Render individual custom group card
