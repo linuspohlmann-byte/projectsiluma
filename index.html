@@ -41,6 +41,16 @@
     html, body, #root, .app, .container, .wrapper{background:var(--bg) !important}
     .shell{width:80vw;max-width:1400px;margin:0 auto;padding:24px 20px 40px;min-height:100vh;box-sizing:border-box;background:var(--bg)}
 
+    /* 16:9 full-viewport stage wrapper */
+    .stage-16x9{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;}
+    .stage-16x9 .stage-inner{position:relative;width:100vw;height:calc(100vw * 9 / 16);display:flex;align-items:stretch;justify-content:center;overflow:auto}
+    @media (max-aspect-ratio: 16/9){
+      .stage-16x9 .stage-inner{height:100vh;width:calc(100vh * 16 / 9)}
+    }
+    /* Ensure app content fills the stage and ignores previous width caps */
+    .stage-16x9 .shell{width:100%;max-width:none;min-height:100%;margin:0;padding:24px 20px 24px}
+    .stage-16x9 .card.eval, .stage-16x9 #lesson.card{width:100%;max-width:none}
+
     /* Header */
     header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
     .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:16px;background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:500;letter-spacing:.1px;border:1px solid var(--border);box-shadow:0 1px 2px var(--shadow);transition:all .2s ease}
@@ -1678,10 +1688,30 @@
       min-height: 400px;
     }
     
+    .global-stat-bar {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: stretch;
+      margin: 16px 0 24px 0;
+    }
+    
+    .global-stat-bar .stat-card {
+      flex: 1 1 200px;
+      min-width: 160px;
+      background: var(--card);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      border: 1px solid var(--border);
+    }
+    
     .library-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
       margin-bottom: 24px;
       padding-bottom: 16px;
       border-bottom: 2px solid var(--border);
@@ -1698,17 +1728,6 @@
       color: var(--text-secondary);
       font-size: 14px;
       margin-top: 4px;
-    }
-    
-    .library-stats {
-      display: flex;
-      gap: 16px;
-      align-items: center;
-    }
-    
-    .library-stats .stat-card {
-      flex: 1;
-      min-width: 0;
     }
     
     .stat-item {
@@ -2086,15 +2105,15 @@
       }
       
       
+      .global-stat-bar {
+        flex-direction: column;
+        margin: 12px 0 20px;
+      }
+      
       .library-header {
         flex-direction: column;
         gap: 16px;
         align-items: flex-start;
-      }
-      
-      .library-stats {
-        flex-wrap: wrap;
-        gap: 8px;
       }
       
       .stat-item {
@@ -2102,8 +2121,10 @@
       }
       
       .quick-actions-buttons {
-        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
         gap: 12px;
+        width: 100%;
       }
       
       
@@ -3680,6 +3701,306 @@
       cursor: not-allowed;
     }
 
+    /* New Words tab (learning view) */
+    .words-learning {
+      background: transparent;
+      padding: 24px;
+      border-radius: 0 0 12px 12px;
+    }
+
+    .words-learning-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .words-learning-title {
+      font-size: 28px;
+      margin: 0;
+      color: var(--fg);
+    }
+
+    .words-learning-subtitle {
+      margin: 8px 0 0;
+      color: var(--text-secondary);
+      max-width: 520px;
+    }
+
+    .words-learning-controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+      align-items: center;
+    }
+
+    .words-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .words-filter-chip {
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text-secondary);
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .words-filter-chip:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .words-filter-chip.active {
+      background: var(--accent);
+      color: white;
+      border-color: transparent;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.20);
+    }
+
+    .words-search-sort {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .words-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 16px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+    }
+
+    .words-search-icon {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+
+    .words-search-input {
+      border: none;
+      outline: none;
+      font-size: 14px;
+      min-width: 220px;
+      background: transparent;
+      color: var(--fg);
+    }
+
+    .words-sort {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .words-sort-select {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--fg);
+    }
+
+    .words-learning-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 32px 0;
+      color: var(--text-secondary);
+    }
+
+    .words-learning-message {
+      display: none;
+      padding: 32px 0;
+    }
+
+    .message-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 32px;
+      border: 1px solid var(--border);
+      max-width: 520px;
+      margin: 0 auto;
+      text-align: center;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .message-card h3 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      color: var(--fg);
+    }
+
+    .message-card p {
+      margin: 0 0 16px;
+      color: var(--text-secondary);
+    }
+
+    .primary-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.18);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .primary-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 28px rgba(37, 99, 235, 0.22);
+    }
+
+    .message-card .primary-btn {
+      padding: 10px 20px;
+    }
+
+    .words-learning-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .word-learning-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .word-learning-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px rgba(37, 99, 235, 0.15);
+    }
+
+    .word-card-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .word-card-title {
+      font-size: 20px;
+      margin: 0;
+      color: var(--fg);
+      word-break: break-word;
+    }
+
+    .word-card-translation {
+      margin: 4px 0 0;
+      color: var(--text-secondary);
+    }
+
+    .familiarity-badge {
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .familiarity-0 { background: rgba(210, 229, 253, 0.5); color: #1d4ed8; }
+    .familiarity-1 { background: rgba(232, 220, 255, 0.6); color: #7c3aed; }
+    .familiarity-2 { background: rgba(251, 216, 197, 0.6); color: #ea580c; }
+    .familiarity-3 { background: rgba(217, 249, 157, 0.6); color: #4d7c0f; }
+    .familiarity-4 { background: rgba(191, 219, 254, 0.6); color: #1d4ed8; }
+
+    .word-card-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .word-card-chip {
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 4px 8px;
+    }
+
+    .word-card-example {
+      margin: 0;
+      font-size: 14px;
+      color: var(--fg);
+    }
+
+    .word-card-example-native {
+      margin: 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .word-card-footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .word-progress {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .progress-pill {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 4px 8px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .word-last-reviewed {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    @media (max-width: 768px) {
+      .words-learning {
+        padding: 16px;
+      }
+      .words-learning-header {
+        gap: 16px;
+      }
+      .words-search-input {
+        min-width: 160px;
+      }
+      .words-learning-grid {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      }
+    }
+
     /* Familiarity badges */
     .familiarity-badge {
       display: inline-block;
@@ -5061,6 +5382,7 @@
     <div class="loader-box"><div class="spinner"></div><div class="loader-text" data-i18n="ui.loading_result">Lade Ergebnis…</div></div>
   </div>
   <div id="dbg" style="position:fixed;left:8px;bottom:8px;font:12px/1.2 system-ui;background:var(--surface);color:var(--text-secondary);padding:6px 8px;border:1px solid var(--border);border-radius:6px;z-index:2000" data-i18n="ui.rendered">rendered</div>
+  <div class="stage-16x9"><div class="stage-inner">
   <div class="shell">
     <!-- Combined Navigation Bar -->
     <div id="main-navigation" class="main-navigation">
@@ -5087,6 +5409,10 @@
               <div class="select-arrow">▼</div>
             </div>
           </div>
+        </button>
+        <button class="nav-tab" data-tab="words">
+          <span class="tab-icon">📝</span>
+          <span class="tab-label" data-i18n="tabs.words">Wörter</span>
         </button>
         
         <!-- User Authentication -->
@@ -5149,6 +5475,23 @@
       </div>
     </div>
 
+    <div class="global-stat-bar" aria-live="polite">
+      <div class="stat-card" id="words-stat-card">
+        <div class="stat-icon">📖</div>
+        <div class="stat-content">
+          <div class="stat-label">Wörter</div>
+          <div id="total-words-count" class="stat-value">0</div>
+        </div>
+      </div>
+      <div class="stat-card" id="learned-stat-card">
+        <div class="stat-icon">💡</div>
+        <div class="stat-content">
+          <div class="stat-label">Gelernt</div>
+          <div id="memorized-words-count" class="stat-value">0</div>
+        </div>
+      </div>
+    </div>
+
     <section id="levels-card" class="card">
       <!-- Enhanced Course Configuration -->
       <div class="enhanced-course-config">
@@ -5203,22 +5546,6 @@
               <div>
                 <h2 class="library-title" data-i18n="library.title">📚 Meine Bibliothek</h2>
                 <p class="library-subtitle" data-i18n="library.subtitle">Deine gespeicherten Kurse und Fortschritte</p>
-              </div>
-              <div class="library-stats">
-                <div class="stat-card" id="words-stat-card">
-                  <div class="stat-icon">📖</div>
-                  <div class="stat-content">
-                    <div class="stat-label">Wörter</div>
-                    <div id="total-words-count" class="stat-value">0</div>
-                  </div>
-                </div>
-                <div class="stat-card" id="learned-stat-card">
-                  <div class="stat-icon">💡</div>
-                  <div class="stat-content">
-                    <div class="stat-label">Gelernt</div>
-                    <div id="memorized-words-count" class="stat-value">0</div>
-                  </div>
-                </div>
               </div>
             </div>
             
@@ -5305,7 +5632,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Courses Tab Content -->
         <div id="courses-tab" class="tab-content">
           <div class="courses-container">
@@ -5328,6 +5655,77 @@
               <p>Fehler beim Laden der Sprachen. Bitte versuche es erneut.</p>
               <button id="retry-courses" class="retry-btn">Erneut versuchen</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Words Tab Content -->
+        <div id="words-tab" class="tab-content">
+          <div class="words-learning">
+            <div class="words-learning-header">
+              <div>
+                <h2 class="words-learning-title" data-i18n="words.learning.title">Wörter, die ich gerade lerne</h2>
+                <p class="words-learning-subtitle" data-i18n="words.learning.subtitle">Verfolge deine aktiven Lernwörter und ihren Fortschritt</p>
+              </div>
+            </div>
+
+            <div class="words-learning-controls">
+              <div class="words-filters" id="words-filter-group">
+                <button type="button" class="words-filter-chip active" data-filter="all" data-i18n="words.learning.filter.all">Alle Wörter</button>
+                <button type="button" class="words-filter-chip" data-filter="new" data-i18n="words.learning.filter.new">Neu</button>
+                <button type="button" class="words-filter-chip" data-filter="learning" data-i18n="words.learning.filter.learning">In Arbeit</button>
+                <button type="button" class="words-filter-chip" data-filter="confident" data-i18n="words.learning.filter.confident">Fast geschafft</button>
+              </div>
+              <div class="words-search-sort">
+                <div class="words-search">
+                  <span class="words-search-icon">🔍</span>
+                  <input id="words-search-input" class="words-search-input" type="search" data-i18n-placeholder="words.learning.search_placeholder" placeholder="Nach einem Wort suchen...">
+                </div>
+                <div class="words-sort">
+                  <label for="words-sort-select" class="words-sort-label" data-i18n="words.learning.sort.label">Sortierung</label>
+                  <select id="words-sort-select" class="words-sort-select">
+                    <option value="recent" data-i18n="words.learning.sort.recent">Zuletzt geübt</option>
+                    <option value="challenge" data-i18n="words.learning.sort.difficulty">Größte Herausforderung</option>
+                    <option value="alphabetical" data-i18n="words.learning.sort.alphabetical">Alphabetisch</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div id="words-learning-loading" class="words-learning-loading" style="display:none;">
+              <div class="loading-spinner"></div>
+              <p data-i18n="ui.loading_result">Lade Ergebnis…</p>
+            </div>
+
+            <div id="words-learning-auth" class="words-learning-message" style="display:none;">
+              <div class="message-card">
+                <h3 data-i18n="words.learning.login_title">Melde dich an, um loszulegen</h3>
+                <p data-i18n="words.learning.login_copy">Hier erscheinen alle Wörter, die du aktiv übst. Melde dich an, um deine persönliche Liste zu sehen.</p>
+                <button id="words-login-button" class="primary-btn" type="button" data-i18n="topbar.login">Anmelden</button>
+              </div>
+            </div>
+
+            <div id="words-learning-language" class="words-learning-message" style="display:none;">
+              <div class="message-card">
+                <h3 data-i18n="words.learning.language_title">Sprache auswählen</h3>
+                <p data-i18n="words.learning.language_copy">Wähle oben eine Kurssprache, um deine aktuellen Lernwörter anzuzeigen.</p>
+              </div>
+            </div>
+
+            <div id="words-learning-empty" class="words-learning-message" style="display:none;">
+              <div class="message-card">
+                <h3 data-i18n="words.learning.empty_title">Du bist auf einem großartigen Lauf!</h3>
+                <p data-i18n="words.learning.empty_copy">Sobald du neue Wörter übst, tauchen sie hier mit ihren Fortschrittsdetails auf.</p>
+              </div>
+            </div>
+
+            <div id="words-learning-error" class="words-learning-message" style="display:none;">
+              <div class="message-card">
+                <h3 data-i18n="words.learning.error_title">Da ist etwas schiefgelaufen</h3>
+                <p id="words-error-message" data-i18n="words.learning.error_copy">Die Wörter konnten nicht geladen werden. Bitte versuche es später noch einmal.</p>
+              </div>
+            </div>
+
+            <div id="words-learning-grid" class="words-learning-grid"></div>
           </div>
         </div>
 
@@ -5557,6 +5955,7 @@
       </div>
     </section>
   </div>
+  </div></div>
 
 
     <div id="level-tip" style="display:none">
@@ -6966,30 +7365,26 @@
         
         // Function to update library statistics and progress stats
         function updateLibraryStats() {
-            // This would typically fetch real data from the API
-            // For now, we'll use placeholder data
-            const totalCourses = 12; // Number of available languages
-            const completedLevels = 0; // Would be fetched from user progress
-            const wordsLearned = 0; // Would be fetched from user words
-            const totalWords = 0; // Total words in course
-            const memorizedWords = 0; // Words learned by user
+            // Derive counts from header stats if available
+            const latestCounts = (window.headerStats && window.headerStats.latestCounts) || {};
+            const activeWords = Number(latestCounts.activeWords || 0);
+            const memorizedWords = Number(latestCounts.memorizedWords || 0);
             
-            // Update library stats (if elements still exist)
+            // Optional legacy stats (currently unused placeholders)
             const totalCoursesEl = document.getElementById('total-courses');
             const completedLevelsEl = document.getElementById('completed-levels');
             const wordsLearnedEl = document.getElementById('words-learned');
             
-            if (totalCoursesEl) totalCoursesEl.textContent = totalCourses;
-            if (completedLevelsEl) completedLevelsEl.textContent = completedLevels;
-            if (wordsLearnedEl) wordsLearnedEl.textContent = wordsLearned;
+            if (totalCoursesEl && totalCoursesEl.dataset.static !== 'true') totalCoursesEl.textContent = '12';
+            if (completedLevelsEl && completedLevelsEl.dataset.static !== 'true') completedLevelsEl.textContent = '0';
+            if (wordsLearnedEl && wordsLearnedEl.dataset.static !== 'true') wordsLearnedEl.textContent = '0';
             
             // Update progress stats in library header
             const totalWordsCountEl = document.getElementById('total-words-count');
             const memorizedWordsCountEl = document.getElementById('memorized-words-count');
             
-            if (totalWordsCountEl) totalWordsCountEl.textContent = totalWords;
-            if (memorizedWordsCountEl) memorizedWordsCountEl.textContent = memorizedWords;
-            
+            if (totalWordsCountEl) totalWordsCountEl.textContent = activeWords.toLocaleString();
+            if (memorizedWordsCountEl) memorizedWordsCountEl.textContent = memorizedWords.toLocaleString();
         }
         
         // Update library stats when library tab becomes active
@@ -7004,6 +7399,8 @@
         // Make functions globally available
         window.onLibraryTabActivated = onLibraryTabActivated;
         window.loadSettings = loadSettings;
+        
+        document.addEventListener('headerStatsUpdated', updateLibraryStats);
         
         // Initialize custom level groups when page loads
         document.addEventListener('DOMContentLoaded', function() {
@@ -8065,5 +8462,6 @@
   <script src="/static/js/sounds.js"></script>
   <script src="/static/js/performance-optimizer.js"></script>
   <script src="/static/js/onboarding.js"></script>
+  <script src="/static/js/ui/words-learning.js"></script>
   <script src="/static/js/ui/custom-level-groups.js"></script>
   <script type="module" src="/static/js/main.js"></script>

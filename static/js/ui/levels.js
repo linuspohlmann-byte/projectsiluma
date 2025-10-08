@@ -2072,13 +2072,14 @@ export function showTab(tab){
     };
     
     // Handle new navigation tabs
-    if (['library', 'browse', 'settings', 'courses'].includes(tab)) {
-        // Hide all legacy views (levels-card, lesson, evaluation, practice)
-        // Note: words-card removed - words is now a modern tab
-        ['#levels-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
+    if (['library', 'browse', 'settings', 'courses', 'words'].includes(tab)) {
+        // Hide legacy single-view screens but keep the tab container visible
+        ['#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
             const el=$(id); 
             if(el) el.style.display='none'; 
         });
+        const levelsCard = document.getElementById('levels-card');
+        if(levelsCard) levelsCard.style.display='';
         
         // Hide all tab contents
         const tabContents = document.querySelectorAll('.tab-content');
@@ -2110,6 +2111,12 @@ export function showTab(tab){
         if (tab === 'courses') {
             if (typeof window.loadCourseCards === 'function') {
                 window.loadCourseCards();
+            }
+        }
+        if (tab === 'words') {
+            console.log('📝 Calling words tab callback...');
+            if (window.wordsTabManager && typeof window.wordsTabManager.activate === 'function') {
+                window.wordsTabManager.activate();
             }
         }
         

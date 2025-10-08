@@ -187,11 +187,20 @@ export async function updateFromWordsData() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
-    // Get total words count
-    const totalResponse = await fetch(`/api/words/count?language=${encodeURIComponent(currentLanguage)}`, { 
-      headers,
-      signal: controller.signal
-    });
+    // Get active learning words (familiarity < 5)
+    let learningResponse = null;
+    if (isUserAuthenticated) {
+      const learningParams = new URLSearchParams({
+        language: currentLanguage,
+        min_familiarity: '1',
+        max_familiarity: '4',
+        limit: '1'
+      });
+      learningResponse = await fetch(`/api/words/learning?${learningParams.toString()}`, {
+        headers,
+        signal: controller.signal
+      });
+    }
     
     // Get learned words count (familiarity = 5) - only for authenticated users
     let learnedResponse = null;
@@ -204,15 +213,24 @@ export async function updateFromWordsData() {
     
     clearTimeout(timeoutId);
     
-    let totalWords = 0;
+    let activeWords = 0;
     let learnedWords = 0;
     
-    if (totalResponse.ok) {
-      const totalData = await totalResponse.json();
-      totalWords = totalData.count || 0;
-      console.log('📊 Total words API response:', totalData);
+    if (learningResponse) {
+      if (learningResponse.ok) {
+        const learningData = await learningResponse.json();
+        if (learningData && learningData.success) {
+          activeWords = learningData.total || 0;
+          console.log('📊 Active words API response:', learningData);
+        } else {
+          console.warn('📊 Learning words response did not include success flag, raw data:', learningData);
+        }
+      } else {
+        console.error('Failed to fetch learning words:', learningResponse.status, learningResponse.statusText);
+      }
     } else {
-      console.error('Failed to fetch total words count:', totalResponse.status, totalResponse.statusText);
+      console.log('📊 Skipping learning words fetch - user not authenticated');
+      activeWords = 0;
     }
     
     if (learnedResponse && learnedResponse.ok) {
@@ -228,7 +246,7 @@ export async function updateFromWordsData() {
     
     // Update UI elements
     if (totalWordsEl) {
-      totalWordsEl.textContent = totalWords.toLocaleString();
+      totalWordsEl.textContent = activeWords.toLocaleString();
       totalWordsEl.style.transform = 'scale(1.1)';
       setTimeout(() => {
         totalWordsEl.style.transform = 'scale(1)';
@@ -243,7 +261,17 @@ export async function updateFromWordsData() {
       }, 200);
     }
     
-    console.log('📊 Header stats updated from words data:', { totalWords, learnedWords });
+    // Expose latest counts globally for other modules (e.g. library cards)
+    if (!window.headerStats) window.headerStats = {};
+    window.headerStats.latestCounts = {
+      activeWords,
+      memorizedWords: learnedWords
+    };
+    document.dispatchEvent(new CustomEvent('headerStatsUpdated', {
+      detail: { activeWords, memorizedWords: learnedWords }
+    }));
+    
+    console.log('📊 Header stats updated from words data:', { activeWords, learnedWords });
   } catch (error) {
     if (error.name === 'AbortError') {
       console.log('⏱️ Header stats update timed out - using fallback data');
