@@ -473,9 +473,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.showTab('library');
       }
       
-      // Also show level groups home if function exists
-      if (typeof window.showLevelGroupsHome === 'function') {
-        window.showLevelGroupsHome();
+      // Reload custom groups to ensure they're visible
+      if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+        setTimeout(() => {
+          console.log('🔄 Reloading custom groups after navigation');
+          window.showCustomLevelGroupsInLibrary();
+        }, 100);
       }
     });
     wordsBackBtn.dataset.bound = 'true';
