@@ -4481,14 +4481,14 @@ def api_word_upsert():
 
 @words_bp.post('/api/words/adjust-familiarity')
 def api_words_adjust_familiarity():
-    """Adjust familiarity level for a word"""
+    """Adjust familiarity level for a word - PostgreSQL version"""
     try:
         # Get user context from middleware
         user_context = get_user_context()
         user_id = user_context['user_id']
         
         payload = request.get_json(force=True) or {}
-        word = (payload.get('word') or '').strip()
+        word = (payload.get('word') or '').strip().lower()  # Normalize to lowercase
         delta = payload.get('delta', 0)
         
         if not word:
@@ -4501,40 +4501,78 @@ def api_words_adjust_familiarity():
             # Not authenticated - return error
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
-        # Get current familiarity from local database
-        from server.db_multi_user import get_user_native_language
-        from server.multi_user_db import db_manager
+        # Get native language from user context or header
+        native_language = user_context.get('native_language') or request.headers.get('X-Native-Language', 'en')
         
-        native_language = get_user_native_language(user_id)
-        word_hash = db_manager.generate_word_hash(word, language, native_language)
+        # Use PostgreSQL database
+        from server.db_config import get_database_config, get_db_connection, execute_query
         
-        # Get current familiarity from local database
-        familiarity_data = db_manager.get_user_word_familiarity(user_id, native_language, [word_hash])
-        current_familiarity = 0
-        if word_hash in familiarity_data:
-            current_familiarity = familiarity_data[word_hash]['familiarity']
+        config = get_database_config()
+        if config['type'] != 'postgresql':
+            return jsonify({'success': False, 'error': 'PostgreSQL required'}), 500
         
-        new_familiarity = max(0, min(5, current_familiarity + delta))
+        conn = get_db_connection()
+        
+        try:
+            # Get word_id from words table
+            result = execute_query(conn, """
+                SELECT id FROM words
+                WHERE word = %s AND language = %s AND native_language = %s
+                LIMIT 1
+            """, (word, language, native_language))
             
-        # Update familiarity in local database
-        success = db_manager.update_user_word_familiarity(
-            user_id=user_id,
-            native_language=native_language,
-            word_hash=word_hash,
-            familiarity=new_familiarity
-        )
-        
-        if not success:
-            return jsonify({'success': False, 'error': 'Failed to update familiarity'}), 500
+            word_row = result.fetchone()
+            if not word_row:
+                return jsonify({'success': False, 'error': 'Word not found in database'}), 404
             
-        return jsonify({
-            'success': True,
-            'familiarity': new_familiarity,
-            'delta': new_familiarity - current_familiarity,
-            'authenticated': True
-        })
+            word_id = word_row['id']
+            
+            # Get current familiarity from user_word_familiarity
+            result = execute_query(conn, """
+                SELECT familiarity FROM user_word_familiarity
+                WHERE user_id = %s AND word_id = %s
+                LIMIT 1
+            """, (user_id, word_id))
+            
+            familiarity_row = result.fetchone()
+            current_familiarity = familiarity_row['familiarity'] if familiarity_row else 0
+            
+            # Calculate new familiarity
+            new_familiarity = max(0, min(5, current_familiarity + delta))
+            
+            # Update or insert familiarity
+            if familiarity_row:
+                # Update existing record
+                execute_query(conn, """
+                    UPDATE user_word_familiarity
+                    SET familiarity = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s AND word_id = %s
+                """, (new_familiarity, user_id, word_id))
+            else:
+                # Insert new record
+                execute_query(conn, """
+                    INSERT INTO user_word_familiarity (user_id, word_id, familiarity, created_at, updated_at)
+                    VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (user_id, word_id, new_familiarity))
+            
+            conn.commit()
+            
+            print(f"✅ Updated familiarity for '{word}' (user {user_id}): {current_familiarity} → {new_familiarity}")
+            
+            return jsonify({
+                'success': True,
+                'familiarity': new_familiarity,
+                'delta': new_familiarity - current_familiarity,
+                'authenticated': True
+            })
+            
+        finally:
+            conn.close()
             
     except Exception as e:
+        print(f"❌ Error adjusting familiarity: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @words_bp.post('/api/word/enrich_batch')
