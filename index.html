@@ -39,7 +39,7 @@
     div:not([class*="card"]):not([class*="modal"]):not([class*="tooltip"]):not([class*="level"]):not([class*="onboarding"]){background:transparent}
     /* Ensure the entire viewport has correct background */
     html, body, #root, .app, .container, .wrapper{background:var(--bg) !important}
-    .shell{width:80vw;max-width:1400px;margin:0 auto;padding:24px 20px 40px;min-height:100vh;box-sizing:border-box;background:var(--bg)}
+    .shell{width:100%;max-width:none;margin:0;padding:24px 20px 40px;min-height:100vh;box-sizing:border-box;background:var(--bg)}
 
     /* Make topbar sticky globally */
     .main-navigation{position:sticky;top:0;z-index:500}
@@ -1608,12 +1608,12 @@
     }
     
     @media (max-width: 768px) {
-      .shell{width:95vw;max-width:none}
+      .shell{width:100%;max-width:none}
       .custom-level-groups-section {
         padding: 16px;
       }
-      .card.eval{ width:95vw; max-width:none }
-      #lesson.card{ width:95vw; max-width:none }
+      .card.eval{ width:100%; max-width:none }
+      #lesson.card{ width:100%; max-width:none }
       
       .courses-title {
         font-size: 2rem;
@@ -2461,12 +2461,12 @@
 
     /* Responsive Design */
     @media (max-width: 1200px) and (min-width: 769px) {
-      .shell{width:90vw;max-width:1200px}
+      .shell{width:100%;max-width:none}
       .custom-level-groups-section {
         padding: 20px;
       }
-      .card.eval{ width:90vw; max-width:1200px }
-      #lesson.card{ width:90vw; max-width:1200px }
+      .card.eval{ width:100%; max-width:none }
+      #lesson.card{ width:100%; max-width:none }
     }
     
     @media (max-width: 1200px) {
@@ -4730,7 +4730,7 @@
   }
 
     /* Evaluation redesign */
-    .card.eval{ width:80vw; max-width:1400px; margin-left:auto; margin-right:auto; padding:36px 32px; background: var(--card); border:1px solid var(--border); backdrop-filter: blur(8px); box-shadow:0 4px 16px var(--shadow); }
+    .card.eval{ width:100%; max-width:none; margin-left:auto; margin-right:auto; padding:36px 32px; background: var(--card); border:1px solid var(--border); backdrop-filter: blur(8px); box-shadow:0 4px 16px var(--shadow); }
     .center-col{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px }
     .center-row{ display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap }
     .eval-title{ font-size:28px; font-weight:700; letter-spacing:.1px; margin:0; text-align:center; color:var(--fg) }
@@ -4978,7 +4978,7 @@
     }
 
     /* ---- Layout polish v1 ---- */
-    #lesson.card{ width:80vw; max-width:1400px; margin-left:auto; margin-right:auto; box-sizing:border-box; overflow:hidden }
+    #lesson.card{ width:100%; max-width:none; margin-left:auto; margin-right:auto; box-sizing:border-box; overflow:hidden }
     :root{ --s1:8px; --s2:12px; --s3:16px }
     #sentence-wrap{ gap: var(--s2) }
 
