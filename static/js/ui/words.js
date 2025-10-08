@@ -15,6 +15,12 @@ export function initWordsBackButton() {
       WSEL.clear();
       updateSelCount();
       
+      // Show levels-card (which contains the library content)
+      const levelsCard = document.getElementById('levels-card');
+      if (levelsCard) {
+        levelsCard.style.display = '';
+      }
+      
       // Navigate to library tab (home page)
       if (typeof window.showTab === 'function') {
         window.showTab('library');
