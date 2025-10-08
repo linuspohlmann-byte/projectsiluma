@@ -4,6 +4,7 @@ Handles creation and management of user-defined level groups with AI-generated c
 """
 
 import json
+import re
 import sqlite3
 from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
