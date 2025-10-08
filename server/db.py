@@ -342,18 +342,29 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
     try:
         now = datetime.now(UTC).isoformat()
         if config['type'] == 'postgresql':
-            execute_query(conn, '''
-                INSERT INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id, group_id)
-                DO UPDATE SET stars = EXCLUDED.stars, comment = EXCLUDED.comment, updated_at = EXCLUDED.updated_at
-            ''', (group_id, user_id, stars_int, comment, now, now))
+            # Try update first
+            updated = execute_query(conn, '''
+                UPDATE custom_level_group_ratings
+                SET stars = %s, comment = %s, updated_at = %s
+                WHERE group_id = %s AND user_id = %s
+            ''', (stars_int, comment, now, group_id, user_id)).rowcount
+            if not updated:
+                execute_query(conn, '''
+                    INSERT INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (group_id, user_id, stars_int, comment, now, now))
         else:
             cur = conn.cursor()
             cur.execute('''
-                INSERT OR REPLACE INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (group_id, user_id, stars_int, comment, now, now))
+                UPDATE custom_level_group_ratings
+                SET stars = ?, comment = ?, updated_at = ?
+                WHERE group_id = ? AND user_id = ?
+            ''', (stars_int, comment, now, group_id, user_id))
+            if cur.rowcount == 0:
+                cur.execute('''
+                    INSERT INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (group_id, user_id, stars_int, comment, now, now))
         conn.commit()
         return True
     except Exception as e:
