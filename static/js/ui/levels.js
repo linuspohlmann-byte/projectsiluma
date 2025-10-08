@@ -1662,6 +1662,14 @@ async function updateGroupStatsInOverview() {
 }
 
 async function showGroupsContainer(){
+  // Only manipulate groups if we're on the library tab
+  // This prevents conflicts when user is on browse/courses/settings/words tabs
+  const libraryTab = document.getElementById('library-tab');
+  if (!libraryTab || !libraryTab.classList.contains('active')) {
+    console.log('⏭️ Skipping showGroupsContainer - not on library tab');
+    return;
+  }
+  
   // Prevent race conditions with loading lock
   if (GROUPS_LOADING_LOCK) {
     console.log('🔄 Groups loading already in progress, skipping...');
