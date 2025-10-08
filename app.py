@@ -22,7 +22,7 @@ from server.db import (
 )
 
 def _register_debug_routes():
-    @custom_levels_bp.get('/api/debug/ratings-table')
+    @app.get('/api/debug/ratings-table')
     @require_auth(optional=True)
     def api_debug_ratings_table():
         """Ensure and verify the marketplace ratings table exists (PostgreSQL) and report stats."""
