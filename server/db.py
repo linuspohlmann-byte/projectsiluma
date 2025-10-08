@@ -893,6 +893,22 @@ def init_db():
             );
         """)
         
+        # Ensure marketplace group ratings table exists (PostgreSQL)
+        execute_query(conn, """
+            CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
+                id SERIAL PRIMARY KEY,
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                stars INTEGER NOT NULL CHECK (stars >= 1 AND stars <= 5),
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, group_id),
+                FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            );
+        """)
+        
         # Marketplace group ratings table
         execute_query(conn, """
             CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
@@ -1080,6 +1096,50 @@ def init_db():
         conn.commit()
     
     conn.close()
+
+def create_custom_level_group_ratings_table():
+    """Create ratings table explicitly; safe to run multiple times."""
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        if config['type'] == 'postgresql':
+            execute_query(conn, """
+                CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
+                    id SERIAL PRIMARY KEY,
+                    group_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    stars INTEGER NOT NULL CHECK (stars >= 1 AND stars <= 5),
+                    comment TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, group_id),
+                    FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                );
+            """)
+        else:
+            cur = conn.cursor()
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              group_id INTEGER NOT NULL,
+              user_id INTEGER NOT NULL,
+              stars INTEGER NOT NULL CHECK (stars >= 1 AND stars <= 5),
+              comment TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              UNIQUE(user_id, group_id),
+              FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+              FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            );
+            """)
+            conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error creating ratings table: {e}")
+        return False
+    finally:
+        conn.close()
 # --- Words CRUD helpers ---
 
 def list_words_rows():

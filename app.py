@@ -18,7 +18,7 @@ from server.db import (
 from server.db import (
     get_localization_for_language, get_missing_translations,
     # marketplace ratings helpers
-    upsert_group_rating, get_group_rating_stats, get_recent_group_comments
+    upsert_group_rating, get_group_rating_stats, get_recent_group_comments, create_custom_level_group_ratings_table
 )
 
 def _register_debug_routes():
@@ -28,7 +28,7 @@ def _register_debug_routes():
         """Ensure and verify the marketplace ratings table exists (PostgreSQL) and report stats."""
         try:
             # Ensure tables exist
-            init_db()
+            init_db(); create_custom_level_group_ratings_table()
             
             conn = get_db()
             try:
