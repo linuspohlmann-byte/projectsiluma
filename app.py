@@ -11,6 +11,14 @@ from server.db import (
     get_localization_entry, upsert_localization_entry, get_all_localization_entries,
     get_localization_for_language, get_missing_translations,
     get_user_word_familiarity_by_word, update_user_word_familiarity_by_word,
+    # marketplace ratings
+    # legacy level ratings kept above; new marketplace ratings below
+    get_localization_entry, upsert_localization_entry, get_all_localization_entries,
+)
+from server.db import (
+    get_localization_for_language, get_missing_translations,
+    # marketplace ratings helpers
+    upsert_group_rating, get_group_rating_stats, get_recent_group_comments
 )
 from server.db_multi_user import (
     get_level_words_with_familiarity, unlock_level_words,
@@ -3153,6 +3161,14 @@ def api_get_marketplace_custom_level_groups():
                     (group_data['id'],)
                 ).fetchone()
                 group_data['num_levels'] = level_count['count'] if level_count else 0
+                # Add rating stats
+                try:
+                    stats = get_group_rating_stats(group_data['id'])
+                    group_data['rating_avg'] = stats.get('avg', 0)
+                    group_data['rating_count'] = stats.get('count', 0)
+                except Exception as _e:
+                    group_data['rating_avg'] = 0
+                    group_data['rating_count'] = 0
                 groups.append(group_data)
             
             # Get total count
@@ -3196,6 +3212,17 @@ def api_get_marketplace_custom_level_group(group_id):
                 return jsonify({'success': False, 'error': 'Group not found or not published'}), 404
             
             group_data = dict(row)
+            # Add rating stats
+            try:
+                stats = get_group_rating_stats(group_id)
+                group_data['rating_avg'] = stats.get('avg', 0)
+                group_data['rating_count'] = stats.get('count', 0)
+                recent_comments = get_recent_group_comments(group_id, 5)
+                group_data['recent_comments'] = recent_comments
+            except Exception:
+                group_data['rating_avg'] = 0
+                group_data['rating_count'] = 0
+                group_data['recent_comments'] = []
             
             # Get all levels for this group
             levels = get_custom_levels_for_group(group_id)
@@ -3211,6 +3238,57 @@ def api_get_marketplace_custom_level_group(group_id):
         
     except Exception as e:
         print(f"Error getting marketplace custom level group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- Marketplace Ratings API ---
+
+@custom_levels_bp.post('/api/marketplace/custom-level-groups/<int:group_id>/ratings')
+@require_auth()
+def api_rate_marketplace_group(group_id):
+    """Submit a star rating (1-5) and optional comment for a published group."""
+    try:
+        user = g.current_user
+        user_id = user['id'] if user else None
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+
+        data = request.get_json(silent=True) or {}
+        stars = data.get('stars')
+        comment = (data.get('comment') or '').strip()
+
+        # Validate minimal payload
+        if stars is None:
+            return jsonify({'success': False, 'error': 'stars is required'}), 400
+
+        # Ensure group is published before rating
+        conn = get_db()
+        try:
+            row = conn.execute('SELECT status FROM custom_level_groups WHERE id = ?', (group_id,)).fetchone()
+            if not row or str(row['status']) != 'published':
+                return jsonify({'success': False, 'error': 'Group not found or not published'}), 404
+        finally:
+            conn.close()
+
+        ok = upsert_group_rating(group_id, user_id, stars, comment or None)
+        if not ok:
+            return jsonify({'success': False, 'error': 'Invalid rating or database error'}), 400
+
+        stats = get_group_rating_stats(group_id)
+        return jsonify({'success': True, 'message': 'Rating submitted', 'stats': stats})
+    except Exception as e:
+        print(f"Error rating marketplace group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.get('/api/marketplace/custom-level-groups/<int:group_id>/ratings')
+@require_auth(optional=True)
+def api_get_marketplace_group_ratings(group_id):
+    """Get rating stats and recent comments for a group."""
+    try:
+        stats = get_group_rating_stats(group_id)
+        comments = get_recent_group_comments(group_id, 10)
+        return jsonify({'success': True, 'stats': stats, 'recent_comments': comments})
+    except Exception as e:
+        print(f"Error fetching marketplace group ratings: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @custom_levels_bp.post('/api/marketplace/custom-level-groups/<int:group_id>/import')

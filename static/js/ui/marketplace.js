@@ -179,6 +179,10 @@ function renderMarketplaceGroupCard(group) {
         });
     }
     
+    const ratingAvg = typeof group.rating_avg === 'number' ? group.rating_avg : 0;
+    const ratingCount = typeof group.rating_count === 'number' ? group.rating_count : 0;
+    const fullStars = Math.round(ratingAvg);
+
     return `
         <div class="marketplace-group-card" data-group-id="${group.id}">
             <div class="marketplace-group-header">
@@ -187,6 +191,11 @@ function renderMarketplaceGroupCard(group) {
                 <p class="marketplace-group-author">von ${escapeHtml(group.author_name || 'Unbekannt')} • ${timeAgo}</p>
             </div>
             
+            <div class="marketplace-group-rating" title="${ratingAvg.toFixed(1)} / 5">
+                <span class="stars">${'★'.repeat(Math.min(5, fullStars))}${'☆'.repeat(Math.max(0, 5 - fullStars))}</span>
+                <span class="rating-meta">${ratingAvg.toFixed(1)} (${ratingCount})</span>
+            </div>
+
             <div class="marketplace-group-meta">
                 <div class="marketplace-group-stat">
                     <div class="marketplace-group-stat-value">${group.num_levels}</div>
@@ -307,6 +316,11 @@ function showMarketplacePreviewModal(group, levels) {
         existingModal.remove();
     }
     
+    const ratingAvg = typeof group.rating_avg === 'number' ? group.rating_avg : 0;
+    const ratingCount = typeof group.rating_count === 'number' ? group.rating_count : 0;
+    const fullStars = Math.round(ratingAvg);
+    const recentComments = Array.isArray(group.recent_comments) ? group.recent_comments : [];
+
     const modalHtml = `
         <div class="modal-overlay" id="marketplace-preview-modal">
             <div class="modal-content marketplace-preview-modal">
@@ -323,6 +337,11 @@ function showMarketplacePreviewModal(group, levels) {
                         
                         <div class="preview-group-meta">
                             <div class="preview-meta-item">
+                                <strong>Bewertung:</strong>
+                                <span class="stars">${'★'.repeat(Math.min(5, fullStars))}${'☆'.repeat(Math.max(0, 5 - fullStars))}</span>
+                                <span class="rating-meta">${ratingAvg.toFixed(1)} (${ratingCount})</span>
+                            </div>
+                            <div class="preview-meta-item">
                                 <strong>Sprache:</strong> ${group.language.toUpperCase()}
                             </div>
                             <div class="preview-meta-item">
@@ -337,6 +356,36 @@ function showMarketplacePreviewModal(group, levels) {
                         </div>
                     </div>
                     
+                    <div class="preview-group-rate">
+                        <h4>Deine Bewertung</h4>
+                        <div class="rating-input" data-group-id="${group.id}">
+                            <div class="rating-stars" role="radiogroup" aria-label="Sternebewertung">
+                                ${[1,2,3,4,5].map(n => `<button class="star-btn" data-star="${n}" aria-label="${n} Sterne">★</button>`).join('')}
+                            </div>
+                            <textarea class="rating-comment" placeholder="Optionaler Kommentar (z.B. Storyline, Vokabelschwierigkeit, Lernwert)"></textarea>
+                            <button class="btn btn-primary rating-submit">Bewertung senden</button>
+                            <div class="rating-status" aria-live="polite"></div>
+                        </div>
+                    </div>
+
+                    <div class="preview-group-comments">
+                        <h4>Neueste Kommentare</h4>
+                        ${recentComments.length ? `
+                            <ul class="rating-comments-list">
+                                ${recentComments.map(c => `
+                                    <li class="rating-comment-item">
+                                        <div class="comment-header">
+                                            <span class="comment-user">${escapeHtml(c.username || 'Nutzer')}</span>
+                                            <span class="comment-stars">${'★'.repeat(Math.min(5, Number(c.stars) || 0))}${'☆'.repeat(Math.max(0, 5 - (Number(c.stars) || 0)))}</span>
+                                            <span class="comment-date">${escapeHtml((c.updated_at || '').slice(0, 10))}</span>
+                                        </div>
+                                        <div class="comment-body">${escapeHtml(c.comment || '')}</div>
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        ` : '<p>Keine Kommentare vorhanden.</p>'}
+                    </div>
+
                     <div class="preview-levels">
                         <h4>Level-Übersicht</h4>
                         <div class="preview-levels-list">
@@ -386,6 +435,9 @@ function showMarketplacePreviewModal(group, levels) {
         };
         document.addEventListener('keydown', handleEscKey);
     }
+
+    // Wire rating interactions
+    wireRatingControls(group.id);
 }
 
 // Close marketplace preview modal
@@ -475,3 +527,58 @@ window.refreshMarketplaceGroups = refreshMarketplaceGroups;
 window.startMarketplaceGroup = startMarketplaceGroup;
 window.previewMarketplaceGroup = previewMarketplaceGroup;
 window.closeMarketplacePreviewModal = closeMarketplacePreviewModal;
+
+// --- Ratings wiring ---
+function wireRatingControls(groupId){
+    const root = document.querySelector('.rating-input[data-group-id="'+groupId+'"]');
+    if(!root) return;
+    const stars = root.querySelectorAll('.star-btn');
+    const commentEl = root.querySelector('.rating-comment');
+    const submitBtn = root.querySelector('.rating-submit');
+    const statusEl = root.querySelector('.rating-status');
+    let current = 0;
+
+    const setVisual = (n)=>{
+        stars.forEach((btn,i)=>{
+            btn.classList.toggle('active', i < n);
+        });
+    };
+    stars.forEach(btn=>{
+        btn.addEventListener('mouseenter', ()=> setVisual(Number(btn.dataset.star)));
+        btn.addEventListener('mouseleave', ()=> setVisual(current));
+        btn.addEventListener('click', ()=>{ current = Number(btn.dataset.star); setVisual(current); });
+    });
+
+    submitBtn.addEventListener('click', async ()=>{
+        if(!window.authManager || !window.authManager.isAuthenticated()){
+            statusEl.textContent = 'Bitte anmelden, um zu bewerten.';
+            return;
+        }
+        if(current < 1 || current > 5){
+            statusEl.textContent = 'Bitte 1–5 Sterne wählen.';
+            return;
+        }
+        submitBtn.disabled = true;
+        statusEl.textContent = 'Senden...';
+        try{
+            const res = await fetch(`/api/marketplace/custom-level-groups/${groupId}/ratings`,{
+                method:'POST',
+                headers:{
+                    'Content-Type':'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                },
+                body: JSON.stringify({ stars: current, comment: commentEl.value || '' })
+            });
+            const data = await res.json();
+            if(!res.ok || !data.success){
+                throw new Error(data.error || 'Fehler beim Senden');
+            }
+            statusEl.textContent = 'Danke für deine Bewertung!';
+        }catch(err){
+            console.error(err);
+            statusEl.textContent = 'Fehler: ' + err.message;
+        }finally{
+            submitBtn.disabled = false;
+        }
+    });
+}

@@ -322,6 +322,108 @@ def submit_level_rating(user_id: int, level: int, language: str, rating: int) ->
     finally:
         conn.close()
 
+############################
+# --- Marketplace Ratings ---
+############################
+
+def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | None) -> bool:
+    """Create or update a rating for a marketplace custom level group."""
+    if not group_id or not user_id:
+        return False
+    try:
+        stars_int = int(stars)
+    except Exception:
+        return False
+    if stars_int < 1 or stars_int > 5:
+        return False
+
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        now = datetime.now(UTC).isoformat()
+        if config['type'] == 'postgresql':
+            execute_query(conn, '''
+                INSERT INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, group_id)
+                DO UPDATE SET stars = EXCLUDED.stars, comment = EXCLUDED.comment, updated_at = EXCLUDED.updated_at
+            ''', (group_id, user_id, stars_int, comment, now, now))
+        else:
+            cur = conn.cursor()
+            cur.execute('''
+                INSERT OR REPLACE INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (group_id, user_id, stars_int, comment, now, now))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error upserting group rating: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_group_rating_stats(group_id: int) -> dict:
+    """Return average stars, count, and distribution for a group."""
+    if not group_id:
+        return { 'avg': 0.0, 'count': 0, 'dist': {str(i): 0 for i in range(1,6)} }
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        if config['type'] == 'postgresql':
+            row = execute_query(conn, '''
+                SELECT AVG(stars) AS avg_stars, COUNT(*) AS cnt FROM custom_level_group_ratings WHERE group_id=%s
+            ''', (group_id,)).fetchone()
+            dist_rows = execute_query(conn, '''
+                SELECT stars, COUNT(*) AS c FROM custom_level_group_ratings WHERE group_id=%s GROUP BY stars
+            ''', (group_id,)).fetchall()
+        else:
+            cur = conn.cursor()
+            row = cur.execute('SELECT AVG(stars) AS avg_stars, COUNT(*) AS cnt FROM custom_level_group_ratings WHERE group_id=?', (group_id,)).fetchone()
+            dist_rows = cur.execute('SELECT stars, COUNT(*) AS c FROM custom_level_group_ratings WHERE group_id=? GROUP BY stars', (group_id,)).fetchall()
+
+        avg_val = float(row['avg_stars']) if row and row['avg_stars'] is not None else 0.0
+        cnt_val = int(row['cnt']) if row and row['cnt'] is not None else 0
+        dist = {str(i): 0 for i in range(1,6)}
+        for r in dist_rows or []:
+            s = int(r['stars']) if isinstance(r, dict) or hasattr(r, '__getitem__') else int(r[0])
+            c = int(r['c']) if isinstance(r, dict) or hasattr(r, '__getitem__') else int(r[1])
+            if 1 <= s <= 5:
+                dist[str(s)] = c
+        return { 'avg': round(avg_val, 2), 'count': cnt_val, 'dist': dist }
+    finally:
+        conn.close()
+
+def get_recent_group_comments(group_id: int, limit: int = 5) -> list[dict]:
+    """Return recent rating comments for a group."""
+    if not group_id:
+        return []
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        if config['type'] == 'postgresql':
+            rows = execute_query(conn, '''
+                SELECT r.user_id, r.stars, r.comment, r.updated_at, u.username
+                FROM custom_level_group_ratings r
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE r.group_id=%s AND COALESCE(r.comment, '') <> ''
+                ORDER BY r.updated_at DESC
+                LIMIT %s
+            ''', (group_id, limit)).fetchall()
+            return [dict(row) for row in rows]
+        else:
+            cur = conn.cursor()
+            rows = cur.execute('''
+                SELECT r.user_id, r.stars, r.comment, r.updated_at, u.username
+                FROM custom_level_group_ratings r
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE r.group_id=? AND IFNULL(r.comment, '') <> ''
+                ORDER BY r.updated_at DESC
+                LIMIT ?
+            ''', (group_id, limit)).fetchall()
+            return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
 def get_level_rating_stats(level: int, language: str) -> dict:
     """Get rating statistics for a level"""
     config = get_database_config()
@@ -791,6 +893,22 @@ def init_db():
             );
         """)
         
+        # Marketplace group ratings table
+        execute_query(conn, """
+            CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
+                id SERIAL PRIMARY KEY,
+                group_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                stars INTEGER NOT NULL CHECK (stars >= 1 AND stars <= 5),
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, group_id),
+                FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            );
+        """)
+        
     else:
         # SQLite table creation (legacy)
         cur = conn.cursor()
@@ -881,6 +999,22 @@ def init_db():
         # Create custom level tables
         create_custom_level_groups_table()
         create_custom_levels_table()
+
+        # Marketplace group ratings table (SQLite)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          group_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          stars INTEGER NOT NULL CHECK (stars >= 1 AND stars <= 5),
+          comment TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(user_id, group_id),
+          FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        );
+        """)
         
         # User system tables
         cur.execute("""
