@@ -161,6 +161,24 @@ function renderCustomLevelGroups() {
         height: containerStyles.height,
         childElementCount: container.childElementCount
     });
+    
+    // Debug: Check positioning
+    const rect = container.getBoundingClientRect();
+    console.log('📐 Container position:', {
+        top: rect.top,
+        left: rect.left,
+        bottom: rect.bottom,
+        right: rect.right,
+        isInViewport: rect.top >= 0 && rect.bottom <= window.innerHeight
+    });
+    
+    // Force scroll into view if not visible
+    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+        console.log('⚠️ Container not in viewport, scrolling...');
+        setTimeout(() => {
+            container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+    }
 }
 
 // Render individual custom group card
