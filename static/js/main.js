@@ -126,33 +126,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Initialize navigation buttons (Polo logo and Browse) to return to library home
+// Initialize navigation buttons to handle special cases
 function initNavigationHomeButtons() {
-  // Get all navigation tabs that should return to library home
+  // Only the Polo logo should return to library home
   const libraryTab = document.querySelector('[data-tab="library"]'); // Polo logo
-  const browseTab = document.querySelector('[data-tab="browse"]'); // Durchsuchen
   
-  // Polo logo - return to library home
+  // Polo logo - return to library home (override default tab behavior)
   if (libraryTab && !libraryTab.dataset.homebound) {
     libraryTab.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('🎓 Polo logo clicked - returning to library home');
-      returnToLibraryHome();
+      // Check if we're already on the library tab - if so, return to home
+      const libraryTabContent = document.getElementById('library-tab');
+      const isLibraryActive = libraryTabContent && libraryTabContent.classList.contains('active');
+      
+      if (isLibraryActive) {
+        // Already on library tab - ensure we're showing the home view
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('🎓 Polo logo clicked - ensuring library home view');
+        returnToLibraryHome();
+      } else {
+        // Not on library tab - let default tab switching happen, but then show home
+        console.log('🎓 Polo logo clicked - switching to library tab');
+        // Don't prevent default - let the normal tab switching happen
+        // But add a listener to show home after tab switch
+        setTimeout(() => {
+          returnToLibraryHome();
+        }, 50);
+      }
     });
     libraryTab.dataset.homebound = 'true';
     console.log('✅ Polo logo navigation initialized');
   }
   
-  // Browse button - return to library home
-  if (browseTab && !browseTab.dataset.homebound) {
-    browseTab.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('🔍 Browse button clicked - returning to library home');
-      returnToLibraryHome();
-    });
-    browseTab.dataset.homebound = 'true';
-    console.log('✅ Browse button navigation initialized');
-  }
+  // Note: Browse, Courses, Settings tabs use their default behavior from showTab()
+  // No special handling needed - they work correctly with the standard tab system
 }
