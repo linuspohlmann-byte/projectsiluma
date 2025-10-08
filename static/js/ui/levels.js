@@ -2122,8 +2122,13 @@ export function showTab(tab){
     }
     
     // Original tab handling for legacy tabs
-    // hide all views including practice
+    // hide all legacy views including practice
     ['#levels-card','#words-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
+    
+    // hide all new tab contents
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabContents.forEach(content => content.classList.remove('active'));
+    
     // hide level tooltip as well
     const lt = document.getElementById('level-tip'); if(lt) lt.style.display='none';
     // progress only in lesson
