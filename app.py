@@ -498,6 +498,171 @@ def debug_list_georgian_words():
             'success': False
         }), 500
 
+@app.get('/api/debug/check-words-with-punctuation')
+def debug_check_words_with_punctuation():
+    """Check for words with punctuation marks that might be duplicates"""
+    try:
+        import os
+        import psycopg2
+        import re
+        
+        # Get database connection
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL environment variable not set'
+            }), 500
+        
+        conn = psycopg2.connect(database_url)
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Get all words with punctuation
+            cursor.execute("""
+                SELECT id, word, language, native_language
+                FROM words 
+                WHERE word ~ '[.!?,;:—–-]'
+                ORDER BY language, word
+                LIMIT 100;
+            """)
+            words_with_punct = cursor.fetchall()
+            
+            # Group potential duplicates
+            potential_duplicates = []
+            for word_id, word, language, native_language in words_with_punct:
+                # Remove punctuation to find the base word
+                base_word = re.sub(r'[.!?,;:—–-]+$', '', word)
+                
+                if base_word != word:
+                    # Check if base word exists in database
+                    cursor.execute("""
+                        SELECT id, word, translation
+                        FROM words 
+                        WHERE word = %s AND language = %s AND native_language = %s
+                        LIMIT 1;
+                    """, (base_word, language, native_language))
+                    
+                    base_exists = cursor.fetchone()
+                    
+                    potential_duplicates.append({
+                        'with_punct_id': word_id,
+                        'with_punct': word,
+                        'base_word': base_word,
+                        'base_exists': base_exists is not None,
+                        'base_id': base_exists[0] if base_exists else None,
+                        'language': language,
+                        'native_language': native_language
+                    })
+            
+            return jsonify({
+                'success': True,
+                'total_words_with_punctuation': len(words_with_punct),
+                'potential_duplicates': potential_duplicates,
+                'duplicate_count': len([d for d in potential_duplicates if d['base_exists']])
+            })
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Failed to check words with punctuation: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
+@app.post('/api/debug/remove-trailing-punctuation')
+def debug_remove_trailing_punctuation():
+    """Remove trailing punctuation from words that have duplicates without punctuation"""
+    try:
+        import os
+        import psycopg2
+        import re
+        
+        # Get database connection
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return jsonify({
+                'success': False,
+                'error': 'DATABASE_URL environment variable not set'
+            }), 500
+        
+        conn = psycopg2.connect(database_url)
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Get all words with trailing punctuation
+            cursor.execute("""
+                SELECT id, word, language, native_language
+                FROM words 
+                WHERE word ~ '[.!?,;:—–-]$'
+                ORDER BY language, word;
+            """)
+            words_with_punct = cursor.fetchall()
+            
+            removed_count = 0
+            updated_count = 0
+            
+            for word_id, word, language, native_language in words_with_punct:
+                # Remove trailing punctuation
+                base_word = re.sub(r'[.!?,;:—–-]+$', '', word)
+                
+                if base_word != word:
+                    # Check if base word already exists
+                    cursor.execute("""
+                        SELECT id
+                        FROM words 
+                        WHERE word = %s AND language = %s AND native_language = %s
+                        LIMIT 1;
+                    """, (base_word, language, native_language))
+                    
+                    base_exists = cursor.fetchone()
+                    
+                    if base_exists:
+                        # Base word exists, delete the punctuated version
+                        cursor.execute("""
+                            DELETE FROM words
+                            WHERE id = %s;
+                        """, (word_id,))
+                        removed_count += 1
+                        print(f"🗑️ Removed '{word}' (duplicate of '{base_word}')")
+                    else:
+                        # Base word doesn't exist, update the word to remove punctuation
+                        cursor.execute("""
+                            UPDATE words
+                            SET word = %s
+                            WHERE id = %s;
+                        """, (base_word, word_id))
+                        updated_count += 1
+                        print(f"✏️ Updated '{word}' to '{base_word}'")
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Removed {removed_count} duplicate words and updated {updated_count} words',
+                'removed_count': removed_count,
+                'updated_count': updated_count,
+                'total_processed': len(words_with_punct)
+            })
+            
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"❌ Failed to remove trailing punctuation: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 @app.post('/api/debug/add-words-unique-constraint')
 def debug_add_words_unique_constraint():
     """Add UNIQUE constraint to words table for (word, language, native_language)"""

@@ -199,14 +199,20 @@ def generate_custom_levels_original(group_id: int, language: str, native_languag
                     words = sentence_data.get('words', [])
                     for word in words:
                         if word and word.strip():
-                            all_words.add(word.strip().lower())
+                            # Remove trailing punctuation before adding
+                            clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                            if clean_word:
+                                all_words.add(clean_word)
                 else:
                     text_target = str(sentence_data)
                     all_sentences.append(text_target)
                     words = text_target.split()
                     for word in words:
                         if word and word.strip():
-                            all_words.add(word.strip().lower())
+                            # Remove trailing punctuation before adding
+                            clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                            if clean_word:
+                                all_words.add(clean_word)
         
         print(f"📊 Collected {len(all_sentences)} sentences and {len(all_words)} unique words for batch processing")
         
@@ -244,6 +250,8 @@ def generate_custom_levels_original(group_id: int, language: str, native_languag
 
 def calculate_word_count_from_content(content: Dict[str, Any]) -> int:
     """Calculate word count from level content"""
+    import re
+    
     if not content or not content.get('items'):
         return 0
     
@@ -253,12 +261,17 @@ def calculate_word_count_from_content(content: Dict[str, Any]) -> int:
         words = item.get('words', [])
         for word in words:
             if word and word.strip():
-                all_words.add(word.strip().lower())
+                # Remove trailing punctuation before adding to set
+                clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                if clean_word:  # Only add if there's still content after removing punctuation
+                    all_words.add(clean_word)
     
     return len(all_words)
 
 def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, content: Dict[str, Any], language: str, native_language: str) -> bool:
     """Sync words from custom level to PostgreSQL words and user_word_familiarity tables"""
+    import re
+    
     try:
         if not content or not content.get('items'):
             print(f"⚠️ No content items found for level {group_id}/{level_number}")
@@ -270,7 +283,10 @@ def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, cont
             words = item.get('words', [])
             for word in words:
                 if word and word.strip():
-                    all_words.add(word.strip().lower())
+                    # Remove trailing punctuation before adding to set
+                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                    if clean_word:  # Only add if there's still content after removing punctuation
+                        all_words.add(clean_word)
         
         if not all_words:
             print(f"⚠️ No words found in level {group_id}/{level_number}")
@@ -876,7 +892,10 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
                         for item in content.get('items', []):
                             for word in item.get('words', []):
                                 if word and word.strip():
-                                    all_words.add(word.strip().lower())
+                                    # Remove trailing punctuation before adding
+                                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                                    if clean_word:
+                                        all_words.add(clean_word)
                         
                         migration_stats['levels_processed'] += 1
                         
@@ -1102,7 +1121,10 @@ def generate_custom_levels_parallel(group_id: int, language: str, native_languag
                             words = sentence_data.get('words', [])
                             for word in words:
                                 if word and word.strip():
-                                    all_words.add(word.strip().lower())
+                                    # Remove trailing punctuation before adding
+                                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                                    if clean_word:
+                                        all_words.add(clean_word)
                     
                     print(f"✅ Generated {len(sentences)} sentences for level {level_num}")
                     
@@ -1420,7 +1442,10 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
                 
                 for word in words:
                     if word and word.strip():
-                        all_words.add(word.strip().lower())
+                        # Remove trailing punctuation before adding
+                        clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                        if clean_word:
+                            all_words.add(clean_word)
                 
                 if text_target:
                     sentence_contexts.append(text_target)

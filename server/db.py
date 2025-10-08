@@ -238,12 +238,16 @@ def calculate_and_update_word_count(group_id: int, level_number: int, content: d
         return 0
     
     # Calculate unique words from content
+    import re
     all_words = set()
     for item in content['items']:
         words = item.get('words', [])
         for word in words:
             if word and word.strip():
-                all_words.add(word.strip().lower())
+                # Remove trailing punctuation before adding
+                clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                if clean_word:
+                    all_words.add(clean_word)
     
     word_count = len(all_words)
     

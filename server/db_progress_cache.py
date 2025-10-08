@@ -330,12 +330,16 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
             return {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         
         # Extract unique words from level content
+        import re
         all_words = set()
         for item in level['content']['items']:
             words = item.get('words', [])
             for word in words:
                 if word and word.strip():
-                    all_words.add(word.strip().lower())
+                    # Remove trailing punctuation before adding
+                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                    if clean_word:
+                        all_words.add(clean_word)
         
         if not all_words:
             print(f"🧮 cache: no words extracted for group={group_id} level={level_number}")
