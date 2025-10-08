@@ -20,6 +20,36 @@ from server.db import (
     # marketplace ratings helpers
     upsert_group_rating, get_group_rating_stats, get_recent_group_comments
 )
+
+@custom_levels_bp.get('/api/debug/ratings-table')
+@require_auth(optional=True)
+def api_debug_ratings_table():
+    """Ensure and verify the marketplace ratings table exists (PostgreSQL) and report stats."""
+    try:
+        # Ensure tables exist
+        init_db()
+        
+        conn = get_db()
+        try:
+            # Check existence in a database-agnostic way
+            # Try a simple select count; if it fails, table is missing
+            try:
+                row = conn.execute('SELECT COUNT(*) AS c FROM custom_level_group_ratings').fetchone()
+                count = int(row['c']) if row and row['c'] is not None else 0
+                exists = True
+            except Exception:
+                exists = False
+                count = 0
+            
+            return jsonify({
+                'success': True,
+                'exists': exists,
+                'row_count': count
+            })
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 from server.db_multi_user import (
     get_level_words_with_familiarity, unlock_level_words,
     get_familiarity_counts_for_level, get_user_level_stats, get_global_level_stats,

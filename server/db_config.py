@@ -13,6 +13,12 @@ except ImportError:
 
 def get_database_config():
     """Get database configuration based on environment"""
+    # Explicit override for local development
+    if os.getenv('FORCE_SQLITE') == '1':
+        return {
+            'type': 'sqlite',
+            'path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'polo.db')
+        }
     # Check if we're in production (Railway)
     if os.getenv('DATABASE_URL') and PSYCOPG2_AVAILABLE:
         # Production: Try PostgreSQL first, fallback to SQLite if it fails
