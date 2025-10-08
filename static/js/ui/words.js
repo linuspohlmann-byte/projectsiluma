@@ -1,6 +1,42 @@
 // Words module: Tabelle + Sort/Filter/Selektion/Löschen
 // Public API: loadWords(); zusätzlich window.loadWords für Legacy
 
+// --- Back Button Handler ---
+export function initWordsBackButton() {
+  const backBtn = document.getElementById('words-back');
+  if (backBtn && !backBtn.dataset.bound) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🔙 Words back button clicked, navigating to library home');
+      
+      // Clear words data from memory to free up resources
+      WDATA = [];
+      WSEL.clear();
+      updateSelCount();
+      
+      // Navigate to library tab (home page)
+      if (typeof window.showTab === 'function') {
+        window.showTab('library');
+      }
+      
+      // Show level groups home to display custom level groups and quick access
+      if (typeof window.showLevelGroupsHome === 'function') {
+        setTimeout(() => {
+          window.showLevelGroupsHome();
+        }, 50);
+      }
+      
+      // Scroll to top
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch(_) {}
+    });
+    backBtn.dataset.bound = 'true';
+    console.log('✅ Words back button initialized');
+  }
+}
+
 // --- State ---
 let WDATA = [];
 const WCOLS = [
@@ -46,23 +82,6 @@ function saveColVis(){ WCOLS.forEach(c=>{ if(c.key==='sel') return; try{ localSt
 function normalizeCell(key, val){ if(val==null) return ''; if(Array.isArray(val)) return val.join(', '); if(typeof val==='object') return ''; return String(val); }
 function updateSelCount(){ const el = $('#wb-selected'); if(el) el.textContent = `(${WSEL.size})`; const del = $('#wb-del'); if(del) del.disabled = WSEL.size===0; }
 loadColVis();
-
-// --- Back Button ---
-function bindWordsBackButton() {
-  const backBtn = document.getElementById('words-back-btn');
-  if (backBtn && !backBtn.dataset.bound) {
-    backBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('🔙 Words back button clicked, navigating to library');
-      // Navigate to library tab
-      if (typeof window.showTab === 'function') {
-        window.showTab('library');
-      }
-    });
-    backBtn.dataset.bound = 'true';
-  }
-}
 
 // --- Toolbar ---
 function renderWordsToolbar(){
@@ -357,8 +376,8 @@ export async function loadWords(showWordsTab = true){
   renderWordsToolbar();
   applyWordsView();
   
-  // Bind back button
-  bindWordsBackButton();
+  // Initialize back button
+  initWordsBackButton();
   
   if (showWordsTab) {
     try{ if(typeof window.showTab==='function') window.showTab('words'); }catch(_){}
@@ -402,6 +421,7 @@ export async function adjustFamiliarity(word, delta) {
 window.adjustFamiliarity = adjustFamiliarity;
 // Make invalidateWordsCache globally available
 window.invalidateWordsCache = invalidateWordsCache;
+window.initWordsBackButton = initWordsBackButton;
 
 // Function to force refresh words for a specific language
 export async function forceRefreshWords(language) {
