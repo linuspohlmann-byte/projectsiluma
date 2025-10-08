@@ -360,30 +360,58 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
         except Exception as _e:
             # If pre-check fails unexpectedly, continue to attempt write; DB will enforce
             pass
+        # Resolve column names in case the table was created with different column naming
+        def resolve_columns():
+            try:
+                if config['type'] == 'postgresql':
+                    cols_cur = execute_query(conn, """
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_name = 'custom_level_group_ratings'
+                    """)
+                    cols = {r['column_name'] for r in cols_cur.fetchall()}
+                else:
+                    cur2 = conn.cursor(); cur2.execute("PRAGMA table_info(custom_level_group_ratings)")
+                    cols = {row[1] for row in cur2.fetchall()}
+                stars_col = 'stars' if 'stars' in cols else ('rating' if 'rating' in cols else None)
+                comment_col = 'comment' if 'comment' in cols else ('review' if 'review' in cols else None)
+                return stars_col, comment_col
+            except Exception:
+                return 'stars', 'comment'
+
+        stars_col, comment_col = resolve_columns()
+        if not stars_col:
+            return False, 'table_mismatch'
+
         if config['type'] == 'postgresql':
             # Try update first
-            updated = execute_query(conn, '''
+            updated = execute_query(conn, f'''
                 UPDATE custom_level_group_ratings
-                SET stars = %s, comment = %s, updated_at = %s
+                SET {stars_col} = %s, {comment_col or 'comment'} = %s, updated_at = %s
                 WHERE group_id = %s AND user_id = %s
             ''', (stars_int, comment, now, group_id, user_id)).rowcount
             if not updated:
-                execute_query(conn, '''
-                    INSERT INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                ''', (group_id, user_id, stars_int, comment, now, now))
+                execute_query(conn, f'''
+                    INSERT INTO custom_level_group_ratings (group_id, user_id, {stars_col}{', ' + comment_col if comment_col else ''}, created_at, updated_at)
+                    VALUES (%s, %s, %s{', %s' if comment_col else ''}, %s, %s)
+                ''', (group_id, user_id, stars_int, *( [comment] if comment_col else [] ), now, now))
         else:
             cur = conn.cursor()
-            cur.execute('''
+            cur.execute(f'''
                 UPDATE custom_level_group_ratings
-                SET stars = ?, comment = ?, updated_at = ?
+                SET {stars_col} = ?, {comment_col or 'comment'} = ?, updated_at = ?
                 WHERE group_id = ? AND user_id = ?
             ''', (stars_int, comment, now, group_id, user_id))
             if cur.rowcount == 0:
-                cur.execute('''
-                    INSERT INTO custom_level_group_ratings (group_id, user_id, stars, comment, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (group_id, user_id, stars_int, comment, now, now))
+                if comment_col:
+                    cur.execute(f'''
+                        INSERT INTO custom_level_group_ratings (group_id, user_id, {stars_col}, {comment_col}, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (group_id, user_id, stars_int, comment, now, now))
+                else:
+                    cur.execute(f'''
+                        INSERT INTO custom_level_group_ratings (group_id, user_id, {stars_col}, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (group_id, user_id, stars_int, now, now))
         conn.commit()
         return True, None
     except Exception as e:
@@ -397,6 +425,12 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
             return False, 'fk_violation'
         if pgcode == '23505':
             return False, 'unique_violation'
+        # Detect missing relation
+        msg = str(e).lower()
+        if 'does not exist' in msg or 'no such table' in msg:
+            return False, 'table_missing'
+        if 'column' in msg and 'does not exist' in msg:
+            return False, 'column_missing'
         return False, 'db_error'
     finally:
         conn.close()
