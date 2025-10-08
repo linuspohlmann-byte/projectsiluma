@@ -169,16 +169,9 @@ class AuthManager {
                 // Load full user data to get complete user information
                 await this.loadCurrentUser();
                 
-                // Refresh level states to show user-specific data
-                if (window.refreshLevelStates) {
-                    window.refreshLevelStates();
-                }
-                
-                // Invalidate words cache to ensure fresh user-specific data is loaded
-                if (window.invalidateWordsCache) {
-                    const targetLang = document.getElementById('target-lang')?.value || 'en';
-                    window.invalidateWordsCache(targetLang);
-                }
+                // Reload the app to ensure all modules initialize with authenticated state
+                this.reloadApp();
+                return;
             } else {
                 this.showError('login-error', data.error || 'Login failed');
             }
@@ -298,6 +291,13 @@ class AuthManager {
     clearErrors() {
         document.getElementById('login-error').style.display = 'none';
         document.getElementById('register-error').style.display = 'none';
+    }
+
+    reloadApp(delay = 50) {
+        if (typeof window === 'undefined' || !window.location?.reload) {
+            return;
+        }
+        setTimeout(() => window.location.reload(), delay);
     }
 
     // Get current session token for API calls
