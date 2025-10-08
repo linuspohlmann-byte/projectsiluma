@@ -2084,12 +2084,18 @@ export function showTab(tab){
         const selectedContent = document.getElementById(`${tab}-tab`);
         if (selectedContent) {
             selectedContent.classList.add('active');
+            console.log(`✅ Activated tab content: #${tab}-tab`);
+        } else {
+            console.warn(`⚠️ Tab content not found: #${tab}-tab`);
         }
         
         // Add active class to selected tab
         const selectedTab = document.querySelector(`[data-tab="${tab}"]`);
         if (selectedTab) {
             selectedTab.classList.add('active');
+            console.log(`✅ Activated tab button: [data-tab="${tab}"]`);
+        } else {
+            console.warn(`⚠️ Tab button not found: [data-tab="${tab}"]`);
         }
         
         // Special handling for courses tab - load course cards
