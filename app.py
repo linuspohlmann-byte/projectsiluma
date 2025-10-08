@@ -3306,6 +3306,8 @@ def api_import_marketplace_custom_level_group(group_id):
         # Get the published group
         conn = get_db()
         try:
+            payload = request.get_json(silent=True) or {}
+            requested_new_name = (payload.get('new_group_name') or '').strip()
             cursor = conn.execute('''
                 SELECT * FROM custom_level_groups 
                 WHERE id = ? AND status = 'published'
@@ -3322,7 +3324,19 @@ def api_import_marketplace_custom_level_group(group_id):
             ''', (user_id, original_group['group_name'], original_group['language'], original_group['native_language'])).fetchone()
             
             if existing_group:
-                return jsonify({'success': False, 'error': 'You already have a group with this name'}), 400
+                # If client provided a new name, use it; otherwise inform duplicate
+                if not requested_new_name:
+                    return jsonify({'success': False, 'error': 'You already have a group with this name', 'code': 'duplicate_name', 'suggested_name': f"{original_group['group_name']} (Imported)"}), 400
+                # Ensure the new name is not also taken
+                second = conn.execute('''
+                    SELECT id FROM custom_level_groups 
+                    WHERE user_id = ? AND group_name = ? AND language = ? AND native_language = ?
+                ''', (user_id, requested_new_name, original_group['language'], original_group['native_language'])).fetchone()
+                if second:
+                    return jsonify({'success': False, 'error': 'Chosen name already exists', 'code': 'duplicate_name'}), 400
+                final_group_name = requested_new_name
+            else:
+                final_group_name = original_group['group_name']
             
             # Create a copy of the group for the user
             now = datetime.now(UTC).isoformat()
@@ -3332,7 +3346,7 @@ def api_import_marketplace_custom_level_group(group_id):
                  cefr_level, num_levels, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
             ''', (user_id, original_group['language'], original_group['native_language'], 
-                  original_group['group_name'], original_group['context_description'],
+                  final_group_name, original_group['context_description'],
                   original_group['cefr_level'], original_group['num_levels'], now, now))
             
             new_group_id = cursor.lastrowid

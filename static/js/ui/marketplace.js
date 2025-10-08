@@ -240,20 +240,38 @@ async function startMarketplaceGroup(groupId) {
         }
         
         // Import the group
-        const response = await fetch(`/api/marketplace/custom-level-groups/${groupId}/import`, {
+        let body = {};
+        let response = await fetch(`/api/marketplace/custom-level-groups/${groupId}/import`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-            }
+            },
+            body: JSON.stringify(body)
         });
         
         if (!response.ok) {
-            throw new Error('Failed to import group');
+            const err = await response.json().catch(()=>({}));
+            if (err && err.code === 'duplicate_name') {
+                // Ask user for a new name and retry once
+                const suggested = err.suggested_name || 'Imported Group';
+                const newName = prompt('Diese Gruppe existiert bereits. Neuen Namen eingeben:', suggested);
+                if (newName && newName.trim()) {
+                    body = { new_group_name: newName.trim() };
+                    response = await fetch(`/api/marketplace/custom-level-groups/${groupId}/import`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                        },
+                        body: JSON.stringify(body)
+                    });
+                }
+            }
         }
-        
-        const data = await response.json();
-        if (!data.success) {
+
+        let data = await response.json().catch(()=>({ success:false, error:'Unbekannter Fehler' }));
+        if (!response.ok || !data.success) {
             throw new Error(data.error || 'Failed to import group');
         }
         
