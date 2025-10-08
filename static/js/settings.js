@@ -591,15 +591,10 @@ class SettingsManager {
                     }
                 }
                 
-                // Navigate to library (homepage) after language change
-                if (window.showTab) {
-                    try {
-                        window.showTab('library'); // Show library tab (the new homepage)
-                        console.log('🌍 Navigated to library tab after language change');
-                    } catch (error) {
-                        console.warn('⚠️ Failed to navigate to library tab:', error);
-                    }
-                }
+                // Don't force navigation after language change
+                // This was causing issues when users tried to switch tabs
+                // The user should stay on their current tab when changing language
+                console.log('🌍 Language change complete - staying on current tab');
                 
                 console.log('🌍 Complete localization update finished for:', nativeLang);
                 
