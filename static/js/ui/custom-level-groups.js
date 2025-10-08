@@ -151,6 +151,16 @@ function renderCustomLevelGroups() {
         </div>
     `;
     console.log('✅ Custom groups rendered successfully');
+    
+    // Debug: Check if container is visible
+    const containerStyles = window.getComputedStyle(container);
+    console.log('📊 Container visibility check:', {
+        display: containerStyles.display,
+        visibility: containerStyles.visibility,
+        opacity: containerStyles.opacity,
+        height: containerStyles.height,
+        childElementCount: container.childElementCount
+    });
 }
 
 // Render individual custom group card
