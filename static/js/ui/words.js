@@ -12,23 +12,19 @@ export function returnToLibraryHome() {
     updateSelCount();
   }
   
-  // Navigate to library tab FIRST (this sets up the tab visibility)
+  // Navigate to library tab (this sets up the tab visibility)
   if (typeof window.showTab === 'function') {
     window.showTab('library');
   }
   
-  // IMPORTANT: showTab('library') hides #levels-card, but we need it visible!
-  // The library content is INSIDE #levels-card, so we must show it again
-  const levelsCard = document.getElementById('levels-card');
-  if (levelsCard) {
-    levelsCard.style.display = '';
-    console.log('✅ Showed #levels-card for library content');
-  }
-  
   // Show level groups home to display custom level groups and quick access
-  // Do this synchronously (no setTimeout) to ensure it happens immediately
+  // Words is now a modern tab, so showTab('library') handles everything correctly
+  // We just need to ensure the groups view is shown
   if (typeof window.showLevelGroupsHome === 'function') {
-    window.showLevelGroupsHome();
+    // Small delay to ensure tab switching is complete
+    setTimeout(() => {
+      window.showLevelGroupsHome();
+    }, 10);
   }
   
   // Scroll to top

@@ -5327,6 +5327,94 @@
           </div>
         </div>
 
+        <!-- Words Tab Content -->
+        <div id="words-tab" class="tab-content">
+          <div class="words-content">
+            <!-- Words Back Button Header -->
+            <div id="words-header" class="levels-group-header" style="display:flex">
+              <div class="levels-group-title-wrap">
+                <div class="levels-group-heading" data-i18n="navigation.words">Words</div>
+                <div class="levels-group-subtitle">Ihre persönliche Vokabelliste</div>
+              </div>
+              <button id="words-back" type="button" class="levels-group-back">
+                ← <span data-i18n="buttons.back_to_overview">Back to Overview</span>
+              </button>
+            </div>
+            
+            <!-- Compact Words Toolbar -->
+            <div class="words-toolbar">
+              <div class="toolbar-left">
+                <div class="search-box">
+                  <input id="wb-filter-q" placeholder="Wörter suchen..." class="search-input" />
+                  <select id="wb-filter-col" class="filter-select">
+                    <option value="word">Wort</option>
+                    <option value="translation">Übersetzung</option>
+                    <option value="familiarity">Bekanntheit</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="toolbar-right">
+                <div class="sort-controls">
+                  <select id="wb-sort-col" class="sort-select">
+                    <option value="word">Wort</option>
+                    <option value="familiarity">Bekanntheit</option>
+                    <option value="updated_at">Zuletzt</option>
+                  </select>
+                  <button id="wb-sort-dir" class="sort-btn" title="Sortierrichtung">↕</button>
+                </div>
+                
+                <button id="wb-menu" class="menu-btn" title="Mehr Optionen">⋮</button>
+                <div id="wb-pop" class="menu-pop">
+                  <div class="menu-section">
+                    <h4>Spalten anzeigen</h4>
+                    <div id="wb-cols" class="column-toggles"></div>
+                  </div>
+                  <div class="menu-section">
+                    <button id="wb-del" class="delete-btn" disabled>Ausgewählte löschen</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Compact Words Table -->
+            <div class="words-table-container">
+              <table id="words-table" class="compact-table">
+                <thead>
+                  <tr>
+                    <th class="select-col"><input type="checkbox" id="wb-all"> <span id="wb-selected">(0)</span></th>
+                    <th class="word-col" data-i18n="table.word">Wort</th>
+                    <th class="translation-col" data-i18n="table.translation">Übersetzung</th>
+                    <th class="familiarity-col" data-i18n="familiarity.title">Bekanntheit</th>
+                    <th class="example-col" data-i18n="table.example">Beispiel</th>
+                    <th class="actions-col" data-i18n="labels.actions">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <!-- Compact Pager -->
+            <div class="words-pager">
+              <div class="pager-info">
+                <span>Seite <span id="wb-page">1</span> von <span id="wb-total">1</span></span>
+                <select id="wb-per" class="per-page-select">
+                  <option value="20">20 pro Seite</option>
+                  <option value="50">50 pro Seite</option>
+                  <option value="100">100 pro Seite</option>
+                  <option value="all">Alle anzeigen</option>
+                </select>
+              </div>
+              <div class="pager-controls">
+                <button id="wb-first" class="pager-btn" title="Erste Seite">«</button>
+                <button id="wb-prev" class="pager-btn" title="Zurück">‹</button>
+                <button id="wb-next" class="pager-btn" title="Weiter">›</button>
+                <button id="wb-last" class="pager-btn" title="Letzte Seite">»</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Settings Tab Content -->
         <div id="settings-tab" class="tab-content">
           <div class="settings-content">
@@ -5550,92 +5638,6 @@
           <span>🏠</span>
           <span>Zurück zur Übersicht</span>
         </button>
-      </div>
-    </section>
-
-
-    <section id="words-card" class="card" style="display:none">
-      <!-- Words Back Button Header -->
-      <div id="words-header" class="levels-group-header" style="display:flex">
-        <div class="levels-group-title-wrap">
-          <div class="levels-group-heading" data-i18n="navigation.words">Words</div>
-          <div class="levels-group-subtitle">Ihre persönliche Vokabelliste</div>
-        </div>
-        <button id="words-back" type="button" class="levels-group-back">
-          ← <span data-i18n="buttons.back_to_overview">Back to Overview</span>
-        </button>
-      </div>
-      
-      <!-- Compact Words Toolbar -->
-      <div class="words-toolbar">
-        <div class="toolbar-left">
-          <div class="search-box">
-            <input id="wb-filter-q" placeholder="Wörter suchen..." class="search-input" />
-            <select id="wb-filter-col" class="filter-select">
-              <option value="word">Wort</option>
-              <option value="translation">Übersetzung</option>
-              <option value="familiarity">Bekanntheit</option>
-            </select>
-          </div>
-        </div>
-        
-        <div class="toolbar-right">
-          <div class="sort-controls">
-            <select id="wb-sort-col" class="sort-select">
-              <option value="word">Wort</option>
-              <option value="familiarity">Bekanntheit</option>
-              <option value="updated_at">Zuletzt</option>
-            </select>
-            <button id="wb-sort-dir" class="sort-btn" title="Sortierrichtung">↕</button>
-          </div>
-          
-          <button id="wb-menu" class="menu-btn" title="Mehr Optionen">⋮</button>
-          <div id="wb-pop" class="menu-pop">
-            <div class="menu-section">
-              <h4>Spalten anzeigen</h4>
-              <div id="wb-cols" class="column-toggles"></div>
-            </div>
-            <div class="menu-section">
-              <button id="wb-del" class="delete-btn" disabled>Ausgewählte löschen</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Compact Words Table -->
-      <div class="words-table-container">
-        <table id="words-table" class="compact-table">
-          <thead>
-            <tr>
-              <th class="select-col"><input type="checkbox" id="wb-all"> <span id="wb-selected">(0)</span></th>
-              <th class="word-col" data-i18n="table.word">Wort</th>
-              <th class="translation-col" data-i18n="table.translation">Übersetzung</th>
-              <th class="familiarity-col" data-i18n="familiarity.title">Bekanntheit</th>
-              <th class="example-col" data-i18n="table.example">Beispiel</th>
-              <th class="actions-col" data-i18n="labels.actions">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <!-- Compact Pager -->
-      <div class="words-pager">
-        <div class="pager-info">
-          <span>Seite <span id="wb-page">1</span> von <span id="wb-total">1</span></span>
-          <select id="wb-per" class="per-page-select">
-            <option value="20">20 pro Seite</option>
-            <option value="50">50 pro Seite</option>
-            <option value="100">100 pro Seite</option>
-            <option value="all">Alle anzeigen</option>
-          </select>
-        </div>
-        <div class="pager-controls">
-          <button id="wb-first" class="pager-btn" title="Erste Seite">«</button>
-          <button id="wb-prev" class="pager-btn" title="Zurück">‹</button>
-          <button id="wb-next" class="pager-btn" title="Weiter">›</button>
-          <button id="wb-last" class="pager-btn" title="Letzte Seite">»</button>
-        </div>
       </div>
     </section>
   </div>

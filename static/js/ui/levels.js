@@ -2055,7 +2055,7 @@ export function showTab(tab){
     const ids = {
     levels: '#levels-card',
     lesson: '#lesson',
-    words: '#words-card',
+    words: '#words-tab',  // Now a modern tab
     evaluation: '#evaluation-card',
     practice: '#practice-card',
     library: '#library-tab',
@@ -2064,10 +2064,11 @@ export function showTab(tab){
     courses: '#courses-tab'
     };
     
-    // Handle new navigation tabs
-    if (['library', 'browse', 'settings', 'courses'].includes(tab)) {
-        // Hide all legacy views (levels-card, words-card, lesson, evaluation, practice)
-        ['#levels-card','#words-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
+    // Handle new navigation tabs (including words)
+    if (['library', 'browse', 'settings', 'courses', 'words'].includes(tab)) {
+        // Hide all legacy views (levels-card, lesson, evaluation, practice)
+        // Note: words-card removed - words is now a modern tab
+        ['#levels-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
             const el=$(id); 
             if(el) el.style.display='none'; 
         });
@@ -2122,14 +2123,17 @@ export function showTab(tab){
             if (typeof window.loadCourseCards === 'function') {
                 window.loadCourseCards();
             }
+        } else if (tab === 'words') {
+            // Words tab is now a modern tab - no special handling needed
+            console.log('📚 Words tab activated');
         }
         
         return;
     }
     
     // Original tab handling for legacy tabs
-    // hide all views including practice
-    ['#levels-card','#words-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
+    // hide all views including practice (words-card removed - now a modern tab)
+    ['#levels-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
     // hide level tooltip as well
     const lt = document.getElementById('level-tip'); if(lt) lt.style.display='none';
     // progress only in lesson
@@ -2149,11 +2153,10 @@ export function showTab(tab){
         }, 50);
     }
 
-    // nav active state: Play ist aktiv für levels/lesson/evaluation/practice; Words nur für words
+    // nav active state: only for legacy tabs
+    // Note: words is now a modern tab, handled by the modern tab system above
     $$('.nav button').forEach(b=> b.classList.remove('active'));
-    if(tab === 'words') {
-    $('#show-words')?.classList.add('active');
-    } else if(['levels', 'lesson', 'evaluation', 'practice'].includes(tab)) {
+    if(['levels', 'lesson', 'evaluation', 'practice'].includes(tab)) {
     // Use library tab instead of home button
     const libraryTab = document.querySelector('[data-tab="library"]');
     if(libraryTab) libraryTab.classList.add('active');
