@@ -1,6 +1,7 @@
 
 # --- Level run helpers ---
 import os, sqlite3, json
+import re
 from datetime import datetime, UTC
 from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE
 
@@ -29,6 +30,13 @@ def ensure_words_exist(words: list[str], target_lang: str, native_lang: str) -> 
     try:
         now = datetime.now(UTC).isoformat()
         for w in words:
+            # Normalize word: trim and remove trailing punctuation/symbols
+            if isinstance(w, str):
+                w = re.sub(r'[.!?,;:—–-]+$', '', w.strip())
+            else:
+                continue
+            if not w:
+                continue
             if config['type'] == 'postgresql':
                 # PostgreSQL syntax
                 result = execute_query(conn, 'SELECT 1 FROM words WHERE word=%s AND (language=%s OR %s=\'\')', (w, target_lang, target_lang))

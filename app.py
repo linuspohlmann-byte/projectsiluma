@@ -86,7 +86,9 @@ def _adjust_user_word_familiarity(user_id, word, language, native_language, *, d
     """Adjust familiarity for a user/word pair using the central PostgreSQL helper."""
     if not user_id or not word or not language or not native_language:
         return
-    word = (word or '').strip()
+    # Normalize word by trimming and removing trailing punctuation/symbols
+    import re
+    word = re.sub(r'[.!?,;:—–-]+$', '', (word or '').strip())
     language = (language or '').strip()
     native_language = (native_language or '').strip()
     if not word or not language or not native_language:
@@ -688,6 +690,34 @@ def debug_remove_trailing_punctuation():
                     base_exists = cursor.fetchone()
                     
                     if base_exists:
+                        base_id = base_exists[0]
+                        # Repoint any user_word_familiarity rows to the base word and merge familiarity stats
+                        # Move rows that refer to the punctuated word to the base word, resolving conflicts by keeping max familiarity and summing counts
+                        cursor.execute("""
+                            UPDATE user_word_familiarity u
+                            SET word_id = %s
+                            WHERE u.word_id = %s
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM user_word_familiarity t
+                                  WHERE t.user_id = u.user_id AND t.word_id = %s
+                              );
+                        """, (base_id, word_id, base_id))
+                        # For conflicts where both exist, merge by keeping max familiarity and summing counts, then delete duplicate
+                        cursor.execute("""
+                            UPDATE user_word_familiarity t
+                            SET familiarity = GREATEST(t.familiarity, u.familiarity),
+                                seen_count = COALESCE(t.seen_count,0) + COALESCE(u.seen_count,0),
+                                correct_count = COALESCE(t.correct_count,0) + COALESCE(u.correct_count,0),
+                                updated_at = CURRENT_TIMESTAMP
+                            FROM user_word_familiarity u
+                            WHERE t.user_id = u.user_id
+                              AND t.word_id = %s
+                              AND u.word_id = %s;
+                        """, (base_id, word_id))
+                        cursor.execute("""
+                            DELETE FROM user_word_familiarity
+                            WHERE word_id = %s;
+                        """, (word_id,))
                         # Base word exists, delete the punctuated version
                         cursor.execute("""
                             DELETE FROM words
@@ -702,6 +732,7 @@ def debug_remove_trailing_punctuation():
                             SET word = %s
                             WHERE id = %s;
                         """, (base_word, word_id))
+                        # No base; user_word_familiarity already points to this id, keep as-is
                         updated_count += 1
                         print(f"✏️ Updated '{word}' to '{base_word}'")
             
