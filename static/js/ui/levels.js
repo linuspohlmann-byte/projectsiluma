@@ -2052,6 +2052,8 @@ export function setTopbarButtonsVisible(tab){
 }
 // Unified tab switcher: 'levels' | 'lesson' | 'words' | 'evaluation' | 'practice'
 export function showTab(tab){
+    console.log('🔄 showTab called with:', tab);
+    
     const ids = {
     levels: '#levels-card',
     lesson: '#lesson',
