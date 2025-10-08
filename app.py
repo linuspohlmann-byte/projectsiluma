@@ -3300,9 +3300,9 @@ def api_rate_marketplace_group(group_id):
         finally:
             conn.close()
 
-        ok, err = upsert_group_rating(group_id, user_id, stars, comment or None)
+        ok, err, detail = upsert_group_rating(group_id, user_id, stars, comment or None)
         if not ok:
-            return jsonify({'success': False, 'error': 'Invalid rating or database error', 'code': err}), 400
+            return jsonify({'success': False, 'error': 'Invalid rating or database error', 'code': err, 'detail': detail}), 400
 
         stats = get_group_rating_stats(group_id)
         return jsonify({'success': True, 'message': 'Rating submitted', 'stats': stats})

@@ -326,12 +326,12 @@ def submit_level_rating(user_id: int, level: int, language: str, rating: int) ->
 # --- Marketplace Ratings ---
 ############################
 
-def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | None) -> tuple[bool, str | None]:
+def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | None) -> tuple[bool, str | None, str | None]:
     """Create or update a rating for a marketplace custom level group.
     Returns (ok, error_code). error_code None on success.
     """
     if not group_id or not user_id:
-        return False, 'stars_invalid'
+        return False, 'stars_invalid', None
     try:
         stars_int = int(stars)
     except Exception:
@@ -352,11 +352,11 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                 pass
             cur = execute_query(conn, 'SELECT id FROM custom_level_groups WHERE id = %s' if config['type']=='postgresql' else 'SELECT id FROM custom_level_groups WHERE id = ?', (group_id,))
             if not cur.fetchone():
-                return False, 'fk_group_missing'
+                return False, 'fk_group_missing', None
             # Check user exists
             cur = execute_query(conn, 'SELECT id FROM users WHERE id = %s' if config['type']=='postgresql' else 'SELECT id FROM users WHERE id = ?', (user_id,))
             if not cur.fetchone():
-                return False, 'fk_user_missing'
+                return False, 'fk_user_missing', None
         except Exception as _e:
             # If pre-check fails unexpectedly, continue to attempt write; DB will enforce
             pass
@@ -413,7 +413,7 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                         VALUES (?, ?, ?, ?, ?)
                     ''', (group_id, user_id, stars_int, now, now))
         conn.commit()
-        return True, None
+        return True, None, None
     except Exception as e:
         print(f"Error upserting group rating: {e}")
         # Try to map common PG error codes
@@ -422,16 +422,16 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
         except Exception:
             pgcode = None
         if pgcode == '23503':
-            return False, 'fk_violation'
+            return False, 'fk_violation', str(e)
         if pgcode == '23505':
-            return False, 'unique_violation'
+            return False, 'unique_violation', str(e)
         # Detect missing relation
         msg = str(e).lower()
         if 'does not exist' in msg or 'no such table' in msg:
-            return False, 'table_missing'
+            return False, 'table_missing', str(e)
         if 'column' in msg and 'does not exist' in msg:
-            return False, 'column_missing'
-        return False, 'db_error'
+            return False, 'column_missing', str(e)
+        return False, 'db_error', str(e)
     finally:
         conn.close()
 

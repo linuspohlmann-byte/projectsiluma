@@ -590,7 +590,8 @@ function wireRatingControls(groupId){
             const data = await res.json().catch(()=>({ success:false, error:'Unbekannter Fehler' }));
             if(!res.ok || !data.success){
                 const code = data && data.code ? ` [${data.code}]` : '';
-                throw new Error((data.error || 'Fehler beim Senden') + code);
+                const detail = data && data.detail ? ` — ${data.detail}` : '';
+                throw new Error((data.error || 'Fehler beim Senden') + code + detail);
             }
             statusEl.textContent = 'Danke für deine Bewertung!';
         }catch(err){
