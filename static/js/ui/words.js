@@ -463,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Bind the back button to navigate to library/groups home
   const wordsBackBtn = document.getElementById('words-back-button');
   if (wordsBackBtn && !wordsBackBtn.dataset.bound) {
-    wordsBackBtn.addEventListener('click', (e) => {
+    wordsBackBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       console.log('🔙 Words back button clicked, navigating to library home');
@@ -473,13 +473,24 @@ document.addEventListener('DOMContentLoaded', () => {
         window.showTab('library');
       }
       
-      // Reload custom groups to ensure they're visible
-      if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
-        setTimeout(() => {
-          console.log('🔄 Reloading custom groups after navigation');
+      // Force reload custom groups with more robust approach
+      setTimeout(async () => {
+        console.log('🔄 Reloading custom groups after navigation');
+        
+        // First load the groups data
+        if (typeof window.loadCustomLevelGroups === 'function') {
+          console.log('📥 Loading custom groups data...');
+          await window.loadCustomLevelGroups();
+        }
+        
+        // Then show them in the library
+        if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+          console.log('📺 Showing custom groups in library...');
           window.showCustomLevelGroupsInLibrary();
-        }, 100);
-      }
+        }
+        
+        console.log('✅ Custom groups reload complete');
+      }, 150);
     });
     wordsBackBtn.dataset.bound = 'true';
   }
