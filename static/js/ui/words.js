@@ -15,22 +15,23 @@ export function initWordsBackButton() {
       WSEL.clear();
       updateSelCount();
       
-      // Show levels-card (which contains the library content)
-      const levelsCard = document.getElementById('levels-card');
-      if (levelsCard) {
-        levelsCard.style.display = '';
-      }
-      
-      // Navigate to library tab (home page)
+      // Navigate to library tab FIRST (this sets up the tab visibility)
       if (typeof window.showTab === 'function') {
         window.showTab('library');
       }
       
+      // IMPORTANT: showTab('library') hides #levels-card, but we need it visible!
+      // The library content is INSIDE #levels-card, so we must show it again
+      const levelsCard = document.getElementById('levels-card');
+      if (levelsCard) {
+        levelsCard.style.display = '';
+        console.log('✅ Showed #levels-card for library content');
+      }
+      
       // Show level groups home to display custom level groups and quick access
+      // Do this synchronously (no setTimeout) to ensure it happens immediately
       if (typeof window.showLevelGroupsHome === 'function') {
-        setTimeout(() => {
-          window.showLevelGroupsHome();
-        }, 50);
+        window.showLevelGroupsHome();
       }
       
       // Scroll to top
