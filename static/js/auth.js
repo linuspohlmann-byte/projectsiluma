@@ -66,6 +66,7 @@ class AuthManager {
     async checkAuthStatus() {
         if (!this.sessionToken) {
             this.showLoginSection();
+            this.handleUnauthenticatedState();
             return;
         }
 
@@ -78,16 +79,25 @@ class AuthManager {
 
             if (response.ok) {
                 const data = await response.json();
-                this.currentUser = data.user;
-                this.showAuthSection();
+                if (data.success && data.user) {
+                    this.currentUser = data.user;
+                    this.showAuthSection();
+                    this.handleAuthenticatedState();
+                } else {
+                    this.clearSession();
+                    this.showLoginSection();
+                    this.handleUnauthenticatedState();
+                }
             } else {
                 this.clearSession();
                 this.showLoginSection();
+                this.handleUnauthenticatedState();
             }
         } catch (error) {
             console.error('Auth check failed:', error);
             this.clearSession();
             this.showLoginSection();
+            this.handleUnauthenticatedState();
         }
     }
 
@@ -168,6 +178,7 @@ class AuthManager {
                 
                 // Load full user data to get complete user information
                 await this.loadCurrentUser();
+                this.handleAuthenticatedState();
                 
                 // Reload the app to ensure all modules initialize with authenticated state
                 this.reloadApp();
@@ -226,6 +237,7 @@ class AuthManager {
                 
                 // Load full user data to get complete user information
                 await this.loadCurrentUser();
+                this.handleAuthenticatedState();
                 
                 // Show onboarding for new users
                 if (window.onboardingManager) {
@@ -271,6 +283,8 @@ class AuthManager {
                 const targetLang = document.getElementById('target-lang')?.value || 'en';
                 window.invalidateWordsCache(targetLang);
             }
+            
+            this.handleUnauthenticatedState();
         }
     }
 
@@ -298,6 +312,72 @@ class AuthManager {
             return;
         }
         setTimeout(() => window.location.reload(), delay);
+    }
+
+    emitAuthStateChange(isAuthenticated) {
+        if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+            return;
+        }
+        try {
+            window.dispatchEvent(new CustomEvent('auth:state-change', {
+                detail: {
+                    isAuthenticated,
+                    user: isAuthenticated ? this.currentUser : null
+                }
+            }));
+        } catch (error) {
+            console.warn('Auth state event dispatch failed:', error);
+        }
+    }
+
+    handleAuthenticatedState() {
+        this.emitAuthStateChange(true);
+
+        const invoke = (fn) => {
+            try {
+                fn();
+            } catch (error) {
+                console.warn('Auth post-login hook failed:', error);
+            }
+        };
+
+        if (window.refreshLevelStates) {
+            invoke(() => window.refreshLevelStates());
+        }
+
+        if (window.invalidateWordsCache) {
+            const targetLang = document.getElementById('target-lang')?.value || 'en';
+            invoke(() => window.invalidateWordsCache(targetLang));
+        }
+
+        if (window.headerStats && typeof window.headerStats.updateFromWordsData === 'function') {
+            invoke(() => window.headerStats.updateFromWordsData());
+        }
+
+        // Ensure custom level groups appear once authentication is ready
+        setTimeout(() => {
+            if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+                try {
+                    window.showCustomLevelGroupsInLibrary();
+                } catch (error) {
+                    console.warn('Custom level groups load failed:', error);
+                }
+            }
+        }, 0);
+    }
+
+    handleUnauthenticatedState() {
+        this.emitAuthStateChange(false);
+
+        setTimeout(() => {
+            if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+                try {
+                    window.showCustomLevelGroupsInLibrary();
+                } catch (error) {
+                    console.warn('Custom level groups cleanup failed:', error);
+                }
+            }
+        }, 0);
     }
 
     // Get current session token for API calls
