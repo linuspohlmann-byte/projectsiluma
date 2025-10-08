@@ -382,6 +382,12 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
         if not stars_col:
             return False, 'table_mismatch'
 
+        # Generate an explicit ID to avoid relying on DB identity defaults
+        try:
+            rating_id = int(datetime.now(UTC).timestamp() * 1_000_000)
+        except Exception:
+            rating_id = None
+
         if config['type'] == 'postgresql':
             # Try update first
             updated = execute_query(conn, f'''
@@ -390,10 +396,12 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                 WHERE group_id = %s AND user_id = %s
             ''', (stars_int, comment, now, group_id, user_id)).rowcount
             if not updated:
+                if rating_id is None:
+                    rating_id = int(datetime.now(UTC).timestamp() * 1_000_000)
                 execute_query(conn, f'''
-                    INSERT INTO custom_level_group_ratings (group_id, user_id, {stars_col}{', ' + comment_col if comment_col else ''}, created_at, updated_at)
-                    VALUES (%s, %s, %s{', %s' if comment_col else ''}, %s, %s)
-                ''', (group_id, user_id, stars_int, *( [comment] if comment_col else [] ), now, now))
+                    INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}{', ' + comment_col if comment_col else ''}, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s{', %s' if comment_col else ''}, %s, %s)
+                ''', (rating_id, group_id, user_id, stars_int, *( [comment] if comment_col else [] ), now, now))
         else:
             cur = conn.cursor()
             cur.execute(f'''
@@ -402,16 +410,18 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                 WHERE group_id = ? AND user_id = ?
             ''', (stars_int, comment, now, group_id, user_id))
             if cur.rowcount == 0:
+                if rating_id is None:
+                    rating_id = int(datetime.now(UTC).timestamp() * 1_000_000)
                 if comment_col:
                     cur.execute(f'''
-                        INSERT INTO custom_level_group_ratings (group_id, user_id, {stars_col}, {comment_col}, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (group_id, user_id, stars_int, comment, now, now))
+                        INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}, {comment_col}, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (rating_id, group_id, user_id, stars_int, comment, now, now))
                 else:
                     cur.execute(f'''
-                        INSERT INTO custom_level_group_ratings (group_id, user_id, {stars_col}, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (group_id, user_id, stars_int, now, now))
+                        INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (rating_id, group_id, user_id, stars_int, now, now))
         conn.commit()
         return True, None, None
     except Exception as e:
