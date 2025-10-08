@@ -1,6 +1,42 @@
 // Words module: Tabelle + Sort/Filter/Selektion/Löschen
 // Public API: loadWords(); zusätzlich window.loadWords für Legacy
 
+// --- Navigation Helper: Return to Library Home ---
+export function returnToLibraryHome() {
+  console.log('🏠 Returning to library home');
+  
+  // Clear words data from memory to free up resources (if in words tab)
+  if (WDATA && WDATA.length > 0) {
+    WDATA = [];
+    WSEL.clear();
+    updateSelCount();
+  }
+  
+  // Navigate to library tab FIRST (this sets up the tab visibility)
+  if (typeof window.showTab === 'function') {
+    window.showTab('library');
+  }
+  
+  // IMPORTANT: showTab('library') hides #levels-card, but we need it visible!
+  // The library content is INSIDE #levels-card, so we must show it again
+  const levelsCard = document.getElementById('levels-card');
+  if (levelsCard) {
+    levelsCard.style.display = '';
+    console.log('✅ Showed #levels-card for library content');
+  }
+  
+  // Show level groups home to display custom level groups and quick access
+  // Do this synchronously (no setTimeout) to ensure it happens immediately
+  if (typeof window.showLevelGroupsHome === 'function') {
+    window.showLevelGroupsHome();
+  }
+  
+  // Scroll to top
+  try {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch(_) {}
+}
+
 // --- Back Button Handler ---
 export function initWordsBackButton() {
   const backBtn = document.getElementById('words-back');
@@ -9,35 +45,7 @@ export function initWordsBackButton() {
       e.preventDefault();
       e.stopPropagation();
       console.log('🔙 Words back button clicked, navigating to library home');
-      
-      // Clear words data from memory to free up resources
-      WDATA = [];
-      WSEL.clear();
-      updateSelCount();
-      
-      // Navigate to library tab FIRST (this sets up the tab visibility)
-      if (typeof window.showTab === 'function') {
-        window.showTab('library');
-      }
-      
-      // IMPORTANT: showTab('library') hides #levels-card, but we need it visible!
-      // The library content is INSIDE #levels-card, so we must show it again
-      const levelsCard = document.getElementById('levels-card');
-      if (levelsCard) {
-        levelsCard.style.display = '';
-        console.log('✅ Showed #levels-card for library content');
-      }
-      
-      // Show level groups home to display custom level groups and quick access
-      // Do this synchronously (no setTimeout) to ensure it happens immediately
-      if (typeof window.showLevelGroupsHome === 'function') {
-        window.showLevelGroupsHome();
-      }
-      
-      // Scroll to top
-      try {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } catch(_) {}
+      returnToLibraryHome();
     });
     backBtn.dataset.bound = 'true';
     console.log('✅ Words back button initialized');
@@ -424,11 +432,11 @@ export async function adjustFamiliarity(word, delta) {
   }
 }
 
-// Make adjustFamiliarity globally available
+// Make functions globally available
 window.adjustFamiliarity = adjustFamiliarity;
-// Make invalidateWordsCache globally available
 window.invalidateWordsCache = invalidateWordsCache;
 window.initWordsBackButton = initWordsBackButton;
+window.returnToLibraryHome = returnToLibraryHome;
 
 // Function to force refresh words for a specific language
 export async function forceRefreshWords(language) {

@@ -8,7 +8,7 @@ import { wireEvaluationButtons, populateEvaluationScore, populateEvaluationStatu
 import { initAlphabet } from './ui/alphabet.js';
 import { initLocalization } from './ui/localization.js';
 import { initHeaderStats } from './ui/header-stats.js';
-import { loadWords } from './ui/words.js';
+import { loadWords, returnToLibraryHome } from './ui/words.js';
 import './auth.js';
 import './settings.js';
 import './ui/marketplace.js';
@@ -115,6 +115,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Initialize clickable statistics
   initClickableStats();
+  
+  // Initialize navigation tabs to return to library home
+  initNavigationHomeButtons();
 
   // Legacy-API for inline code
   if(typeof window !== 'undefined'){
@@ -122,3 +125,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.setNativeDropdownVisible = setNativeDropdownVisible;
   }
 });
+
+// Initialize navigation buttons (Polo logo and Browse) to return to library home
+function initNavigationHomeButtons() {
+  // Get all navigation tabs that should return to library home
+  const libraryTab = document.querySelector('[data-tab="library"]'); // Polo logo
+  const browseTab = document.querySelector('[data-tab="browse"]'); // Durchsuchen
+  
+  // Polo logo - return to library home
+  if (libraryTab && !libraryTab.dataset.homebound) {
+    libraryTab.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🎓 Polo logo clicked - returning to library home');
+      returnToLibraryHome();
+    });
+    libraryTab.dataset.homebound = 'true';
+    console.log('✅ Polo logo navigation initialized');
+  }
+  
+  // Browse button - return to library home
+  if (browseTab && !browseTab.dataset.homebound) {
+    browseTab.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🔍 Browse button clicked - returning to library home');
+      returnToLibraryHome();
+    });
+    browseTab.dataset.homebound = 'true';
+    console.log('✅ Browse button navigation initialized');
+  }
+}
