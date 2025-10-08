@@ -41,17 +41,8 @@
     html, body, #root, .app, .container, .wrapper{background:var(--bg) !important}
     .shell{width:80vw;max-width:1400px;margin:0 auto;padding:24px 20px 40px;min-height:100vh;box-sizing:border-box;background:var(--bg)}
 
-    /* 16:9 full-viewport stage wrapper */
-    .stage-16x9{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;background:var(--bg);overflow:hidden;}
-    .stage-16x9 .stage-inner{position:relative;width:100vw;height:calc(100vw * 9 / 16);display:flex;align-items:stretch;justify-content:center;overflow:auto;margin-top:0}
-    @media (max-aspect-ratio: 16/9){
-      .stage-16x9 .stage-inner{height:100vh;width:calc(100vh * 16 / 9)}
-    }
-    /* Ensure app content fills the stage and ignores previous width caps */
-    .stage-16x9 .shell{width:100%;max-width:none;min-height:100%;margin:0;padding:24px 20px 24px}
-    .stage-16x9 .card.eval, .stage-16x9 #lesson.card{width:100%;max-width:none}
-    /* Keep topbar visible when the inner stage scrolls */
-    .stage-16x9 .main-navigation{position:sticky;top:0;z-index:500}
+    /* Make topbar sticky globally */
+    .main-navigation{position:sticky;top:0;z-index:500}
 
     /* Header */
     header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
@@ -5384,7 +5375,6 @@
     <div class="loader-box"><div class="spinner"></div><div class="loader-text" data-i18n="ui.loading_result">Lade Ergebnis…</div></div>
   </div>
   <div id="dbg" style="position:fixed;left:8px;bottom:8px;font:12px/1.2 system-ui;background:var(--surface);color:var(--text-secondary);padding:6px 8px;border:1px solid var(--border);border-radius:6px;z-index:2000" data-i18n="ui.rendered">rendered</div>
-  <div class="stage-16x9"><div class="stage-inner">
   <div class="shell">
     <!-- Combined Navigation Bar -->
     <div id="main-navigation" class="main-navigation">
@@ -5957,7 +5947,6 @@
       </div>
     </section>
   </div>
-  </div></div>
 
 
     <div id="level-tip" style="display:none">
