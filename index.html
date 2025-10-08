@@ -42,8 +42,8 @@
     .shell{width:80vw;max-width:1400px;margin:0 auto;padding:24px 20px 40px;min-height:100vh;box-sizing:border-box;background:var(--bg)}
 
     /* 16:9 full-viewport stage wrapper */
-    .stage-16x9{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;}
-    .stage-16x9 .stage-inner{position:relative;width:100vw;height:calc(100vw * 9 / 16);display:flex;align-items:stretch;justify-content:center;overflow:auto}
+    .stage-16x9{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;background:var(--bg);overflow:hidden;}
+    .stage-16x9 .stage-inner{position:relative;width:100vw;height:calc(100vw * 9 / 16);display:flex;align-items:stretch;justify-content:center;overflow:auto;margin-top:0}
     @media (max-aspect-ratio: 16/9){
       .stage-16x9 .stage-inner{height:100vh;width:calc(100vh * 16 / 9)}
     }
