@@ -6929,8 +6929,11 @@
             // Check every 2 seconds
             setInterval(checkAuthStatus, 2000);
             
-            // Initialize tab functionality
-            initializeTabs();
+            // Initialize tab functionality - wait a bit for modules to load
+            setTimeout(() => {
+                initializeTabs();
+                console.log('✅ Tabs initialized, showTab available:', typeof window.showTab);
+            }, 100);
         });
         
         
@@ -7038,6 +7041,16 @@
                                 // Show custom level groups in library
                                 if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
                                     window.showCustomLevelGroupsInLibrary();
+                                }
+                            } else if (targetTab === 'browse') {
+                                // Initialize marketplace for browse tab
+                                if (typeof window.initMarketplace === 'function') {
+                                    window.initMarketplace();
+                                }
+                            } else if (targetTab === 'courses') {
+                                // Load course cards for courses tab
+                                if (typeof window.loadCourseCards === 'function') {
+                                    window.loadCourseCards();
                                 }
                             } else if (targetTab === 'settings') {
                                 loadSettings();

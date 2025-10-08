@@ -3294,4 +3294,5 @@ function handleCustomLevelStart(groupId, levelNumber) {
 window.handleCustomLevelStart = handleCustomLevelStart;
 window.showCustomLevelGroupsInLibrary = showCustomLevelGroupsInLibrary;
 window.loadCustomLevelGroups = loadCustomLevelGroups;
+window.renderCustomLevelGroups = renderCustomLevelGroups;
 window.showGroupsContainer = showGroupsContainer;
