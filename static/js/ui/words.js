@@ -47,6 +47,23 @@ function normalizeCell(key, val){ if(val==null) return ''; if(Array.isArray(val)
 function updateSelCount(){ const el = $('#wb-selected'); if(el) el.textContent = `(${WSEL.size})`; const del = $('#wb-del'); if(del) del.disabled = WSEL.size===0; }
 loadColVis();
 
+// --- Back Button ---
+function bindWordsBackButton() {
+  const backBtn = document.getElementById('words-back-btn');
+  if (backBtn && !backBtn.dataset.bound) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('🔙 Words back button clicked, navigating to library');
+      // Navigate to library tab
+      if (typeof window.showTab === 'function') {
+        window.showTab('library');
+      }
+    });
+    backBtn.dataset.bound = 'true';
+  }
+}
+
 // --- Toolbar ---
 function renderWordsToolbar(){
   const opts = WCOLS.filter(c=>c.key!=='sel' && c.key!=='synonyms' && c.key!=='collocations' && c.key!=='tags');
@@ -339,6 +356,10 @@ export async function loadWords(showWordsTab = true){
   WSEL.clear();
   renderWordsToolbar();
   applyWordsView();
+  
+  // Bind back button
+  bindWordsBackButton();
+  
   if (showWordsTab) {
     try{ if(typeof window.showTab==='function') window.showTab('words'); }catch(_){}
   }
@@ -458,41 +479,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.updateLevelCardBackData();
       }
     });
-  }
-  
-  // Bind the back button to navigate to library/groups home
-  const wordsBackBtn = document.getElementById('words-back-button');
-  if (wordsBackBtn && !wordsBackBtn.dataset.bound) {
-    wordsBackBtn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log('🔙 Words back button clicked, navigating to library home');
-      
-      // Navigate to library tab (groups home)
-      if (typeof window.showTab === 'function') {
-        window.showTab('library');
-      }
-      
-      // Force reload custom groups with more robust approach
-      setTimeout(async () => {
-        console.log('🔄 Reloading custom groups after navigation');
-        
-        // First load the groups data
-        if (typeof window.loadCustomLevelGroups === 'function') {
-          console.log('📥 Loading custom groups data...');
-          await window.loadCustomLevelGroups();
-        }
-        
-        // Then show them in the library
-        if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
-          console.log('📺 Showing custom groups in library...');
-          window.showCustomLevelGroupsInLibrary();
-        }
-        
-        console.log('✅ Custom groups reload complete');
-      }, 150);
-    });
-    wordsBackBtn.dataset.bound = 'true';
   }
 });
 

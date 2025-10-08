@@ -2066,12 +2066,6 @@ export function showTab(tab){
     
     // Handle new navigation tabs
     if (['library', 'browse', 'settings', 'courses'].includes(tab)) {
-        // Hide all legacy card views first
-        ['#levels-card','#words-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
-            const el = document.querySelector(id); 
-            if(el) el.style.display='none'; 
-        });
-        
         // Hide all tab contents
         const tabContents = document.querySelectorAll('.tab-content');
         tabContents.forEach(content => content.classList.remove('active'));
