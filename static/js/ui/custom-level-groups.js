@@ -1693,6 +1693,14 @@ function renderCustomLevels(groupId, levels) {
                 }
             }
         });
+
+        // Ensure buttons stop propagation so clicks don't flip the card
+        const btns = card.querySelectorAll('.level-btn');
+        btns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        });
         
         // Add close button functionality for back side
         const closeBtn = card.querySelector('.level-card-back-close');
@@ -2614,8 +2622,7 @@ function addGeneratingStatusStyles() {
             }
             
             .level-card.generating .level-btn {
-                opacity: 0.6;
-                pointer-events: none;
+                opacity: 0.9; /* keep visible but allow clicks to start/generate */
             }
             
             .level-status.error {
