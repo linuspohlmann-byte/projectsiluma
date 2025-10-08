@@ -1,6 +1,7 @@
 
 # --- Level run helpers ---
 import os, sqlite3, json
+import random
 import re
 from datetime import datetime, UTC
 from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE
@@ -382,11 +383,17 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
         if not stars_col:
             return False, 'table_mismatch'
 
-        # Generate an explicit ID to avoid relying on DB identity defaults
-        try:
-            rating_id = int(datetime.now(UTC).timestamp() * 1_000_000)
-        except Exception:
-            rating_id = None
+        # Generate a 32-bit safe positive integer ID (PostgreSQL SERIAL range)
+        def generate_safe_id():
+            base = int(datetime.now(UTC).timestamp() * 1000)  # ms epoch
+            base = base % 2_000_000_000
+            if base <= 0:
+                base = 1
+            # Mix in group and user to reduce collision probability
+            mix = ((group_id & 0x7FFF) << 16) ^ ((user_id & 0x7FFF) << 1) ^ random.randint(0, 0xFFFF)
+            rid = (base ^ mix) % 2_000_000_000
+            return rid if rid > 0 else 1
+        rating_id = generate_safe_id()
 
         if config['type'] == 'postgresql':
             # Try update first
@@ -396,12 +403,23 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                 WHERE group_id = %s AND user_id = %s
             ''', (stars_int, comment, now, group_id, user_id)).rowcount
             if not updated:
-                if rating_id is None:
-                    rating_id = int(datetime.now(UTC).timestamp() * 1_000_000)
-                execute_query(conn, f'''
-                    INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}{', ' + comment_col if comment_col else ''}, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s{', %s' if comment_col else ''}, %s, %s)
-                ''', (rating_id, group_id, user_id, stars_int, *( [comment] if comment_col else [] ), now, now))
+                # Retry loop in case of random PK collision
+                attempts = 0
+                while True:
+                    try:
+                        execute_query(conn, f'''
+                            INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}{', ' + comment_col if comment_col else ''}, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s{', %s' if comment_col else ''}, %s, %s)
+                        ''', (rating_id, group_id, user_id, stars_int, *( [comment] if comment_col else [] ), now, now))
+                        break
+                    except Exception as ins_e:
+                        # Unique violation on PK id → regenerate and retry a few times
+                        code = getattr(ins_e, 'pgcode', None)
+                        if code == '23505' and attempts < 5:
+                            attempts += 1
+                            rating_id = generate_safe_id()
+                            continue
+                        raise
         else:
             cur = conn.cursor()
             cur.execute(f'''
@@ -410,18 +428,26 @@ def upsert_group_rating(group_id: int, user_id: int, stars: int, comment: str | 
                 WHERE group_id = ? AND user_id = ?
             ''', (stars_int, comment, now, group_id, user_id))
             if cur.rowcount == 0:
-                if rating_id is None:
-                    rating_id = int(datetime.now(UTC).timestamp() * 1_000_000)
-                if comment_col:
-                    cur.execute(f'''
-                        INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}, {comment_col}, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (rating_id, group_id, user_id, stars_int, comment, now, now))
-                else:
-                    cur.execute(f'''
-                        INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (rating_id, group_id, user_id, stars_int, now, now))
+                attempts = 0
+                while True:
+                    try:
+                        if comment_col:
+                            cur.execute(f'''
+                                INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}, {comment_col}, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ''', (rating_id, group_id, user_id, stars_int, comment, now, now))
+                        else:
+                            cur.execute(f'''
+                                INSERT INTO custom_level_group_ratings (id, group_id, user_id, {stars_col}, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (rating_id, group_id, user_id, stars_int, now, now))
+                        break
+                    except Exception as ins_e:
+                        if attempts < 5:
+                            attempts += 1
+                            rating_id = generate_safe_id()
+                            continue
+                        raise
         conn.commit()
         return True, None, None
     except Exception as e:
