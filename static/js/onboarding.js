@@ -6,9 +6,9 @@ class OnboardingManager {
         this.currentStep = 1;
         this.totalSteps = 4;
         this.onboardingData = {
-            native_language: 'de',
-            target_language: 'ar',
-            proficiency_level: 'A1',
+            native_language: localStorage.getItem('siluma_native') || 'de',
+            target_language: localStorage.getItem('siluma_target') || 'ar',
+            proficiency_level: localStorage.getItem('siluma_cefr') || 'none',
             learning_focus: 'daily life'
         };
         
@@ -193,10 +193,11 @@ class OnboardingManager {
         }
     }
 
-    populateLanguageSelects(languages) {
+    async populateLanguageSelects(languages) {
         const nativeSelect = document.getElementById('onboarding-native-lang');
         const targetSelect = document.getElementById('onboarding-target-lang');
 
+        // Populate native language select (same as available languages)
         if (nativeSelect) {
             nativeSelect.innerHTML = '';
             languages.forEach(lang => {
@@ -207,30 +208,62 @@ class OnboardingManager {
                 nativeSelect.appendChild(option);
             });
             
-            // Apply localization to the select options
-            if (window.applyI18n) {
-                window.applyI18n();
+            // Set default to current or German
+            const currentNative = localStorage.getItem('siluma_native') || 'de';
+            if (nativeSelect.querySelector(`option[value="${currentNative}"]`)) {
+                nativeSelect.value = currentNative;
             }
-        }
-
-        if (targetSelect) {
-            targetSelect.innerHTML = '';
-            languages.forEach(lang => {
-                const option = document.createElement('option');
-                option.value = lang.code;
-                option.textContent = lang.native_name;
-                option.setAttribute('data-i18n', `language_names.${lang.code}`);
-                targetSelect.appendChild(option);
-            });
             
             // Apply localization to the select options
             if (window.applyI18n) {
                 window.applyI18n();
             }
         }
+
+        // Populate target language select (same as available courses)
+        if (targetSelect) {
+            try {
+                const currentNativeLang = localStorage.getItem('siluma_native') || 'de';
+                const response = await fetch(`/api/available-courses?native_lang=${currentNativeLang}`);
+                const coursesData = await response.json();
+                
+                if (coursesData.success && coursesData.languages) {
+                    targetSelect.innerHTML = '';
+                    coursesData.languages.forEach(lang => {
+                        const option = document.createElement('option');
+                        option.value = lang.code;
+                        option.textContent = `${lang.native_name || lang.name} (${lang.code.toUpperCase()})`;
+                        option.setAttribute('data-i18n', `language_names.${lang.code}`);
+                        targetSelect.appendChild(option);
+                    });
+                    
+                    // Set default to current or Arabic
+                    const currentTarget = localStorage.getItem('siluma_target') || 'ar';
+                    if (targetSelect.querySelector(`option[value="${currentTarget}"]`)) {
+                        targetSelect.value = currentTarget;
+                    }
+                    
+                    // Apply localization to the select options
+                    if (window.applyI18n) {
+                        window.applyI18n();
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load available courses:', error);
+                // Fallback to using the same languages list
+                targetSelect.innerHTML = '';
+                languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang.code;
+                    option.textContent = lang.native_name;
+                    option.setAttribute('data-i18n', `language_names.${lang.code}`);
+                    targetSelect.appendChild(option);
+                });
+            }
+        }
     }
 
-    applyNativeLanguage(langCode) {
+    async applyNativeLanguage(langCode) {
         // Update localStorage
         localStorage.setItem('siluma_native', langCode);
         
@@ -239,7 +272,7 @@ class OnboardingManager {
             window.setLocale(langCode);
             
             // Listen for translations to be loaded
-            const handleTranslationsLoaded = (event) => {
+            const handleTranslationsLoaded = async (event) => {
                 console.log('🌍 Onboarding: Translations loaded from:', event.detail.source, 'for locale:', event.detail.locale);
                 
                 // Apply i18n updates to onboarding elements
@@ -248,7 +281,7 @@ class OnboardingManager {
                 }
                 
                 // Re-populate language selects with localized names
-                this.loadAvailableLanguages();
+                await this.loadAvailableLanguages();
                 
                 // Remove the event listener
                 window.removeEventListener('translationsLoaded', handleTranslationsLoaded);
@@ -258,7 +291,7 @@ class OnboardingManager {
             window.addEventListener('translationsLoaded', handleTranslationsLoaded);
             
             // Fallback timeout in case the event doesn't fire
-            setTimeout(() => {
+            setTimeout(async () => {
                 window.removeEventListener('translationsLoaded', handleTranslationsLoaded);
                 console.log('🌍 Onboarding: Fallback: Applying translations after timeout');
                 
@@ -267,21 +300,41 @@ class OnboardingManager {
                     window.applyI18n();
                 }
                 
-                // Re-populate language selects
-                this.loadAvailableLanguages();
+                // Re-populate language selects (this will also update target courses)
+                await this.loadAvailableLanguages();
             }, 1000); // Fallback after 1 second
         }
     }
 
     async finishOnboarding() {
         try {
+            console.log('🎯 Starting onboarding completion...');
+            console.log('📝 Onboarding data:', this.onboardingData);
+            
+            // Get authentication headers
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // Check if user is authenticated
+            if (window.authManager && window.authManager.isAuthenticated()) {
+                Object.assign(headers, window.authManager.getAuthHeaders());
+                console.log('✅ User authenticated, adding auth headers');
+            } else {
+                // Fallback to session token from localStorage
+                const sessionToken = localStorage.getItem('session_token');
+                if (sessionToken) {
+                    headers['Authorization'] = `Bearer ${sessionToken}`;
+                    console.log('✅ Using session token from localStorage');
+                } else {
+                    console.warn('⚠️ No authentication found - user may not be logged in');
+                }
+            }
+            
             // Save onboarding data to user settings
             const response = await fetch('/api/user/settings', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                },
+                headers: headers,
                 body: JSON.stringify({
                     native_language: this.onboardingData.native_language,
                     target_language: this.onboardingData.target_language,
@@ -291,9 +344,13 @@ class OnboardingManager {
                 })
             });
 
+            console.log('📡 Settings API response status:', response.status);
             const data = await response.json();
+            console.log('📋 Settings API response data:', data);
             
             if (data.success) {
+                console.log('✅ Onboarding data saved successfully');
+                
                 // Update course configuration
                 this.updateCourseConfiguration();
                 
@@ -304,15 +361,17 @@ class OnboardingManager {
                 this.showSuccessMessage();
                 
                 // Refresh the app
+                console.log('🔄 Refreshing app in 2 seconds...');
                 setTimeout(() => {
                     window.location.reload();
                 }, 2000);
             } else {
-                console.error('Failed to save onboarding data:', data.error);
+                console.error('❌ Failed to save onboarding data:', data.error);
                 this.showErrorMessage('Failed to save your preferences. Please try again.');
             }
         } catch (error) {
-            console.error('Onboarding completion error:', error);
+            console.error('❌ Onboarding completion error:', error);
+            console.error('Error details:', error.message, error.stack);
             this.showErrorMessage('An error occurred. Please try again.');
         }
     }
@@ -343,11 +402,11 @@ class OnboardingManager {
     }
 
     skipOnboarding() {
-        // Set default values
+        // Set default values (use current settings or fallback)
         this.onboardingData = {
-            native_language: 'de',
-            target_language: 'ar',
-            proficiency_level: 'A1',
+            native_language: localStorage.getItem('siluma_native') || 'de',
+            target_language: localStorage.getItem('siluma_target') || 'ar',
+            proficiency_level: localStorage.getItem('siluma_cefr') || 'none',
             learning_focus: 'daily life'
         };
 

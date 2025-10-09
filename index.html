@@ -6232,8 +6232,7 @@
           <p data-i18n="onboarding.native_language.subtitle">This helps us provide better translations and explanations.</p>
           <div class="onboarding-field">
             <select id="onboarding-native-lang" class="onboarding-select">
-              <option value="de" data-i18n="language_names.de">Deutsch</option>
-              <option value="en" data-i18n="language_names.en">English</option>
+              <!-- Options will be populated dynamically from /api/available-languages -->
             </select>
           </div>
           <div class="onboarding-actions">
@@ -6251,19 +6250,17 @@
             <div class="onboarding-field">
               <label data-i18n="labels.course">Zielsprache</label>
               <select id="onboarding-target-lang" class="onboarding-select">
-                <option value="ar" data-i18n="language_names.ar">العربية</option>
-                <option value="en" data-i18n="language_names.en">English</option>
-                <option value="es" data-i18n="language_names.es">Español</option>
-                <option value="fr" data-i18n="language_names.fr">Français</option>
+                <!-- Options will be populated dynamically from /api/available-courses -->
               </select>
             </div>
             <div class="onboarding-field">
               <label data-i18n="labels.level">Sprachniveau</label>
               <select id="onboarding-cefr" class="onboarding-select">
-                <option value="A1" data-i18n="levels.cefr.a1">A1 - Beginner</option>
-                <option value="A2" data-i18n="levels.cefr.a2">A2 - Elementary</option>
+                <option value="none" data-i18n="levels.cefr.a0">A0 - Beginner</option>
+                <option value="A1" data-i18n="levels.cefr.a1">A1 - Elementary</option>
+                <option value="A2" data-i18n="levels.cefr.a2">A2 - Pre-Intermediate</option>
                 <option value="B1" data-i18n="levels.cefr.b1">B1 - Intermediate</option>
-                <option value="B2" data-i18n="levels.cefr.b2">B2 - Upper Intermediate</option>
+                <option value="B2" data-i18n="levels.cefr.b2">B2 - Upper-Intermediate</option>
                 <option value="C1" data-i18n="levels.cefr.c1">C1 - Advanced</option>
                 <option value="C2" data-i18n="levels.cefr.c2">C2 - Proficient</option>
               </select>
