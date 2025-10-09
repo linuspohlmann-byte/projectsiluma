@@ -3166,22 +3166,37 @@ def api_get_marketplace_custom_level_groups():
         # Get query parameters
         language = request.args.get('language', 'en')
         native_language = request.args.get('native_language', 'de')
+        cefr_level = request.args.get('cefr_level', '')
         limit = int(request.args.get('limit', 20))
         offset = int(request.args.get('offset', 0))
         
         # Get published custom level groups
         conn = get_db()
         try:
-            cursor = conn.execute('''
-                SELECT clg.*, u.username as author_name
-                FROM custom_level_groups clg
-                LEFT JOIN users u ON clg.user_id = u.id
-                WHERE clg.status = 'published'
-                AND clg.language = ?
-                AND clg.native_language = ?
-                ORDER BY clg.created_at DESC
-                LIMIT ? OFFSET ?
-            ''', (language, native_language, limit, offset))
+            # Build query based on whether CEFR level filter is provided
+            if cefr_level:
+                cursor = conn.execute('''
+                    SELECT clg.*, u.username as author_name
+                    FROM custom_level_groups clg
+                    LEFT JOIN users u ON clg.user_id = u.id
+                    WHERE clg.status = 'published'
+                    AND clg.language = ?
+                    AND clg.native_language = ?
+                    AND clg.cefr_level = ?
+                    ORDER BY clg.created_at DESC
+                    LIMIT ? OFFSET ?
+                ''', (language, native_language, cefr_level, limit, offset))
+            else:
+                cursor = conn.execute('''
+                    SELECT clg.*, u.username as author_name
+                    FROM custom_level_groups clg
+                    LEFT JOIN users u ON clg.user_id = u.id
+                    WHERE clg.status = 'published'
+                    AND clg.language = ?
+                    AND clg.native_language = ?
+                    ORDER BY clg.created_at DESC
+                    LIMIT ? OFFSET ?
+                ''', (language, native_language, limit, offset))
             
             groups = []
             for row in cursor.fetchall():
