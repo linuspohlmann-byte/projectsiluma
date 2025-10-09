@@ -721,6 +721,8 @@ def llm_enrich_word(word: str, language: str, native_language: str, sentence_con
             'For each field, output text strictly in the specified language. '
             'Fields with language "target" must be written in the target language (target_lang). '
             'Fields with language "native" must be written in the native language (native_lang). '
+            '\nCRITICAL LANGUAGE RULE: The "translation" field MUST ALWAYS be in the native_lang, NEVER in the target_lang. '
+            'This is the most important rule. Double-check that your translation is actually in the native_lang. '
             'For "ipa": provide the International Phonetic Alphabet transcription for the TARGET language word, using standard IPA symbols (e.g., ɡ, ʃ, ɛː). No language words, only the phonetic transcription. '
             'Use empty strings or empty arrays for unknown values. No prose. No extra fields.'
             '\nFor "pos": you MUST choose exactly one tag from this closed set and return it verbatim: ["NOUN","VERB","ADJ","ADV","PRON","DET","PREP","CONJ","NUM","PART","INTJ"]. If uncertain, pick the most probable. Never invent other labels.'
@@ -984,6 +986,8 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
                     'For each field, output text strictly in the specified language. '
                     'Fields with language "target" must be written in the target language (target_lang). '
                     'Fields with language "native" must be written in the native language (native_lang). '
+                    '\nCRITICAL LANGUAGE RULE: The "translation" field for EACH word MUST ALWAYS be in the native_lang, NEVER in the target_lang. '
+                    'This is the most important rule. Double-check that each translation is actually in the native_lang. '
                     'For "ipa": provide the International Phonetic Alphabet transcription for the TARGET language word, using standard IPA symbols (e.g., ɡ, ʃ, ɛː). No language words, only the phonetic transcription. '
                     'Use empty strings or empty arrays for unknown values. No prose. No extra fields.'
                     '\nFor "pos": you MUST choose exactly one tag from this closed set and return it verbatim: ["NOUN","VERB","ADJ","ADV","PRON","DET","PREP","CONJ","NUM","PART","INTJ"]. If uncertain, pick the most probable. Never invent other labels.'
@@ -992,27 +996,46 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
                 )
             }
             
+            # Build the content with explicit language constraints
+            field_language = {
+                'translation': 'native',
+                'example': 'target',
+                'example_native': 'native',
+                'lemma': 'target',
+                'pos': 'target',
+                'ipa': 'target',
+                'gender': 'target',
+                'plural': 'target',
+                'synonyms': 'target',
+                'collocations': 'target'
+            }
+            
             user_msg = {
                 'role': 'user',
-                'content': f'''Provide lexical data for these {len(batch_words)} words in {language} (target) and {native_language} (native):
-
-Words: {word_list}
-Contexts: {context_list if context_list else 'No specific contexts provided'}
-
-Return JSON format:
-{{
-  "word1": {{
-    "translation": "native translation",
-    "pos": "POS_TAG",
-    "ipa": "phonetic transcription",
-    "example": "example sentence in target language",
-    "example_native": "example sentence in native language",
-    "synonyms": ["synonym1", "synonym2"],
-    "collocations": ["collocation1", "collocation2"],
-    "gender": "gender_tag"
-  }},
-  "word2": {{ ... }}
-}}'''
+                'content': json.dumps({
+                    'task': 'enrich_words_batch',
+                    'words': batch_words,
+                    'target_lang': language,
+                    'native_lang': native_language,
+                    'contexts': batch_contexts,
+                    'field_language': field_language,
+                    'constraints': {
+                        'translation_lang': native_language,
+                        'example_lang': language,
+                        'example_native_lang': native_language
+                    },
+                    'instructions': (
+                        f'CRITICAL: The "translation" field MUST be in {native_language}, NOT in {language}. '
+                        f'The "example" field MUST be in {language}. '
+                        f'The "example_native" field MUST be in {native_language}. '
+                        f'Return a JSON object where each key is a word and the value contains: '
+                        f'{{"translation": "<translation in {native_language}>", "pos": "<POS_TAG>", "ipa": "<phonetic>", '
+                        f'"example": "<sentence in {language}>", "example_native": "<sentence in {native_language}>", '
+                        f'"synonyms": ["<synonym1 in {language}>", "<synonym2 in {language}>"], '
+                        f'"collocations": ["<collocation1 in {language}>", "<collocation2 in {language}>"], '
+                        f'"gender": "<gender_tag>"}}'
+                    )
+                }, ensure_ascii=False)
             }
             
             payload = {
@@ -1026,7 +1049,16 @@ Return JSON format:
             
             if data and 'choices' in data and data['choices'][0]['message']['content']:
                 try:
-                    batch_data = json.loads(data['choices'][0]['message']['content'])
+                    content = data['choices'][0]['message']['content']
+                    # Clean up the response (remove code blocks if present)
+                    import re
+                    cleaned = re.sub(r"^```[a-zA-Z]*|```$", "", content.strip())
+                    if '{' in cleaned and '}' in cleaned:
+                        start = cleaned.find('{')
+                        end = cleaned.rfind('}')
+                        batch_data = json.loads(cleaned[start:end+1])
+                    else:
+                        batch_data = json.loads(cleaned)
                     
                     for word in batch_words:
                         if word in batch_data:
@@ -1037,7 +1069,8 @@ Return JSON format:
                             print(f"⚠️ No enrichment data for word: {word}")
                             
                 except json.JSONDecodeError as e:
-                    print(f"Error parsing batch enrichment JSON: {e}")
+                    print(f"❌ Error parsing batch enrichment JSON: {e}")
+                    print(f"Response was: {data['choices'][0]['message']['content'][:500]}")
                     # Fallback to individual enrichment
                     for word in batch_words:
                         enriched_results[word] = {}
