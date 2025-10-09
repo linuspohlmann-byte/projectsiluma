@@ -2043,6 +2043,17 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
 
                     console.log('✅ Custom level progress loaded:', progressData);
                     console.log('📊 Calculated metrics - Total:', totalWords, 'Learned:', completedWords, 'Score:', levelScore);
+
+                    // Apply color by status: completed -> green (gold class), otherwise 'done' if some progress
+                    try {
+                        const status = progressData.status || 'not_started';
+                        levelElement.classList.remove('done', 'gold');
+                        if (status === 'completed') {
+                            levelElement.classList.add('gold'); // green style
+                        } else if ((levelScore > 0) || (completedWords > 0)) {
+                            levelElement.classList.add('done');
+                        }
+                    } catch(_e) { /* ignore */ }
                 } else {
                     console.log('⚠️ Progress API returned error:', progressData.error);
                 }
@@ -2094,15 +2105,22 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         if (wordsText) wordsText.textContent = displayTotalWords;
         if (learnedText) learnedText.textContent = completedWords;
         
-        // Remove existing status classes
-        levelElement.classList.remove('done', 'gold');
-        
-        // Add appropriate class based on completion status
-        if (levelScore > 0 && progressPercent >= 100) {
-            levelElement.classList.add('gold');
-        } else if (levelScore > 0) {
-            levelElement.classList.add('done');
-        }
+        // Remove existing status classes and re-apply based on best-known info
+        try {
+            levelElement.classList.remove('done', 'gold');
+            // Prefer stored status if available
+            let statusStored = null;
+            try {
+                const bulk = levelElement.dataset.bulkData ? JSON.parse(levelElement.dataset.bulkData) : null;
+                statusStored = bulk && bulk.status ? String(bulk.status) : null;
+            } catch(_e) { statusStored = null; }
+
+            if (statusStored === 'completed') {
+                levelElement.classList.add('gold');
+            } else if ((levelScore > 0) || (completedWords > 0) || progressPercent >= 100) {
+                levelElement.classList.add('done');
+            }
+        } catch(_e) { /* ignore */ }
         
         // Mark this level as having its color set
         levelElement.dataset.colorSet = 'true';
