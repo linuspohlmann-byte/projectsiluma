@@ -561,23 +561,28 @@ class OnboardingManager {
         }
         
         // Load language-specific CEFR and Topic values (like the main app does)
-        if (typeof window.loadCefrForLang === 'function') {
-            try {
-                window.loadCefrForLang();
-                console.log('✅ Loaded CEFR for language:', targetLang);
-            } catch (error) {
-                console.warn('⚠️ Could not load CEFR for language:', error);
+        // Wait a bit to ensure localStorage is fully updated
+        setTimeout(() => {
+            if (typeof window.loadCefrForLang === 'function') {
+                try {
+                    window.loadCefrForLang();
+                    console.log('✅ Loaded CEFR for language:', targetLang);
+                } catch (error) {
+                    console.warn('⚠️ Could not load CEFR for language:', error);
+                }
             }
-        }
+        }, 100);
         
-        if (typeof window.loadTopicForLang === 'function') {
-            try {
-                window.loadTopicForLang();
-                console.log('✅ Loaded Topic for language:', targetLang);
-            } catch (error) {
-                console.warn('⚠️ Could not load Topic for language:', error);
+        setTimeout(() => {
+            if (typeof window.loadTopicForLang === 'function') {
+                try {
+                    window.loadTopicForLang();
+                    console.log('✅ Loaded Topic for language:', targetLang);
+                } catch (error) {
+                    console.warn('⚠️ Could not load Topic for language:', error);
+                }
             }
-        }
+        }, 100);
         
         console.log('✅ Course configuration update complete');
     }

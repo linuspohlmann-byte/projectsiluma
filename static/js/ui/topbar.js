@@ -12,7 +12,28 @@ const $ = (sel)=> document.querySelector(sel);
 const $$ = (sel)=> Array.from(document.querySelectorAll(sel));
 
 function cefrKey(){ return 'siluma_cefr_' + ($('#target-lang')?.value || 'en'); }
-function loadCefrForLang(){ try{ const v = localStorage.getItem( cefrKey() ); if(v && $('#cefr')) $('#cefr').value = v; }catch(_){}}
+function loadCefrForLang(){ 
+  try{ 
+    const key = cefrKey();
+    let val = localStorage.getItem(key);
+    // Add fallback to legacy key (like loadTopicForLang does)
+    if(!val){
+      const legacy = localStorage.getItem('siluma_cefr');
+      if(legacy) {
+        val = legacy;
+        // Save to language-specific key for next time
+        localStorage.setItem(key, val);
+        console.log('🔄 Migrated CEFR from legacy key:', val, 'to', key);
+      }
+    }
+    if(val && $('#cefr')) {
+      $('#cefr').value = val;
+      console.log('✅ Loaded CEFR for language:', key, '=', val);
+    }
+  }catch(e){
+    console.warn('⚠️ Error loading CEFR:', e);
+  }
+}
 function topicKey(){ return 'siluma_topic_' + ($('#target-lang')?.value || 'en'); }
 function loadTopicForLang(){
   try{
