@@ -1842,8 +1842,8 @@ def seed_postgres_localization_from_csv(conn) -> None:
         ids_to_delete = [row_id for _, _, _, _, row_id in rows_to_fix if isinstance(row_id, int)]
         if ids_to_delete:
             try:
-                with conn.cursor() as cur_delete:
-                    cur_delete.execute("DELETE FROM localization WHERE id = ANY(%s)", (ids_to_delete,))
+                for row_id in ids_to_delete:
+                    execute_query(conn, "DELETE FROM localization WHERE id = ?", (row_id,))
             except Exception as exc:
                 print(f"Warning: Could not remove legacy localization rows: {exc}")
                 conn.rollback()

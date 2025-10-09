@@ -1,17 +1,52 @@
 import os
 import sqlite3
-from urllib.parse import urlparse
 
-# Conditional import for PostgreSQL
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor, execute_values as psycopg2_execute_values
-    PSYCOPG2_AVAILABLE = True
-    PSYCOPG2_EXECUTE_VALUES = psycopg2_execute_values
+# Conditional import for PostgreSQL drivers
+PSYCOPG2_AVAILABLE = False
+PSYCOPG2_EXECUTE_VALUES = None
+POSTGRES_DRIVER = None
+USING_PSYCOPG3 = False
+
+try:  # Prefer latest psycopg (v3) driver
+    import psycopg
+    from psycopg.rows import dict_row as _psycopg_dict_row
+    from psycopg.extras import execute_values as _psycopg_execute_values
+
+    POSTGRES_DRIVER = "psycopg"
+    USING_PSYCOPG3 = True
+    PSYCOPG2_AVAILABLE = True  # maintain legacy flag name for callers
+    PSYCOPG2_EXECUTE_VALUES = _psycopg_execute_values
 except ImportError:
-    PSYCOPG2_AVAILABLE = False
-    PSYCOPG2_EXECUTE_VALUES = None
-    print("WARNING: psycopg2 not available. PostgreSQL support disabled.")
+    try:  # Fall back to psycopg2 if present
+        import psycopg2  # type: ignore
+        from psycopg2.extras import RealDictCursor, execute_values as psycopg2_execute_values
+
+        POSTGRES_DRIVER = "psycopg2"
+        USING_PSYCOPG3 = False
+        PSYCOPG2_AVAILABLE = True
+        PSYCOPG2_EXECUTE_VALUES = psycopg2_execute_values
+    except ImportError:
+        psycopg2 = None  # type: ignore
+        POSTGRES_DRIVER = None
+        USING_PSYCOPG3 = False
+        PSYCOPG2_AVAILABLE = False
+        PSYCOPG2_EXECUTE_VALUES = None
+        print("WARNING: PostgreSQL driver not available. PostgreSQL support disabled.")
+
+
+def _connect_postgres(url: str):
+    """Create a PostgreSQL connection using the available driver."""
+    if POSTGRES_DRIVER == "psycopg":
+        conn = psycopg.connect(url)  # type: ignore[name-defined]
+        conn.autocommit = False
+        # Ensure all cursors return dict-like rows
+        conn.row_factory = _psycopg_dict_row  # type: ignore[name-defined]
+        return conn
+    if POSTGRES_DRIVER == "psycopg2":
+        conn = psycopg2.connect(url, cursor_factory=RealDictCursor)  # type: ignore[name-defined]
+        conn.autocommit = False
+        return conn
+    raise RuntimeError("PostgreSQL driver is not available.")
 
 def get_database_config():
     """Get database configuration based on environment"""
@@ -22,22 +57,16 @@ def get_database_config():
             'path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'polo.db')
         }
     # Check if we're in production (Railway)
-    if os.getenv('DATABASE_URL') and PSYCOPG2_AVAILABLE:
+    database_url = os.getenv('DATABASE_URL')
+    if database_url and PSYCOPG2_AVAILABLE:
         # Production: Try PostgreSQL first, fallback to SQLite if it fails
         try:
             # Test PostgreSQL connection
-            parsed = urlparse(os.getenv('DATABASE_URL'))
-            test_conn = psycopg2.connect(
-                host=parsed.hostname,
-                port=parsed.port,
-                database=parsed.path[1:],
-                user=parsed.username,
-                password=parsed.password
-            )
+            test_conn = _connect_postgres(database_url)
             test_conn.close()
             return {
                 'type': 'postgresql',
-                'url': os.getenv('DATABASE_URL')
+                'url': database_url
             }
         except Exception as e:
             print(f"WARNING: PostgreSQL connection failed, falling back to SQLite: {e}")
@@ -47,8 +76,8 @@ def get_database_config():
             }
     else:
         # Development: Use SQLite
-        if os.getenv('DATABASE_URL') and not PSYCOPG2_AVAILABLE:
-            print("WARNING: DATABASE_URL set but psycopg2 not available. Using SQLite instead.")
+        if database_url and not PSYCOPG2_AVAILABLE:
+            print("WARNING: DATABASE_URL set but no PostgreSQL driver available. Using SQLite instead.")
         return {
             'type': 'sqlite',
             'path': os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'polo.db')
@@ -60,18 +89,7 @@ def get_db_connection():
     
     if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
         try:
-            # Parse DATABASE_URL
-            parsed = urlparse(config['url'])
-            conn = psycopg2.connect(
-                host=parsed.hostname,
-                port=parsed.port,
-                database=parsed.path[1:],  # Remove leading slash
-                user=parsed.username,
-                password=parsed.password,
-                cursor_factory=RealDictCursor  # This makes rows behave like dicts
-            )
-            conn.autocommit = False  # Use explicit transactions for better control
-            return conn
+            return _connect_postgres(config['url'])
         except Exception as e:
             print(f"ERROR: Failed to connect to PostgreSQL: {e}")
             print(f"ERROR: DATABASE_URL: {config['url']}")
@@ -95,7 +113,9 @@ def get_db_cursor(conn):
     config = get_database_config()
     
     if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
-        return conn.cursor(cursor_factory=RealDictCursor)
+        if USING_PSYCOPG3:
+            return conn.cursor()
+        return conn.cursor(cursor_factory=RealDictCursor)  # type: ignore[arg-type,name-defined]
     else:
         return conn.cursor()
 
