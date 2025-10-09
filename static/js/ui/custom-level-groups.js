@@ -2890,15 +2890,17 @@ function renderCustomLevelsWithPreloading(groupId, levels) {
     // Apply basic progression immediately (fast path)
     applyBasicCustomLevelProgression(groupId, levels);
     
-    // Start progressive word count updates (non-blocking)
-    setTimeout(() => {
-        updateWordCountsProgressively(groupId, levels);
-    }, 200);
+    // DISABLED: Progressive updates and preloading cause race conditions
+    // setCustomLevelColor (called in applyBulkCustomLevelProgression) already loads all data
+    // These duplicate calls were overwriting good data with 0s
     
-    // Then preload detailed data in background (non-blocking)
-    setTimeout(() => {
-        preloadCustomLevelData(groupId, levels);
-    }, 100);
+    // setTimeout(() => {
+    //     updateWordCountsProgressively(groupId, levels);
+    // }, 200);
+    
+    // setTimeout(() => {
+    //     preloadCustomLevelData(groupId, levels);
+    // }, 100);
 }
 
 // Simple progress animation (no longer needed with ultra-lazy loading)
