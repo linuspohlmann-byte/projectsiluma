@@ -466,24 +466,40 @@ class OnboardingManager {
         console.log('📊 Current onboarding data:', this.onboardingData);
         
         // Update localStorage first
+        // Note: CEFR and Topic are language-specific in the main app!
+        const targetLang = this.onboardingData.target_language;
+        
         localStorage.setItem('siluma_native', this.onboardingData.native_language);
-        localStorage.setItem('siluma_target', this.onboardingData.target_language);
+        localStorage.setItem('siluma_target', targetLang);
+        
+        // Use language-specific keys for CEFR and Topic (same as main app)
+        const cefrKey = `siluma_cefr_${targetLang}`;
+        const topicKey = `siluma_topic_${targetLang}`;
+        
+        localStorage.setItem(cefrKey, this.onboardingData.proficiency_level);
+        localStorage.setItem(topicKey, this.onboardingData.learning_focus);
+        
+        // Also set legacy keys for backward compatibility
         localStorage.setItem('siluma_cefr', this.onboardingData.proficiency_level);
         localStorage.setItem('siluma_topic', this.onboardingData.learning_focus);
         
         console.log('✅ localStorage updated:', {
             native: this.onboardingData.native_language,
-            target: this.onboardingData.target_language,
+            target: targetLang,
             cefr: this.onboardingData.proficiency_level,
-            topic: this.onboardingData.learning_focus
+            cefrKey: cefrKey,
+            topic: this.onboardingData.learning_focus,
+            topicKey: topicKey
         });
         
         // Verify localStorage was actually updated
         console.log('🔍 Verify localStorage values:', {
             native: localStorage.getItem('siluma_native'),
             target: localStorage.getItem('siluma_target'),
-            cefr: localStorage.getItem('siluma_cefr'),
-            topic: localStorage.getItem('siluma_topic')
+            cefr_specific: localStorage.getItem(cefrKey),
+            cefr_legacy: localStorage.getItem('siluma_cefr'),
+            topic_specific: localStorage.getItem(topicKey),
+            topic_legacy: localStorage.getItem('siluma_topic')
         });
         
         // Update the main course configuration form
@@ -542,6 +558,25 @@ class OnboardingManager {
         if (window.setLocale) {
             window.setLocale(this.onboardingData.native_language);
             console.log('✅ Set app locale to:', this.onboardingData.native_language);
+        }
+        
+        // Load language-specific CEFR and Topic values (like the main app does)
+        if (typeof window.loadCefrForLang === 'function') {
+            try {
+                window.loadCefrForLang();
+                console.log('✅ Loaded CEFR for language:', targetLang);
+            } catch (error) {
+                console.warn('⚠️ Could not load CEFR for language:', error);
+            }
+        }
+        
+        if (typeof window.loadTopicForLang === 'function') {
+            try {
+                window.loadTopicForLang();
+                console.log('✅ Loaded Topic for language:', targetLang);
+            } catch (error) {
+                console.warn('⚠️ Could not load Topic for language:', error);
+            }
         }
         
         console.log('✅ Course configuration update complete');

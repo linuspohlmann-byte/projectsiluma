@@ -433,4 +433,6 @@ export async function initTopbar(){
 if(typeof window !== 'undefined'){
   window.refreshMaxFam = refreshMaxFam;
   window.ensureTargetLangOptions = ensureTargetLangOptions;
+  window.loadCefrForLang = loadCefrForLang;
+  window.loadTopicForLang = loadTopicForLang;
 }
