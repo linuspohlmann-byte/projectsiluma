@@ -26,8 +26,28 @@ export function normalizeCounts(data){
   return counts;
 }
 
+function getCustomEvalProgress(level){
+  const progress = typeof window !== 'undefined' ? window._customEvalProgress : null;
+  if (!progress) return null;
+  if (Number(progress.levelNumber) !== Number(level)) return null;
+  return progress;
+}
+
+function normalizeScorePercent(value){
+  if (value === null || value === undefined) return NaN;
+  let num = Number(value);
+  if (!Number.isFinite(num)) return NaN;
+  if (num > 1.0001) return Math.max(0, Math.min(100, num));
+  if (num < 0) num = 0;
+  return Math.max(0, Math.min(100, num * 100));
+}
+
 export async function fetchStatusCounts(level, run){
   const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+  const customProgress = getCustomEvalProgress(level);
+  if (customProgress && customProgress.counts) {
+    return normalizeCounts(customProgress.counts);
+  }
   
   if (isUserAuthenticated) {
     // For authenticated users, use cached bulk data instead of API call
@@ -70,6 +90,15 @@ export async function populateEvaluationScore(){
       const ring = document.getElementById('eval-ring');
       const label = document.getElementById('eval-ring-txt');
       const lvl = Number(window._lt_level || (window.RUN && window.RUN.level) || 1);
+      const customProgress = getCustomEvalProgress(lvl);
+      if (customProgress && typeof customProgress.scoreRatio === 'number') {
+      const pct = Math.max(0, Math.min(100, Math.round(customProgress.scoreRatio * 100)));
+        const C = 2*Math.PI*50;
+        const off = C * (1 - pct/100);
+        if(ring){ ring.setAttribute('stroke-dasharray', String(C.toFixed(2))); ring.setAttribute('stroke-dashoffset', String(off)); }
+        if(label){ label.textContent = pct + '%'; }
+        return;
+      }
       let val = NaN;
       
       // Check if user is authenticated
@@ -125,7 +154,7 @@ export async function populateEvaluationScore(){
       }
       // Use the same score as level card (Translation score only for consistency)
       // Note: MC and SB scores are not persistent, so we only use Translation score
-      const pct = Math.max(0, Math.min(100, val * 100));
+      const pct = normalizeScorePercent(val);
       const C = 2*Math.PI*50; // 314.16 for radius 50
       const off = C * (1 - pct/100);
       if(ring){ ring.setAttribute('stroke-dasharray', String(C.toFixed(2))); ring.setAttribute('stroke-dashoffset', String(off)); }

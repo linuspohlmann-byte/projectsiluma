@@ -502,8 +502,8 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, score:
         except Exception:
             int_score = 0
 
-        # Determine status based on integer percent
-        status = 'completed' if int_score >= 60 else 'in_progress'
+        # Mark level as completed regardless of score; unlocking logic can still use score threshold
+        status = 'completed'
         
         try:
             if config['type'] == 'postgresql':

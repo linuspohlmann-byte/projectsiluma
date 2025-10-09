@@ -4,6 +4,7 @@
 
 import { openTooltip, playOrGenAudio } from './tooltip.js';
 import { showTab, showLoader, hideLoader } from './levels.js';
+import { populateEvaluationScore, populateEvaluationStatus } from './evaluation.js';
 
 const $ = (sel)=> document.querySelector(sel);
 const $$ = (sel)=> Array.from(document.querySelectorAll(sel));
@@ -17,6 +18,44 @@ function cachePut(row){
   WORDS_CACHE.set(key, row);
 }
 function cacheGet(word, lang){ return WORDS_CACHE.get(ck(word, lang||RUN.target||'en')); }
+
+function normalizeScoreForLesson(raw) {
+  if (raw === null || raw === undefined) return 0;
+  let num = Number(raw);
+  if (!Number.isFinite(num)) return 0;
+  if (num > 1.0001) num = num / 100;
+  if (num < 0) num = 0;
+  if (num > 1 && num < 1.0001) num = 1;
+  if (num > 1) num = 1;
+  return num;
+}
+
+function normalizeCustomProgressForLesson(progress) {
+  if (!progress) return null;
+  const counts = {0:0,1:0,2:0,3:0,4:0,5:0};
+  const source = progress.counts || progress.fam_counts || progress.famCounts || {};
+  Object.keys(counts).forEach(key => {
+    const numKey = Number(key);
+    const rawVal = source[numKey] ?? source[String(numKey)] ?? 0;
+    counts[numKey] = Number(rawVal) || 0;
+  });
+  const totalWords = Number(progress.total_words !== undefined ? progress.total_words : Object.values(counts).reduce((sum, val) => sum + Number(val || 0), 0)) || 0;
+  const completedWords = Number(counts[5] || 0);
+  const scoreRaw = progress.score_raw !== undefined ? progress.score_raw : progress.score;
+  const scoreRatio = normalizeScoreForLesson(scoreRaw);
+  const scorePercent = Math.round(scoreRatio * 100);
+  const progressPercent = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
+  return {
+    fam_counts: counts,
+    total_words: totalWords,
+    completed_words: completedWords,
+    progress_percent: progressPercent,
+    score: scoreRatio,
+    score_percent: scorePercent,
+    status: progress.status || 'completed',
+    completed_at: progress.completed_at || null
+  };
+}
 
 // ---- Enhanced Instruction Display ----
 function displayEnhancedInstruction(taskType, resultBox, options = {}) {
@@ -1369,62 +1408,99 @@ async function submitAnswer(){
 
 async function finishLevel(){
   try{ window._eval_context = 'lesson'; }catch(_){ }
-  // Expose MC stats for evaluation blending
+  window._customEvalProgress = null;
   try{
     window._mc_ratio = (RUN.mcTotal>0) ? (RUN.mcCorrect/RUN.mcTotal) : null; window._mc_inject = true;
     window._sb_ratio = (RUN.sbTotal>0) ? (RUN.sbCorrect/RUN.sbTotal) : null; window._sb_inject = true;
-  }catch(_){}
-  // Try to notify backend that the run finished; ignore errors if endpoint missing
-  try{
-    const headers = { 'Content-Type': 'application/json' };
-    
-    // Add authentication header if session token exists
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
-    }
-    
-    const targetLang = document.getElementById('target-lang')?.value || 'en';
-    
-    // Use custom level API if this is a custom level
-    if (RUN._customGroupId && RUN._customLevelNumber) {
-      console.log('🔧 Using custom level finish API:', RUN._customGroupId, RUN._customLevelNumber);
-      const score = (RUN.mcTotal > 0) ? (RUN.mcCorrect / RUN.mcTotal) : 0.0;
-      await fetch(`/api/custom-levels/${RUN._customGroupId}/${RUN._customLevelNumber}/finish`, { 
-        method:'POST', 
-        headers, 
-        body: JSON.stringify({ 
-          run_id: RUN.id, 
-          language: targetLang,
-          score: score
-        }) 
-      });
-    } else {
-      await fetch('/api/level/finish', { method:'POST', headers, body: JSON.stringify({ run_id: RUN.id, language: targetLang }) });
-    }
-    
-    // Clear custom level context after finishing
-    if (RUN._customGroupId && RUN._customLevelNumber) {
-      RUN._customGroupId = null;
-      RUN._customLevelNumber = null;
-    }
   }catch(_){ }
-  // Show evaluation; observers will populate score/status
+
+  const headers = { 'Content-Type': 'application/json' };
+  const sessionToken = localStorage.getItem('session_token');
+  if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+  const targetLang = document.getElementById('target-lang')?.value || 'en';
+  const isCustomLevel = Boolean(RUN._customGroupId && RUN._customLevelNumber);
+  const finishedGroupId = RUN._customGroupId;
+  const finishedLevelNumber = RUN._customLevelNumber;
+  let finishResponse = null;
+
+  try {
+    if (isCustomLevel) {
+      console.log('🔧 Using custom level finish API:', finishedGroupId, finishedLevelNumber);
+      const score = (RUN.mcTotal > 0) ? (RUN.mcCorrect / RUN.mcTotal) : 0.0;
+      const res = await fetch(`/api/custom-levels/${finishedGroupId}/${finishedLevelNumber}/finish`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ run_id: RUN.id, language: targetLang, score })
+      });
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload && payload.success) {
+          finishResponse = payload;
+        } else {
+          console.log('⚠️ Custom level finish response missing success flag:', payload);
+        }
+      } else {
+        console.log('⚠️ Custom level finish request failed with status', res.status);
+      }
+    } else {
+      await fetch('/api/level/finish', { method: 'POST', headers, body: JSON.stringify({ run_id: RUN.id, language: targetLang }) });
+    }
+  } catch (error) {
+    console.log('⚠️ Error finishing level:', error);
+  }
+
+  if (isCustomLevel && finishResponse) {
+    let normalized = null;
+    try {
+      if (typeof window.updateCustomLevelCardProgress === 'function') {
+        normalized = window.updateCustomLevelCardProgress(finishedGroupId, finishedLevelNumber, finishResponse);
+      }
+    } catch (error) {
+      console.log('⚠️ Failed to update custom level card after finish:', error);
+    }
+    if (!normalized) normalized = normalizeCustomProgressForLesson(finishResponse);
+    if (normalized) {
+      window._customEvalProgress = {
+        groupId: finishedGroupId,
+        levelNumber: finishedLevelNumber,
+        counts: normalized.fam_counts,
+        totalWords: normalized.total_words,
+        completedWords: normalized.completed_words,
+        scoreRatio: normalized.score,
+        scorePercent: normalized.score_percent,
+        status: normalized.status,
+        completedAt: normalized.completed_at,
+        timestamp: Date.now()
+      };
+      if (!window.cachedGroupProgress) window.cachedGroupProgress = {};
+      window.cachedGroupProgress[finishedLevelNumber] = normalized;
+    }
+  } else if (!isCustomLevel) {
+    window._customEvalProgress = null;
+  }
+
+  if (isCustomLevel) {
+    RUN._customGroupId = null;
+    RUN._customLevelNumber = null;
+  }
+
   showTab('evaluation');
-  // Refresh levels list to show updated status
+  try { await populateEvaluationScore(); } catch(_){ }
+  try { await populateEvaluationStatus(); } catch(_){ }
+
   try{ 
     if(typeof window.renderLevels==='function') window.renderLevels(); 
     if(typeof window.refreshLevelStates==='function') window.refreshLevelStates();
   }catch(_){ }
   
-  // Invalidate words cache to ensure fresh data is loaded
   try{
-    const targetLang = document.getElementById('target-lang')?.value || 'en';
+    const lang = document.getElementById('target-lang')?.value || 'en';
     if (typeof window.invalidateWordsCache === 'function') {
-      window.invalidateWordsCache(targetLang);
+      window.invalidateWordsCache(lang);
     }
-  }catch(_){}
+  }catch(_){ }
 }
+
 
 function nextItem(){
   if(!RUN.answered) return;
@@ -1438,6 +1514,7 @@ function nextItem(){
 }
 
 async function startLevel(lvl){
+  window._customEvalProgress = null;
   // Check if this is a custom level with pre-loaded data
   if (RUN._customLevelData) {
     console.log('🎯 Starting custom level with pre-loaded data');

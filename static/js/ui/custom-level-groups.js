@@ -7,6 +7,160 @@ let customLevelGroups = [];
 let currentLanguage = 'en';
 let currentNativeLanguage = 'de';
 
+// --- Helpers ---------------------------------------------------------------
+function normalizeScoreValue(raw) {
+    if (raw === null || raw === undefined) return 0;
+    let num = Number(raw);
+    if (!Number.isFinite(num)) return 0;
+    if (num > 1.0001) {
+        num = num / 100;
+    }
+    if (num < 0) num = 0;
+    if (num > 1 && num < 1.0001) num = 1; // guard against floating errors
+    if (num > 1) num = 1;
+    return num;
+}
+
+function normalizeFamCounts(rawCounts) {
+    const counts = {0:0,1:0,2:0,3:0,4:0,5:0};
+    if (!rawCounts) return counts;
+    if (Array.isArray(rawCounts)) {
+        rawCounts.forEach((val, idx) => {
+            if (idx >= 0 && idx <= 5) counts[idx] = Number(val) || 0;
+        });
+        return counts;
+    }
+    const mappings = {
+        unfamiliar: 0, unknown: 0, '0': 0, familiarity_0: 0,
+        seen: 1, '1': 1, familiarity_1: 1,
+        learning: 2, '2': 2, familiarity_2: 2,
+        familiar: 3, '3': 3, familiarity_3: 3,
+        strong: 4, '4': 4, familiarity_4: 4,
+        memorized: 5, mastered: 5, learned: 5, '5': 5, familiarity_5: 5
+    };
+    Object.entries(rawCounts).forEach(([key, value]) => {
+        const mappedKey = mappings.hasOwnProperty(key) ? mappings[key] : Number(key);
+        if (Number.isInteger(mappedKey) && mappedKey >= 0 && mappedKey <= 5) {
+            counts[mappedKey] = Number(value) || 0;
+        }
+    });
+    return counts;
+}
+
+function normalizeProgressPayload(progressData) {
+    const payload = progressData || {};
+    const famCounts = normalizeFamCounts(payload.fam_counts || payload.famCounts || payload.familiarity_counts);
+    const fallbackTotal = Object.values(famCounts).reduce((sum, val) => sum + Number(val || 0), 0);
+    const totalWords = Number(payload.total_words !== undefined ? payload.total_words : fallbackTotal) || fallbackTotal || 0;
+    const completedWords = Number(famCounts[5] || 0);
+    const scoreRatio = normalizeScoreValue(payload.score);
+    const scorePercent = Math.round(scoreRatio * 100);
+    const progressPercent = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
+    const status = payload.status || (scorePercent > 0 ? 'completed' : 'not_started');
+    
+    return {
+        success: payload.success !== false,
+        fam_counts: famCounts,
+        total_words: totalWords,
+        completed_words: completedWords,
+        progress_percent: progressPercent,
+        score: scoreRatio,
+        score_percent: scorePercent,
+        score_raw: payload.score !== undefined ? payload.score : scorePercent,
+        status,
+        completed_at: payload.completed_at || null,
+        last_updated: payload.last_updated || null,
+        group_id: payload.group_id,
+        level_number: payload.level_number
+    };
+}
+
+function applyCustomLevelProgressData(levelElement, progressData) {
+    const normalized = normalizeProgressPayload(progressData);
+
+    if (!levelElement) {
+        return normalized;
+    }
+
+    try {
+        if (levelElement.dataset.famCounts) {
+            const existing = JSON.parse(levelElement.dataset.famCounts);
+            const existingSum = Object.values(existing).reduce((sum, val) => sum + Number(val || 0), 0);
+            const incomingSum = Object.values(normalized.fam_counts).reduce((sum, val) => sum + Number(val || 0), 0);
+            if (incomingSum === 0 && existingSum > 0) {
+                normalized.fam_counts = existing;
+                normalized.total_words = existingSum;
+                normalized.completed_words = Number(existing[5] || 0);
+                normalized.progress_percent = existingSum > 0 ? Math.round((normalized.completed_words / existingSum) * 100) : 0;
+            }
+        }
+    } catch (_e) { /* ignore */ }
+
+    // Cache normalized data on element for reuse
+    try {
+        levelElement.dataset.cachedProgressData = JSON.stringify(normalized);
+        levelElement.dataset.famCounts = JSON.stringify(normalized.fam_counts);
+        levelElement.dataset.scorePercent = String(normalized.score_percent);
+        levelElement.dataset.bulkData = JSON.stringify({
+            fam_counts: normalized.fam_counts,
+            status: normalized.status,
+            last_score: normalized.score,
+            total_words: normalized.total_words
+        });
+    } catch (_e) { /* ignore dataset serialization errors */ }
+
+    const wordsText = levelElement.querySelector('.words-text');
+    if (wordsText) wordsText.textContent = normalized.total_words;
+
+    const learnedText = levelElement.querySelector('.learned-text');
+    if (learnedText) learnedText.textContent = normalized.completed_words;
+
+    const progressFill = levelElement.querySelector('.level-progress-fill');
+    if (progressFill) progressFill.style.width = `${normalized.progress_percent}%`;
+
+    updateCustomLevelCompletionCircle(levelElement, normalized.score_percent);
+    updateFamiliarityUI(levelElement, normalized.fam_counts);
+
+    try {
+        levelElement.classList.remove('done', 'gold');
+        if (normalized.status === 'completed') {
+            if (normalized.score_percent >= 80) {
+                levelElement.classList.add('gold');
+            } else {
+                levelElement.classList.add('done');
+            }
+        } else if (normalized.progress_percent > 0 || normalized.score_percent > 0) {
+            levelElement.classList.add('done');
+        }
+    } catch (_e) { /* ignore */ }
+
+    levelElement.dataset.colorSet = 'true';
+    return normalized;
+}
+
+function updateCustomLevelCardProgress(groupId, levelNumber, progressData) {
+    const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
+    const normalized = applyCustomLevelProgressData(levelCard, progressData);
+    if (!window.cachedGroupProgress) window.cachedGroupProgress = {};
+    try {
+        const existing = window.cachedGroupProgress[levelNumber];
+        if (existing) {
+            const existingTotal = Number(existing.total_words || 0);
+            const incomingTotal = Number(normalized.total_words || 0);
+            const existingSum = Object.values(existing.fam_counts || {}).reduce((sum, val) => sum + Number(val || 0), 0);
+            const incomingSum = Object.values(normalized.fam_counts || {}).reduce((sum, val) => sum + Number(val || 0), 0);
+            if ((incomingTotal === 0 && existingTotal > 0) || (incomingSum === 0 && existingSum > 0)) {
+                window.cachedGroupProgress[levelNumber] = existing;
+                return existing;
+            }
+        }
+    } catch (_e) { /* ignore */ }
+    window.cachedGroupProgress[levelNumber] = normalized;
+    return normalized;
+}
+
+window.updateCustomLevelCardProgress = updateCustomLevelCardProgress;
+
 // Initialize custom level groups (called when library tab is activated)
 async function initCustomLevelGroups() {
     try {
@@ -1987,73 +2141,24 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         const level = window.currentCustomGroup?.levels?.find(l => l.level_number === levelNumber);
         if (!level) return;
         
-        // Initialize word counts
-        let totalWords = 0;
-        let completedWords = 0;
-        let levelScore = 0;
-        
-        // Try to get user progress for this custom level
+        let normalized = null;
+
         try {
             const headers = {};
             if (window.authManager && window.authManager.isAuthenticated()) {
                 Object.assign(headers, window.authManager.getAuthHeaders());
             }
-            
+
             console.log('🔧 Fetching custom level progress:', groupId, levelNumber);
             const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress`, {
-                headers: headers
+                headers
             });
-            
+
             if (response.ok) {
                 const progressData = await response.json();
                 if (progressData.success) {
-                    // Get fam_counts from API
-                    let famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-                    const incomingSum = Object.values(famCounts).reduce((s, c) => s + (Number(c) || 0), 0);
-
-                    // Existing cached data (from previous correct computation)
-                    let existingFamCounts = null;
-                    let existingSum = 0;
-                    try {
-                        if (levelElement.dataset.famCounts) {
-                            existingFamCounts = JSON.parse(levelElement.dataset.famCounts);
-                            existingSum = Object.values(existingFamCounts).reduce((s, c) => s + (Number(c) || 0), 0);
-                        }
-                    } catch(_e) { existingFamCounts = null; existingSum = 0; }
-
-                    // If API returned zeros but we already have valid data, KEEP the existing data
-                    if (incomingSum === 0 && existingSum > 0) {
-                        console.log('⚠️ Skipping overwrite with zeros; keeping previously computed fam_counts');
-                        famCounts = existingFamCounts;
-                    } else if (incomingSum > 0) {
-                        // Only store fam_counts if they are non-zero
-                        levelElement.dataset.famCounts = JSON.stringify(famCounts);
-                    }
-
-                    // Calculate metrics from fam_counts (prefer calculated total over API total)
-                    const calculated = Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
-                    totalWords = calculated > 0 ? calculated : (progressData.total_words || 0);
-                    completedWords = Number(famCounts[5] || famCounts['5'] || 0);  // Familiarity 5 = learned
-
-                    // Keep last known score if API has no score
-                    try{
-                        const bulk = levelElement.dataset.bulkData ? JSON.parse(levelElement.dataset.bulkData) : null;
-                        levelScore = (typeof progressData.score === 'number') ? progressData.score : (bulk && typeof bulk.last_score === 'number' ? bulk.last_score : 0);
-                    }catch(_e){ levelScore = (typeof progressData.score === 'number') ? progressData.score : 0; }
-
-                    console.log('✅ Custom level progress loaded:', progressData);
-                    console.log('📊 Calculated metrics - Total:', totalWords, 'Learned:', completedWords, 'Score:', levelScore);
-
-                    // Apply color by status: completed -> green (gold class), otherwise 'done' if some progress
-                    try {
-                        const status = progressData.status || 'not_started';
-                        levelElement.classList.remove('done', 'gold');
-                        if (status === 'completed') {
-                            levelElement.classList.add('gold'); // green style
-                        } else if ((levelScore > 0) || (completedWords > 0)) {
-                            levelElement.classList.add('done');
-                        }
-                    } catch(_e) { /* ignore */ }
+                    normalized = applyCustomLevelProgressData(levelElement, progressData);
+                    console.log('✅ Custom level progress loaded:', normalized);
                 } else {
                     console.log('⚠️ Progress API returned error:', progressData.error);
                 }
@@ -2063,67 +2168,33 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         } catch (error) {
             console.log('⚠️ No progress data available for custom level, using defaults:', error.message);
         }
-        
-        // Get fam_counts from stored data or use defaults
-        let famCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-        try {
-            if (levelElement.dataset.famCounts) {
-                famCounts = JSON.parse(levelElement.dataset.famCounts);
-            }
-        } catch (e) {
-            console.log('Error parsing fam_counts:', e);
-        }
-        
-        // Fallback: if no progress data, try to get word count from level content
-        if (totalWords === 0 && level.content) {
-            totalWords = level.content.length || 0;
-        }
-        
-        // Calculate progress percentage
-        const progressPercent = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
-        const levelScorePercent = Math.round(levelScore * 100);
-        
-        // Update progress bar
-        const progressFill = levelElement.querySelector('.level-progress-fill');
-        if (progressFill) {
-            progressFill.style.width = `${progressPercent}%`;
-        }
-        
-        // Update completion circle
-        updateCustomLevelCompletionCircle(levelElement, levelScorePercent);
-        
-        // Update word counts
-        const wordsText = levelElement.querySelector('.words-text');
-        const learnedText = levelElement.querySelector('.learned-text');
-        
-        // Calculate total words as sum of all familiarity counts (same as back side)
-        const calculatedTotalWords = Object.values(famCounts).reduce((sum, count) => sum + count, 0);
-        
-        // Use calculated total if it's greater than 0, otherwise use API total
-        const displayTotalWords = calculatedTotalWords > 0 ? calculatedTotalWords : totalWords;
-        
-        if (wordsText) wordsText.textContent = displayTotalWords;
-        if (learnedText) learnedText.textContent = completedWords;
-        
-        // Remove existing status classes and re-apply based on best-known info
-        try {
-            levelElement.classList.remove('done', 'gold');
-            // Prefer stored status if available
-            let statusStored = null;
-            try {
-                const bulk = levelElement.dataset.bulkData ? JSON.parse(levelElement.dataset.bulkData) : null;
-                statusStored = bulk && bulk.status ? String(bulk.status) : null;
-            } catch(_e) { statusStored = null; }
 
-            if (statusStored === 'completed') {
-                levelElement.classList.add('gold');
-            } else if ((levelScore > 0) || (completedWords > 0) || progressPercent >= 100) {
-                levelElement.classList.add('done');
+        if (!normalized) {
+            normalized = applyCustomLevelProgressData(levelElement, null);
+        }
+
+        // Fallback: if no progress data, try to get word count from level content
+        if (normalized && normalized.total_words === 0 && level.content) {
+            let fallbackTotal = 0;
+            if (Array.isArray(level.content)) {
+                fallbackTotal = level.content.length;
+            } else if (level.content && Array.isArray(level.content.items)) {
+                fallbackTotal = level.content.items.length;
             }
-        } catch(_e) { /* ignore */ }
-        
-        // Mark this level as having its color set
-        levelElement.dataset.colorSet = 'true';
+            if (fallbackTotal > 0) {
+                normalized = applyCustomLevelProgressData(levelElement, {
+                    fam_counts: normalized.fam_counts,
+                    total_words: fallbackTotal,
+                    score: normalized.score_raw !== undefined ? normalized.score_raw : normalized.score_percent,
+                    status: normalized.status,
+                    completed_at: normalized.completed_at,
+                    last_updated: normalized.last_updated
+                });
+            }
+        }
+
+        if (!window.cachedGroupProgress) window.cachedGroupProgress = {};
+        window.cachedGroupProgress[levelNumber] = normalized;
         
     } catch (error) {
         console.log('Error setting custom level color:', error);
@@ -2137,23 +2208,25 @@ function updateCustomLevelCompletionCircle(levelElement, progressPercent) {
         const circleText = levelElement.querySelector('.completion-circle-text');
         
         if (!circleFill || !circleText) return;
+
+        const safePercent = Math.max(0, Math.min(100, Number(progressPercent) || 0));
         
         // Calculate stroke-dasharray for the circle
         const circumference = 2 * Math.PI * 15.9155;
-        const offset = circumference - (progressPercent / 100) * circumference;
+        const offset = circumference - (safePercent / 100) * circumference;
         
         // Update the circle fill
         circleFill.style.strokeDasharray = `${circumference} ${circumference}`;
         circleFill.style.strokeDashoffset = offset;
         
         // Update the text
-        circleText.textContent = `${progressPercent}%`;
+        circleText.textContent = `${safePercent}%`;
         
         // Add color based on progress
         circleFill.classList.remove('low', 'medium', 'high');
-        if (progressPercent < 30) {
+        if (safePercent < 30) {
             circleFill.classList.add('low');
-        } else if (progressPercent < 70) {
+        } else if (safePercent < 70) {
             circleFill.classList.add('medium');
         } else {
             circleFill.classList.add('high');
@@ -2247,8 +2320,12 @@ async function loadCachedGroupProgress(groupId) {
         if (response.ok) {
             const data = await response.json();
             if (data.success && data.progress_data) {
+                const normalizedCache = {};
+                Object.entries(data.progress_data).forEach(([levelKey, progressValue]) => {
+                    normalizedCache[levelKey] = normalizeProgressPayload(progressValue);
+                });
                 // Store cached progress data globally for use in level cards
-                window.cachedGroupProgress = data.progress_data;
+                window.cachedGroupProgress = normalizedCache;
                 console.log(`✅ Loaded cached progress for ${data.cached_levels} levels`);
                 return true;
             }
@@ -2581,68 +2658,10 @@ async function updateRemainingLevelWordCounts(groupId, levels) {
 
 // Update the visual word count on a level card
 function updateLevelCardWordCount(groupId, levelNumber, progressData) {
-    const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
-    if (!levelCard) return;
-    
-    // Extract fam_counts
-    const famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-    
-    // Calculate metrics from fam_counts
-    const totalWords = progressData.total_words || Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
-    const completedWords = Number(famCounts[5] || famCounts['5'] || 0);
-    const levelScore = progressData.score || 0;
-    
-    // Check if we have existing cached data with more words
-    let shouldUpdate = true;
-    if (levelCard.dataset.bulkData) {
-        try {
-            const existingData = JSON.parse(levelCard.dataset.bulkData);
-            const existingTotal = existingData.total_words || 0;
-            // Don't overwrite with 0 if we already have data
-            if (existingTotal > 0 && totalWords === 0) {
-                console.log(`⚠️ Skipping update for level ${levelNumber} - existing data (${existingTotal} words) is better than new data (${totalWords} words)`);
-                shouldUpdate = false;
-            }
-        } catch (e) {
-            // If parsing fails, proceed with update
-        }
+    const normalized = updateCustomLevelCardProgress(groupId, levelNumber, progressData);
+    if (normalized) {
+        console.log(`📊 Level ${levelNumber} updated: ${normalized.total_words} total, ${normalized.completed_words} learned, ${normalized.score_percent}% score`);
     }
-    
-    if (!shouldUpdate) return;
-    
-    const wordsText = levelCard.querySelector('.words-text');
-    const learnedText = levelCard.querySelector('.learned-text');
-    const completionText = levelCard.querySelector('.completion-circle-text');
-    const progressFill = levelCard.querySelector('.level-progress-fill');
-    
-    if (wordsText) {
-        wordsText.textContent = totalWords;
-    }
-    
-    if (learnedText) {
-        learnedText.textContent = completedWords;
-    }
-    
-    if (completionText) {
-        const scorePercent = Math.round((levelScore || 0) * 100);
-        completionText.textContent = `${scorePercent}%`;
-    }
-    
-    if (progressFill) {
-        const progress = totalWords > 0 ? 
-            Math.round((completedWords / totalWords) * 100) : 0;
-        progressFill.style.width = `${progress}%`;
-    }
-    
-    // Cache the data for later use
-    levelCard.dataset.bulkData = JSON.stringify({
-        fam_counts: famCounts,
-        status: progressData.status || 'not_started',
-        last_score: levelScore,
-        total_words: totalWords
-    });
-    
-    console.log(`📊 Level ${levelNumber} updated: ${totalWords} total, ${completedWords} learned, ${Math.round(levelScore * 100)}% score`);
 }
 
 // Show creation progress modal
@@ -2789,14 +2808,30 @@ async function preloadCustomLevelData(groupId, levels) {
                     if (data.success) {
                         // Cache the progress data for faster rendering
                         const levelCard = document.querySelector(`.level-card[data-level="${level.level_number}"][data-custom-group-id="${groupId}"]`);
-                        if (levelCard) {
-                            levelCard.dataset.bulkData = JSON.stringify({
-                                fam_counts: {0: data.total_words || 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: data.completed_words || 0},
+                        const totalWords = Number(data.total_words || 0);
+                        const completedWords = Number(data.completed_words || 0);
+                        const remainingWords = Math.max(0, totalWords - completedWords);
+                        const syntheticCounts = {
+                            0: remainingWords,
+                            1: 0,
+                            2: 0,
+                            3: 0,
+                            4: 0,
+                            5: completedWords
+                        };
+                        const normalized = applyCustomLevelProgressData(
+                            levelCard || null,
+                            {
+                                fam_counts: syntheticCounts,
+                                total_words: totalWords,
+                                score: data.level_score !== undefined ? data.level_score : data.score,
                                 status: data.status || 'not_started',
-                                last_score: data.level_score || 0,
-                                total_words: data.total_words || 0
-                            });
-                        }
+                                completed_at: data.completed_at,
+                                last_updated: data.last_updated
+                            }
+                        );
+                        if (!window.cachedGroupProgress) window.cachedGroupProgress = {};
+                        window.cachedGroupProgress[level.level_number] = normalized;
                     }
                 }
             } catch (error) {
