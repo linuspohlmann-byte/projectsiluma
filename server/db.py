@@ -1781,20 +1781,45 @@ def seed_postgres_localization_from_csv(conn) -> None:
     
     with open(csv_path, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
+        if reader.fieldnames:
+            cleaned_fieldnames = []
+            for name in reader.fieldnames:
+                if not name:
+                    cleaned_fieldnames.append('')
+                    continue
+                cleaned = name.replace('\ufeff', '').strip()
+                cleaned_fieldnames.append(cleaned)
+            reader.fieldnames = cleaned_fieldnames
+            # ensure underlying reader uses sanitized header
+            reader._fieldnames = cleaned_fieldnames
         imported_keys = 0
         for csv_row in reader:
             if not csv_row:
                 continue
-            reference_key = (csv_row.get('KEY') or csv_row.get('key') or '').strip()
+            reference_key = (
+                csv_row.get('KEY') or
+                csv_row.get('key') or
+                csv_row.get('Key') or
+                csv_row.get('REFERENCE_KEY') or
+                csv_row.get('reference_key') or
+                csv_row.get('Reference_key') or
+                ''
+            )
+            if reference_key is None:
+                reference_key = ''
+            reference_key = reference_key.replace('\ufeff', '').strip()
             if not reference_key:
                 continue
             description = (csv_row.get('DESCRIPTION') or csv_row.get('description') or '').strip()
             payload: Dict[str, Any] = {'reference_key': reference_key, 'description': description}
             translations_added = False
             for column, value in csv_row.items():
-                if not column or column.upper() in {'KEY', 'DESCRIPTION'}:
+                if not column:
                     continue
-                lang_code = normalize_language_identifier(column)
+                column_clean = column.replace('\ufeff', '').strip()
+                if not column_clean or column_clean.upper() in {'KEY', 'DESCRIPTION'}:
+                    continue
+                lang_code = normalize_language_identifier(column_clean)
                 if not lang_code:
                     continue
                 text_value = (value or '').strip()
