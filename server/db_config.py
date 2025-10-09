@@ -5,10 +5,12 @@ from urllib.parse import urlparse
 # Conditional import for PostgreSQL
 try:
     import psycopg2
-    from psycopg2.extras import RealDictCursor
+    from psycopg2.extras import RealDictCursor, execute_values as psycopg2_execute_values
     PSYCOPG2_AVAILABLE = True
+    PSYCOPG2_EXECUTE_VALUES = psycopg2_execute_values
 except ImportError:
     PSYCOPG2_AVAILABLE = False
+    PSYCOPG2_EXECUTE_VALUES = None
     print("WARNING: psycopg2 not available. PostgreSQL support disabled.")
 
 def get_database_config():

@@ -6,7 +6,7 @@ import re
 from datetime import datetime, UTC
 from collections import defaultdict
 from typing import Dict, Any
-from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE
+from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE, PSYCOPG2_EXECUTE_VALUES
 
 
 PRIMARY_LANGUAGE_FIELDS: Dict[str, str] = {
@@ -1801,11 +1801,11 @@ def seed_postgres_localization_from_csv(conn) -> None:
             nonlocal batch, total_translations
             if not batch:
                 return
-            if execute_values:
+            if PSYCOPG2_EXECUTE_VALUES:
                 now_str = datetime.now(UTC).isoformat()
                 values = [(key, lang, value, desc, now_str, now_str) for key, lang, value, desc in batch]
                 with conn.cursor() as cur:
-                    execute_values(cur, """
+                    PSYCOPG2_EXECUTE_VALUES(cur, """
                         INSERT INTO localization (key, language, value, description, created_at, updated_at)
                         VALUES %s
                         ON CONFLICT (key, language) DO UPDATE SET
@@ -1821,6 +1821,8 @@ def seed_postgres_localization_from_csv(conn) -> None:
                     upsert_localization_entry(payload, conn=conn)
                     total_translations += 1
                 batch.clear()
+            conn.commit()
+            print(f"Synchronized {total_translations} localization translations so far...")
 
         for csv_row in reader:
             if not csv_row:
