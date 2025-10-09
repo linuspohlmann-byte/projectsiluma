@@ -32,6 +32,9 @@ def create_custom_level_progress_table():
                     familiarity_3 INTEGER DEFAULT 0,
                     familiarity_4 INTEGER DEFAULT 0,
                     familiarity_5 INTEGER DEFAULT 0,
+                    score REAL,
+                    status VARCHAR(50) DEFAULT 'not_started',
+                    completed_at TIMESTAMP,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -71,6 +74,9 @@ def create_custom_level_progress_table():
                     familiarity_3 INTEGER DEFAULT 0,
                     familiarity_4 INTEGER DEFAULT 0,
                     familiarity_5 INTEGER DEFAULT 0,
+                    score REAL,
+                    status TEXT DEFAULT 'not_started',
+                    completed_at TEXT,
                     last_updated TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -107,7 +113,8 @@ def create_custom_level_progress_table():
         conn.close()
 
 def update_custom_level_progress(user_id: int, group_id: int, level_number: int, 
-                                familiarity_counts: Dict[int, int]) -> bool:
+                                familiarity_counts: Dict[int, int], score: float = None, 
+                                status: str = None, completed_at: str = None) -> bool:
     """Update or insert custom level progress data"""
     try:
         config = get_database_config()
@@ -120,14 +127,15 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
         
         try:
             if config['type'] == 'postgresql':
-                print(f"📝 cache: upsert row user={user_id} group={group_id} level={level_number} counts={familiarity_counts}")
+                print(f"📝 cache: upsert row user={user_id} group={group_id} level={level_number} counts={familiarity_counts} score={score} status={status}")
                 execute_query(conn, """
                     INSERT INTO custom_level_progress 
                     (user_id, group_id, level_number, total_words, 
                      familiarity_0, familiarity_1, familiarity_2, 
-                     familiarity_3, familiarity_4, familiarity_5, 
+                     familiarity_3, familiarity_4, familiarity_5,
+                     score, status, completed_at,
                      last_updated, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id, group_id, level_number)
                     DO UPDATE SET
                         total_words = EXCLUDED.total_words,
@@ -137,6 +145,9 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
                         familiarity_3 = EXCLUDED.familiarity_3,
                         familiarity_4 = EXCLUDED.familiarity_4,
                         familiarity_5 = EXCLUDED.familiarity_5,
+                        score = COALESCE(EXCLUDED.score, custom_level_progress.score),
+                        status = COALESCE(EXCLUDED.status, custom_level_progress.status),
+                        completed_at = COALESCE(EXCLUDED.completed_at, custom_level_progress.completed_at),
                         last_updated = EXCLUDED.last_updated
                 """, (
                     user_id, group_id, level_number, total_words,
@@ -146,6 +157,7 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
                     familiarity_counts.get(3, 0),
                     familiarity_counts.get(4, 0),
                     familiarity_counts.get(5, 0),
+                    score, status, completed_at,
                     now, now
                 ))
                 conn.commit()
@@ -155,9 +167,10 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
                     INSERT OR REPLACE INTO custom_level_progress 
                     (user_id, group_id, level_number, total_words, 
                      familiarity_0, familiarity_1, familiarity_2, 
-                     familiarity_3, familiarity_4, familiarity_5, 
+                     familiarity_3, familiarity_4, familiarity_5,
+                     score, status, completed_at,
                      last_updated, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     user_id, group_id, level_number, total_words,
                     familiarity_counts.get(0, 0),
@@ -166,6 +179,7 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
                     familiarity_counts.get(3, 0),
                     familiarity_counts.get(4, 0),
                     familiarity_counts.get(5, 0),
+                    score, status, completed_at,
                     now, now
                 ))
                 conn.commit()
@@ -193,7 +207,8 @@ def get_custom_level_progress(user_id: int, group_id: int, level_number: int) ->
             if config['type'] == 'postgresql':
                 result = execute_query(conn, """
                     SELECT total_words, familiarity_0, familiarity_1, familiarity_2,
-                           familiarity_3, familiarity_4, familiarity_5, last_updated
+                           familiarity_3, familiarity_4, familiarity_5, 
+                           score, status, completed_at, last_updated
                     FROM custom_level_progress
                     WHERE user_id = %s AND group_id = %s AND level_number = %s
                 """, (user_id, group_id, level_number))
@@ -210,13 +225,17 @@ def get_custom_level_progress(user_id: int, group_id: int, level_number: int) ->
                             4: row['familiarity_4'],
                             5: row['familiarity_5']
                         },
+                        'score': row['score'],
+                        'status': row['status'],
+                        'completed_at': row['completed_at'],
                         'last_updated': row['last_updated']
                     }
             else:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT total_words, familiarity_0, familiarity_1, familiarity_2,
-                           familiarity_3, familiarity_4, familiarity_5, last_updated
+                           familiarity_3, familiarity_4, familiarity_5,
+                           score, status, completed_at, last_updated
                     FROM custom_level_progress
                     WHERE user_id = ? AND group_id = ? AND level_number = ?
                 """, (user_id, group_id, level_number))
@@ -233,7 +252,10 @@ def get_custom_level_progress(user_id: int, group_id: int, level_number: int) ->
                             4: row[5],
                             5: row[6]
                         },
-                        'last_updated': row[7]
+                        'score': row[7],
+                        'status': row[8],
+                        'completed_at': row[9],
+                        'last_updated': row[10]
                     }
             
             return None
@@ -258,7 +280,8 @@ def get_custom_level_group_progress(user_id: int, group_id: int) -> Dict[int, Di
             if config['type'] == 'postgresql':
                 result = execute_query(conn, """
                     SELECT level_number, total_words, familiarity_0, familiarity_1, familiarity_2,
-                           familiarity_3, familiarity_4, familiarity_5, last_updated
+                           familiarity_3, familiarity_4, familiarity_5,
+                           score, status, completed_at, last_updated
                     FROM custom_level_progress
                     WHERE user_id = %s AND group_id = %s
                     ORDER BY level_number
@@ -276,13 +299,17 @@ def get_custom_level_group_progress(user_id: int, group_id: int) -> Dict[int, Di
                             4: row['familiarity_4'],
                             5: row['familiarity_5']
                         },
+                        'score': row['score'],
+                        'status': row['status'],
+                        'completed_at': row['completed_at'],
                         'last_updated': row['last_updated']
                     }
             else:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT level_number, total_words, familiarity_0, familiarity_1, familiarity_2,
-                           familiarity_3, familiarity_4, familiarity_5, last_updated
+                           familiarity_3, familiarity_4, familiarity_5,
+                           score, status, completed_at, last_updated
                     FROM custom_level_progress
                     WHERE user_id = ? AND group_id = ?
                     ORDER BY level_number
@@ -300,7 +327,10 @@ def get_custom_level_group_progress(user_id: int, group_id: int) -> Dict[int, Di
                             4: row[6],
                             5: row[7]
                         },
-                        'last_updated': row[8]
+                        'score': row[8],
+                        'status': row[9],
+                        'completed_at': row[10],
+                        'last_updated': row[11]
                     }
             
             return progress_data
@@ -440,4 +470,71 @@ def refresh_custom_level_group_progress(user_id: int, group_id: int) -> bool:
         
     except Exception as e:
         print(f"❌ Error refreshing custom level group progress: {e}")
+        return False
+
+def complete_custom_level(user_id: int, group_id: int, level_number: int, score: float) -> bool:
+    """Mark a custom level as completed with a score"""
+    try:
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        now = datetime.now(UTC).isoformat()
+        
+        # Determine status based on score
+        status = 'completed' if score >= 0.6 else 'in_progress'
+        
+        try:
+            if config['type'] == 'postgresql':
+                execute_query(conn, """
+                    INSERT INTO custom_level_progress 
+                    (user_id, group_id, level_number, score, status, completed_at, last_updated, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id, group_id, level_number)
+                    DO UPDATE SET
+                        score = EXCLUDED.score,
+                        status = EXCLUDED.status,
+                        completed_at = EXCLUDED.completed_at,
+                        last_updated = EXCLUDED.last_updated
+                """, (user_id, group_id, level_number, score, status, now, now, now))
+                conn.commit()
+            else:
+                cursor = conn.cursor()
+                # For SQLite, we need to check if row exists first
+                cursor.execute("""
+                    SELECT id FROM custom_level_progress 
+                    WHERE user_id = ? AND group_id = ? AND level_number = ?
+                """, (user_id, group_id, level_number))
+                
+                if cursor.fetchone():
+                    # Update existing row
+                    cursor.execute("""
+                        UPDATE custom_level_progress 
+                        SET score = ?, status = ?, completed_at = ?, last_updated = ?
+                        WHERE user_id = ? AND group_id = ? AND level_number = ?
+                    """, (score, status, now, now, user_id, group_id, level_number))
+                else:
+                    # Insert new row
+                    cursor.execute("""
+                        INSERT INTO custom_level_progress 
+                        (user_id, group_id, level_number, score, status, completed_at, last_updated, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (user_id, group_id, level_number, score, status, now, now, now))
+                
+                conn.commit()
+            
+            print(f"✅ Marked level as completed: user={user_id}, group={group_id}, level={level_number}, score={score}")
+            
+            # Refresh the familiarity counts for this level
+            refresh_custom_level_progress(user_id, group_id, level_number)
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error completing custom level: {e}")
+            return False
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"❌ Error in complete_custom_level: {e}")
         return False

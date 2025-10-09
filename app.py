@@ -3589,28 +3589,141 @@ def api_submit_custom_level(group_id, level_number):
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/<int:level_number>/finish')
 @require_auth(optional=True)
 def api_finish_custom_level(group_id, level_number):
-    """Finish a custom level"""
+    """Finish a custom level and save progress to PostgreSQL"""
     try:
         # Get user from Flask's g object (set by require_auth decorator)
         user = g.current_user
         user_id = user['id'] if user else None
         
-        # For custom level finish, authentication is optional
-        # This allows the feature to work even without login
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required to save progress'
+            }), 401
         
         payload = request.get_json(force=True) or {}
         run_id = payload.get('run_id')
-        score = payload.get('score', 0.0)
+        score = float(payload.get('score', 0.0))
         
-        # For now, just return success (no actual progress tracking implemented yet)
+        # Save progress to custom_level_progress table
+        from server.db_progress_cache import complete_custom_level, refresh_custom_level_progress
+        
+        # Complete the level with score
+        success = complete_custom_level(user_id, group_id, level_number, score)
+        
+        if not success:
+            print(f"⚠️  Failed to save custom level progress for user={user_id}, group={group_id}, level={level_number}")
+        
+        # Get updated progress data including familiarity counts
+        from server.db_progress_cache import get_custom_level_progress
+        progress_data = get_custom_level_progress(user_id, group_id, level_number)
+        
         return jsonify({
             'success': True,
             'message': 'Custom level completed',
-            'score': score
+            'score': score,
+            'status': 'completed' if score >= 0.6 else 'in_progress',
+            'fam_counts': progress_data.get('fam_counts', {}) if progress_data else {},
+            'total_words': progress_data.get('total_words', 0) if progress_data else 0
         })
         
     except Exception as e:
         print(f"Error finishing custom level: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.get('/api/custom-levels/<int:group_id>/<int:level_number>/progress')
+@require_auth(optional=True)
+def api_get_custom_level_progress(group_id, level_number):
+    """Get progress data for a custom level (for evaluation display)"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required'
+            }), 401
+        
+        # Get progress data from custom_level_progress table
+        from server.db_progress_cache import get_custom_level_progress
+        progress_data = get_custom_level_progress(user_id, group_id, level_number)
+        
+        if not progress_data:
+            # No progress yet - return empty data
+            return jsonify({
+                'success': True,
+                'score': None,
+                'status': 'not_started',
+                'fam_counts': {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
+                'total_words': 0,
+                'completed_at': None
+            })
+        
+        # Convert fam_counts keys to strings for JSON
+        fam_counts_str = {str(k): v for k, v in progress_data.get('fam_counts', {}).items()}
+        
+        return jsonify({
+            'success': True,
+            'score': progress_data.get('score'),
+            'status': progress_data.get('status', 'not_started'),
+            'fam_counts': fam_counts_str,
+            'total_words': progress_data.get('total_words', 0),
+            'completed_at': progress_data.get('completed_at'),
+            'last_updated': str(progress_data.get('last_updated', ''))
+        })
+        
+    except Exception as e:
+        print(f"Error getting custom level progress: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.get('/api/custom-levels/<int:group_id>/progress')
+@require_auth(optional=True)
+def api_get_custom_group_progress(group_id):
+    """Get progress data for all levels in a custom level group"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required'
+            }), 401
+        
+        # Get progress data from custom_level_progress table
+        from server.db_progress_cache import get_custom_level_group_progress
+        progress_data = get_custom_level_group_progress(user_id, group_id)
+        
+        # Convert to array format for easier frontend consumption
+        levels = []
+        for level_number, data in progress_data.items():
+            fam_counts_str = {str(k): v for k, v in data.get('fam_counts', {}).items()}
+            levels.append({
+                'level': level_number,
+                'score': data.get('score'),
+                'status': data.get('status', 'not_started'),
+                'fam_counts': fam_counts_str,
+                'total_words': data.get('total_words', 0),
+                'completed_at': data.get('completed_at'),
+                'last_updated': str(data.get('last_updated', ''))
+            })
+        
+        return jsonify({
+            'success': True,
+            'levels': levels
+        })
+        
+    except Exception as e:
+        print(f"Error getting custom group progress: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/<int:level_number>/enrich_batch')
