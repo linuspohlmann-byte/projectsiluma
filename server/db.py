@@ -1766,6 +1766,7 @@ def seed_postgres_localization_from_csv(conn) -> None:
     try:
         cur = execute_query(conn, "SELECT COUNT(*) AS count FROM localization")
         row = cur.fetchone()
+        cur.close()
         existing = 0
         if row is not None:
             if isinstance(row, dict):
@@ -1778,6 +1779,80 @@ def seed_postgres_localization_from_csv(conn) -> None:
         print(f"Could not determine localization row count: {exc}")
         existing = None
     
+    def normalize_existing_languages():
+        """Ensure stored language identifiers use normalized codes (e.g., en, de)."""
+        try:
+            with conn.cursor() as cur_existing:
+                cur_existing.execute("SELECT id, key, language, value, description FROM localization")
+                rows = cur_existing.fetchall()
+        except Exception as exc:
+            print(f"Warning: Could not inspect existing localization rows: {exc}")
+            return
+        if not rows:
+            return
+        rows_to_fix: list[tuple[str, str, Any, Any, Any]] = []
+        for row in rows:
+            if isinstance(row, dict):
+                row_id = row.get('id')
+                reference_key = row.get('key')
+                language = row.get('language')
+                value = row.get('value')
+                description = row.get('description')
+            else:
+                row_id = row[0] if len(row) > 0 else None
+                reference_key = row[1] if len(row) > 1 else None
+                language = row[2] if len(row) > 2 else None
+                value = row[3] if len(row) > 3 else None
+                description = row[4] if len(row) > 4 else None
+            normalized_lang = normalize_language_identifier(language)
+            if not normalized_lang or normalized_lang == language or not reference_key:
+                continue
+            rows_to_fix.append((reference_key, normalized_lang, value, description, row_id))
+        if not rows_to_fix:
+            return
+        now_str = datetime.now(UTC).isoformat()
+        upsert_values = [(key, lang, val, desc, now_str, now_str) for key, lang, val, desc, _ in rows_to_fix]
+        try:
+            if PSYCOPG2_EXECUTE_VALUES:
+                with conn.cursor() as cur_upsert:
+                    PSYCOPG2_EXECUTE_VALUES(cur_upsert, """
+                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                        VALUES %s
+                        ON CONFLICT (key, language) DO UPDATE SET
+                            value = COALESCE(EXCLUDED.value, localization.value),
+                            description = COALESCE(EXCLUDED.description, localization.description),
+                            updated_at = EXCLUDED.updated_at
+                    """, upsert_values, template="(%s, %s, %s, %s, %s, %s)")
+            else:
+                for key, lang, val, desc, _ in rows_to_fix:
+                    cur_upsert = conn.cursor()
+                    cur_upsert.execute("""
+                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (key, language) DO UPDATE SET
+                            value = COALESCE(EXCLUDED.value, localization.value),
+                            description = COALESCE(EXCLUDED.description, localization.description),
+                            updated_at = EXCLUDED.updated_at
+                    """, (key, lang, val, desc, now_str, now_str))
+                    cur_upsert.close()
+        except Exception as exc:
+            print(f"Warning: Failed to normalize localization entries: {exc}")
+            conn.rollback()
+            return
+        ids_to_delete = [row_id for _, _, _, _, row_id in rows_to_fix if isinstance(row_id, int)]
+        if ids_to_delete:
+            try:
+                with conn.cursor() as cur_delete:
+                    cur_delete.execute("DELETE FROM localization WHERE id = ANY(%s)", (ids_to_delete,))
+            except Exception as exc:
+                print(f"Warning: Could not remove legacy localization rows: {exc}")
+                conn.rollback()
+                return
+        conn.commit()
+        print(f"Normalized {len(rows_to_fix)} localization rows to standard language codes.")
+    
+    normalize_existing_languages()
+
     with open(csv_path, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         if reader.fieldnames:
@@ -1854,8 +1929,7 @@ def seed_postgres_localization_from_csv(conn) -> None:
                 text_value = (value or '').strip()
                 if not text_value or text_value in LOCALIZATION_INVALID_VALUES:
                     continue
-                lang_field = language_code_to_field(lang_code)
-                batch.append((reference_key, lang_field, text_value, description or None))
+                batch.append((reference_key, lang_code, text_value, description or None))
                 translations_added = True
                 if len(batch) >= batch_size:
                     flush_batch()
