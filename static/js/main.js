@@ -69,6 +69,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('⚠️ Could not apply localization:', error);
   }
 
+  // Check if we need to open create custom group modal (after onboarding)
+  setTimeout(() => {
+    const shouldCreateGroup = localStorage.getItem('siluma_onboarding_create_group');
+    if (shouldCreateGroup === 'true') {
+      console.log('🎯 Onboarding requested custom group creation, opening modal...');
+      localStorage.removeItem('siluma_onboarding_create_group');
+      
+      if (typeof window.showCreateCustomGroupModal === 'function') {
+        window.showCreateCustomGroupModal();
+        console.log('✅ Create custom group modal opened after onboarding');
+      } else {
+        console.warn('⚠️ showCreateCustomGroupModal not available yet');
+      }
+    }
+  }, 2000); // Wait 2 seconds for everything to load
+
   // Initialize navigation tabs to return to library home
   initNavigationHomeButtons();
 

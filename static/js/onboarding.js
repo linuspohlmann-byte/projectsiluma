@@ -445,6 +445,13 @@ class OnboardingManager {
                     }
                 }
                 
+                // Import or create custom level group based on onboarding settings
+                try {
+                    await this.importOrCreateLevelGroup();
+                } catch (error) {
+                    console.log('⚠️ Could not auto-import/create level group:', error);
+                }
+                
                 // Refresh the app to apply all changes
                 console.log('🔄 Refreshing app in 1.5 seconds...');
                 setTimeout(() => {
@@ -648,6 +655,89 @@ class OnboardingManager {
         setTimeout(() => {
             errorDiv.remove();
         }, 5000);
+    }
+
+    async importOrCreateLevelGroup() {
+        console.log('🎯 Auto-importing or creating custom level group...');
+        console.log('📊 Settings:', {
+            target: this.onboardingData.target_language,
+            native: this.onboardingData.native_language,
+            cefr: this.onboardingData.proficiency_level,
+            focus: this.onboardingData.learning_focus
+        });
+        
+        // Check if user is authenticated
+        if (!window.authManager || !window.authManager.isAuthenticated()) {
+            console.log('⚠️ User not authenticated, skipping auto-import');
+            return;
+        }
+        
+        try {
+            // Search for matching marketplace groups
+            const params = new URLSearchParams({
+                language: this.onboardingData.target_language,
+                native_language: this.onboardingData.native_language,
+                cefr_level: this.onboardingData.proficiency_level,
+                limit: 5
+            });
+            
+            console.log('🔍 Searching marketplace for matching groups...', params.toString());
+            
+            const headers = {};
+            if (window.authManager && window.authManager.isAuthenticated()) {
+                Object.assign(headers, window.authManager.getAuthHeaders());
+            }
+            
+            const response = await fetch(`/api/marketplace/custom-level-groups?${params}`, {
+                headers: headers
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Marketplace search failed: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            console.log('📋 Marketplace search result:', result);
+            
+            if (result.success && result.groups && result.groups.length > 0) {
+                // Found matching groups - import the first one
+                const bestMatch = result.groups[0];
+                console.log('✅ Found matching marketplace group:', bestMatch.group_name);
+                console.log('📦 Importing group ID:', bestMatch.id);
+                
+                // Import the group
+                const importResponse = await fetch(`/api/marketplace/custom-level-groups/${bestMatch.id}/import`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...headers
+                    },
+                    body: JSON.stringify({})
+                });
+                
+                const importResult = await importResponse.json();
+                
+                if (importResult.success) {
+                    console.log('✅ Successfully imported marketplace group:', bestMatch.group_name);
+                    this.showSuccessMessage('Passende Level-Gruppe aus dem Marketplace importiert: ' + bestMatch.group_name);
+                } else {
+                    throw new Error(importResult.error || 'Import failed');
+                }
+                
+            } else {
+                // No matching groups found - set flag to create modal after reload
+                console.log('⚠️ No matching marketplace groups found');
+                console.log('🎯 Will open create custom group modal after reload...');
+                
+                // Set flag in localStorage to open create modal after reload
+                localStorage.setItem('siluma_onboarding_create_group', 'true');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error in importOrCreateLevelGroup:', error);
+            // Don't show error to user - this is a nice-to-have feature
+            // User can manually create/import groups later
+        }
     }
 }
 
