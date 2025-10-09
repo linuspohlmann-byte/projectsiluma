@@ -2007,10 +2007,19 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
             if (response.ok) {
                 const progressData = await response.json();
                 if (progressData.success) {
-                    totalWords = progressData.total_words || 0;
-                    completedWords = progressData.completed_words || 0;
-                    levelScore = progressData.level_score || 0;
+                    // Get fam_counts from API
+                    const famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                    
+                    // Store fam_counts for later use
+                    levelElement.dataset.famCounts = JSON.stringify(famCounts);
+                    
+                    // Calculate metrics from fam_counts
+                    totalWords = progressData.total_words || Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
+                    completedWords = Number(famCounts[5] || famCounts['5'] || 0);  // Familiarity 5 = learned
+                    levelScore = progressData.score || 0;  // Use score from DB
+                    
                     console.log('✅ Custom level progress loaded:', progressData);
+                    console.log('📊 Calculated metrics - Total:', totalWords, 'Learned:', completedWords, 'Score:', levelScore);
                 } else {
                     console.log('⚠️ Progress API returned error:', progressData.error);
                 }
@@ -2019,6 +2028,16 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
             }
         } catch (error) {
             console.log('⚠️ No progress data available for custom level, using defaults:', error.message);
+        }
+        
+        // Get fam_counts from stored data or use defaults
+        let famCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+        try {
+            if (levelElement.dataset.famCounts) {
+                famCounts = JSON.parse(levelElement.dataset.famCounts);
+            }
+        } catch (e) {
+            console.log('Error parsing fam_counts:', e);
         }
         
         // Fallback: if no progress data, try to get word count from level content
@@ -2044,9 +2063,12 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         const learnedText = levelElement.querySelector('.learned-text');
         
         // Calculate total words as sum of all familiarity counts (same as back side)
-        const calculatedTotalWords = Object.values(familiarityCounts).reduce((sum, count) => sum + count, 0);
+        const calculatedTotalWords = Object.values(famCounts).reduce((sum, count) => sum + count, 0);
         
-        if (wordsText) wordsText.textContent = calculatedTotalWords;
+        // Use calculated total if it's greater than 0, otherwise use API total
+        const displayTotalWords = calculatedTotalWords > 0 ? calculatedTotalWords : totalWords;
+        
+        if (wordsText) wordsText.textContent = displayTotalWords;
         if (learnedText) learnedText.textContent = completedWords;
         
         // Remove existing status classes
@@ -2510,31 +2532,39 @@ function updateLevelCardWordCount(groupId, levelNumber, progressData) {
     const completionText = levelCard.querySelector('.completion-circle-text');
     const progressFill = levelCard.querySelector('.level-progress-fill');
     
+    // Extract fam_counts
+    const famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    
+    // Calculate metrics from fam_counts
+    const totalWords = progressData.total_words || Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
+    const completedWords = Number(famCounts[5] || famCounts['5'] || 0);
+    const levelScore = progressData.score || 0;
+    
     if (wordsText) {
-        wordsText.textContent = progressData.total_words || 0;
+        wordsText.textContent = totalWords;
     }
     
     if (learnedText) {
-        learnedText.textContent = progressData.completed_words || 0;
+        learnedText.textContent = completedWords;
     }
     
     if (completionText) {
-        const score = Math.round((progressData.level_score || 0) * 100);
-        completionText.textContent = `${score}%`;
+        const scorePercent = Math.round((levelScore || 0) * 100);
+        completionText.textContent = `${scorePercent}%`;
     }
     
     if (progressFill) {
-        const progress = progressData.total_words > 0 ? 
-            Math.round(((progressData.completed_words || 0) / progressData.total_words) * 100) : 0;
+        const progress = totalWords > 0 ? 
+            Math.round((completedWords / totalWords) * 100) : 0;
         progressFill.style.width = `${progress}%`;
     }
     
     // Cache the data for later use
     levelCard.dataset.bulkData = JSON.stringify({
-        fam_counts: progressData.fam_counts || {0: progressData.total_words || 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: progressData.completed_words || 0},
+        fam_counts: famCounts,
         status: progressData.status || 'not_started',
-        last_score: progressData.level_score || 0,
-        total_words: progressData.total_words || 0
+        last_score: levelScore,
+        total_words: totalWords
     });
 }
 
