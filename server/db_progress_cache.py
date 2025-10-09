@@ -366,10 +366,13 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
             words = item.get('words', [])
             for word in words:
                 if word and word.strip():
-                    # Remove trailing punctuation before adding
-                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                    # Remove trailing punctuation before adding (KEEP original case!)
+                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip())
                     if clean_word:
                         all_words.add(clean_word)
+        
+        print(f"🧮 cache: extracted {len(all_words)} unique words for group={group_id} level={level_number}")
+        print(f"🧮 cache: sample words: {list(all_words)[:10]}")
         
         if not all_words:
             print(f"🧮 cache: no words extracted for group={group_id} level={level_number}")
@@ -387,6 +390,8 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
                 words_list = list(all_words)
                 placeholders = ','.join(['%s'] * len(words_list))
                 
+                print(f"🔍 cache: querying PostgreSQL for {len(words_list)} words, user={user_id}")
+                
                 result = execute_query(conn, f"""
                     SELECT w.word, uwf.familiarity
                     FROM words w
@@ -394,15 +399,21 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
                     WHERE uwf.user_id = %s AND w.word IN ({placeholders})
                 """, [user_id] + words_list)
                 
+                found_word_list = []
                 for row in result.fetchall():
                     familiarity = max(0, min(5, row['familiarity'] or 0))
                     familiarity_counts[familiarity] += 1
+                    found_word_list.append(row['word'])
+                
+                print(f"🔍 cache: found {len(found_word_list)} words in user_word_familiarity table")
+                print(f"🔍 cache: sample found words: {found_word_list[:5]}")
                 
                 # Count words not found in user_word_familiarity as unknown (0)
                 found_words = sum(familiarity_counts.values())
                 missing_words = len(all_words) - found_words
                 if missing_words > 0:
                     familiarity_counts[0] += missing_words
+                    print(f"🔍 cache: {missing_words} words not found in user_word_familiarity, marking as unknown (0)")
                 print(f"🧮 cache: computed counts for group={group_id} level={level_number}: {familiarity_counts}")
                     
             else:

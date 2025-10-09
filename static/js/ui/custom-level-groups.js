@@ -2481,6 +2481,22 @@ async function updateWordCountsProgressively(groupId, levels) {
 // Update word count for a single level
 async function updateSingleLevelWordCount(groupId, levelNumber) {
     try {
+        // Check if we already have cached data from setCustomLevelColor
+        const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
+        if (levelCard && levelCard.dataset.bulkData) {
+            try {
+                const cachedData = JSON.parse(levelCard.dataset.bulkData);
+                // If we have cached data with valid fam_counts, use it instead of making another API call
+                const totalCached = Object.values(cachedData.fam_counts || {}).reduce((sum, count) => sum + (Number(count) || 0), 0);
+                if (totalCached > 0) {
+                    console.log(`✅ Using cached data for level ${levelNumber}: ${totalCached} words (skipping API call)`);
+                    return;
+                }
+            } catch (e) {
+                // If parsing fails, continue with API call
+            }
+        }
+        
         const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('session_token')}`
@@ -2527,11 +2543,6 @@ function updateLevelCardWordCount(groupId, levelNumber, progressData) {
     const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
     if (!levelCard) return;
     
-    const wordsText = levelCard.querySelector('.words-text');
-    const learnedText = levelCard.querySelector('.learned-text');
-    const completionText = levelCard.querySelector('.completion-circle-text');
-    const progressFill = levelCard.querySelector('.level-progress-fill');
-    
     // Extract fam_counts
     const famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
     
@@ -2539,6 +2550,29 @@ function updateLevelCardWordCount(groupId, levelNumber, progressData) {
     const totalWords = progressData.total_words || Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
     const completedWords = Number(famCounts[5] || famCounts['5'] || 0);
     const levelScore = progressData.score || 0;
+    
+    // Check if we have existing cached data with more words
+    let shouldUpdate = true;
+    if (levelCard.dataset.bulkData) {
+        try {
+            const existingData = JSON.parse(levelCard.dataset.bulkData);
+            const existingTotal = existingData.total_words || 0;
+            // Don't overwrite with 0 if we already have data
+            if (existingTotal > 0 && totalWords === 0) {
+                console.log(`⚠️ Skipping update for level ${levelNumber} - existing data (${existingTotal} words) is better than new data (${totalWords} words)`);
+                shouldUpdate = false;
+            }
+        } catch (e) {
+            // If parsing fails, proceed with update
+        }
+    }
+    
+    if (!shouldUpdate) return;
+    
+    const wordsText = levelCard.querySelector('.words-text');
+    const learnedText = levelCard.querySelector('.learned-text');
+    const completionText = levelCard.querySelector('.completion-circle-text');
+    const progressFill = levelCard.querySelector('.level-progress-fill');
     
     if (wordsText) {
         wordsText.textContent = totalWords;
@@ -2566,6 +2600,8 @@ function updateLevelCardWordCount(groupId, levelNumber, progressData) {
         last_score: levelScore,
         total_words: totalWords
     });
+    
+    console.log(`📊 Level ${levelNumber} updated: ${totalWords} total, ${completedWords} learned, ${Math.round(levelScore * 100)}% score`);
 }
 
 // Show creation progress modal

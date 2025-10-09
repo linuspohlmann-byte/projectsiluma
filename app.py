@@ -3549,11 +3549,18 @@ def api_get_custom_level_progress(group_id, level_number):
             }), 401
         
         # Get progress data from custom_level_progress table
-        from server.db_progress_cache import get_custom_level_progress
+        from server.db_progress_cache import get_custom_level_progress, refresh_custom_level_progress
         progress_data = get_custom_level_progress(user_id, group_id, level_number)
         
+        # If no progress data exists or fam_counts are all 0, calculate them
+        if not progress_data or sum((progress_data.get('fam_counts') or {}).values()) == 0:
+            print(f"🔄 No progress data or empty fam_counts for user={user_id}, group={group_id}, level={level_number} - calculating...")
+            refresh_custom_level_progress(user_id, group_id, level_number)
+            # Re-fetch after calculation
+            progress_data = get_custom_level_progress(user_id, group_id, level_number)
+        
         if not progress_data:
-            # No progress yet - return empty data
+            # Still no progress - return empty data
             return jsonify({
                 'success': True,
                 'score': None,
