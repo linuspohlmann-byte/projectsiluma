@@ -1774,11 +1774,10 @@ def seed_postgres_localization_from_csv(conn) -> None:
             else:
                 existing = row[0]
         if existing:
-            print(f"Localization table already contains {existing} entries, CSV import skipped.")
-            return
+            print(f"Localization table already contains {existing} entries, running CSV sync to backfill missing data.")
     except Exception as exc:
         print(f"Could not determine localization row count: {exc}")
-        return
+        existing = None
     
     with open(csv_path, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
