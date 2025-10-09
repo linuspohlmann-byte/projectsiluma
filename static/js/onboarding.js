@@ -17,7 +17,7 @@ class OnboardingManager {
 
     init() {
         this.bindEvents();
-        this.loadAvailableLanguages();
+        // Don't load languages here - wait until modal is shown
     }
 
     bindEvents() {
@@ -54,19 +54,23 @@ class OnboardingManager {
         });
     }
 
-    show() {
+    async show() {
         document.getElementById('onboarding-modal').style.display = 'flex';
         this.currentStep = 1;
         this.updateProgress();
         this.showStep(1);
+        
+        console.log('🎬 Onboarding modal shown, loading languages...');
+        
+        // Load available languages first
+        await this.loadAvailableLanguages();
         
         // Apply localization to onboarding elements
         if (window.applyI18n) {
             window.applyI18n();
         }
         
-        // Load available languages and apply localization
-        this.loadAvailableLanguages();
+        console.log('✅ Onboarding initialization complete');
         
         // Focus first input if available
         setTimeout(() => {
@@ -360,11 +364,34 @@ class OnboardingManager {
                 // Show success message
                 this.showSuccessMessage();
                 
-                // Refresh the app
-                console.log('🔄 Refreshing app in 2 seconds...');
+                // Trigger UI updates before reloading
+                console.log('🔄 Triggering UI updates...');
+                
+                // Trigger levels refresh if available
+                if (typeof window.renderLevels === 'function') {
+                    try {
+                        window.renderLevels();
+                        console.log('✅ Levels refreshed');
+                    } catch (error) {
+                        console.log('⚠️ Could not refresh levels:', error);
+                    }
+                }
+                
+                // Trigger target language dropdown refresh if available
+                if (typeof window.ensureTargetLangOptions === 'function') {
+                    try {
+                        window.ensureTargetLangOptions();
+                        console.log('✅ Target language options refreshed');
+                    } catch (error) {
+                        console.log('⚠️ Could not refresh target language options:', error);
+                    }
+                }
+                
+                // Refresh the app to apply all changes
+                console.log('🔄 Refreshing app in 1.5 seconds...');
                 setTimeout(() => {
                     window.location.reload();
-                }, 2000);
+                }, 1500);
             } else {
                 console.error('❌ Failed to save onboarding data:', data.error);
                 this.showErrorMessage('Failed to save your preferences. Please try again.');
@@ -377,6 +404,21 @@ class OnboardingManager {
     }
 
     updateCourseConfiguration() {
+        console.log('🔧 Updating course configuration with onboarding data...');
+        
+        // Update localStorage first
+        localStorage.setItem('siluma_native', this.onboardingData.native_language);
+        localStorage.setItem('siluma_target', this.onboardingData.target_language);
+        localStorage.setItem('siluma_cefr', this.onboardingData.proficiency_level);
+        localStorage.setItem('siluma_topic', this.onboardingData.learning_focus);
+        
+        console.log('✅ localStorage updated:', {
+            native: this.onboardingData.native_language,
+            target: this.onboardingData.target_language,
+            cefr: this.onboardingData.proficiency_level,
+            topic: this.onboardingData.learning_focus
+        });
+        
         // Update the main course configuration form
         const targetLangSelect = document.getElementById('target-lang');
         const cefrSelect = document.getElementById('cefr');
@@ -384,21 +426,43 @@ class OnboardingManager {
 
         if (targetLangSelect) {
             targetLangSelect.value = this.onboardingData.target_language;
+            console.log('✅ Set target-lang to:', this.onboardingData.target_language);
+            
+            // Trigger change event to update dependent UI
+            targetLangSelect.dispatchEvent(new Event('change', { bubbles: true }));
         }
         
         if (cefrSelect) {
             cefrSelect.value = this.onboardingData.proficiency_level;
+            console.log('✅ Set cefr to:', this.onboardingData.proficiency_level);
+            
+            // Trigger change event
+            cefrSelect.dispatchEvent(new Event('change', { bubbles: true }));
         }
         
         if (topicSelect) {
             topicSelect.value = this.onboardingData.learning_focus;
+            console.log('✅ Set topic to:', this.onboardingData.learning_focus);
+            
+            // Trigger change event
+            topicSelect.dispatchEvent(new Event('change', { bubbles: true }));
         }
-
-        // Update localStorage
-        localStorage.setItem('siluma_native', this.onboardingData.native_language);
-        localStorage.setItem('siluma_target', this.onboardingData.target_language);
-        localStorage.setItem('siluma_cefr', this.onboardingData.proficiency_level);
-        localStorage.setItem('siluma_topic', this.onboardingData.learning_focus);
+        
+        // Update native language in settings if available
+        const nativeLangSelect = document.getElementById('native-lang-setting');
+        if (nativeLangSelect) {
+            nativeLangSelect.value = this.onboardingData.native_language;
+            nativeLangSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log('✅ Set native language setting to:', this.onboardingData.native_language);
+        }
+        
+        // Set the locale for the app
+        if (window.setLocale) {
+            window.setLocale(this.onboardingData.native_language);
+            console.log('✅ Set app locale to:', this.onboardingData.native_language);
+        }
+        
+        console.log('✅ Course configuration update complete');
     }
 
     skipOnboarding() {
