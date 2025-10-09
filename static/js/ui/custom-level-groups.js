@@ -2143,6 +2143,17 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         
         let normalized = null;
 
+        // Apply cached data first so UI updates immediately
+        if (levelElement.dataset.cachedProgressData) {
+            try {
+                const cachedData = JSON.parse(levelElement.dataset.cachedProgressData);
+                normalized = applyCustomLevelProgressData(levelElement, cachedData);
+            } catch (error) {
+                console.log('⚠️ Error parsing cached progress data:', error);
+                normalized = null;
+            }
+        }
+
         try {
             const headers = {};
             if (window.authManager && window.authManager.isAuthenticated()) {
@@ -2157,8 +2168,11 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
             if (response.ok) {
                 const progressData = await response.json();
                 if (progressData.success) {
-                    normalized = applyCustomLevelProgressData(levelElement, progressData);
-                    console.log('✅ Custom level progress loaded:', normalized);
+                    const refreshed = applyCustomLevelProgressData(levelElement, progressData);
+                    if (refreshed) {
+                        normalized = refreshed;
+                        console.log('✅ Custom level progress loaded:', normalized);
+                    }
                 } else {
                     console.log('⚠️ Progress API returned error:', progressData.error);
                 }
