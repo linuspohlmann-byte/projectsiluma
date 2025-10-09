@@ -7181,7 +7181,7 @@ def api_get_available_languages():
             {'code': 'uk', 'native_name': 'Українська', 'english_name': 'Ukrainian'}
         ]
         
-        return jsonify({'languages': languages})
+        return jsonify({'success': True, 'languages': languages})
         
     except Exception as e:
         print(f"Error getting available languages: {e}")

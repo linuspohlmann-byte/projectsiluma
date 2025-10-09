@@ -8,9 +8,11 @@ class OnboardingManager {
         this.onboardingData = {
             native_language: localStorage.getItem('siluma_native') || 'de',
             target_language: localStorage.getItem('siluma_target') || 'ar',
-            proficiency_level: localStorage.getItem('siluma_cefr') || 'none',
+            proficiency_level: localStorage.getItem('siluma_cefr') || 'none',  // Default to A0
             learning_focus: 'daily life'
         };
+        
+        console.log('🎬 Onboarding initialized with data:', this.onboardingData);
         
         this.init();
     }
@@ -50,6 +52,7 @@ class OnboardingManager {
                 this.onboardingData.target_language = e.target.value;
             } else if (e.target.id === 'onboarding-cefr') {
                 this.onboardingData.proficiency_level = e.target.value;
+                console.log('📝 CEFR level changed to:', e.target.value);
             }
         });
     }
@@ -460,6 +463,7 @@ class OnboardingManager {
 
     updateCourseConfiguration() {
         console.log('🔧 Updating course configuration with onboarding data...');
+        console.log('📊 Current onboarding data:', this.onboardingData);
         
         // Update localStorage first
         localStorage.setItem('siluma_native', this.onboardingData.native_language);
@@ -472,6 +476,14 @@ class OnboardingManager {
             target: this.onboardingData.target_language,
             cefr: this.onboardingData.proficiency_level,
             topic: this.onboardingData.learning_focus
+        });
+        
+        // Verify localStorage was actually updated
+        console.log('🔍 Verify localStorage values:', {
+            native: localStorage.getItem('siluma_native'),
+            target: localStorage.getItem('siluma_target'),
+            cefr: localStorage.getItem('siluma_cefr'),
+            topic: localStorage.getItem('siluma_topic')
         });
         
         // Update the main course configuration form
@@ -490,18 +502,24 @@ class OnboardingManager {
         if (cefrSelect) {
             // Ensure the value exists in the select options
             const valueToSet = this.onboardingData.proficiency_level;
+            console.log('🔍 CEFR value from onboarding:', valueToSet);
+            console.log('🔍 Available CEFR options:', Array.from(cefrSelect.options).map(o => o.value));
+            
             const optionExists = Array.from(cefrSelect.options).some(opt => opt.value === valueToSet);
             
             if (optionExists) {
                 cefrSelect.value = valueToSet;
-                console.log('✅ Set cefr to:', valueToSet);
+                console.log('✅ Set cefr to:', valueToSet, '(option exists)');
             } else {
-                console.warn('⚠️ CEFR value', valueToSet, 'not found in options, keeping current value');
-                // Don't change the value if it doesn't exist
+                console.warn('⚠️ CEFR value', valueToSet, 'not found in options');
+                console.warn('⚠️ Available options are:', Array.from(cefrSelect.options).map(o => `${o.value}="${o.text}"`).join(', '));
+                // Keep current value or fallback
             }
             
             // Trigger change event
             cefrSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+            console.warn('⚠️ CEFR select element not found on page');
         }
         
         if (topicSelect) {
