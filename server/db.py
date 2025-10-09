@@ -1790,9 +1790,38 @@ def seed_postgres_localization_from_csv(conn) -> None:
                 cleaned = name.replace('\ufeff', '').strip()
                 cleaned_fieldnames.append(cleaned)
             reader.fieldnames = cleaned_fieldnames
-            # ensure underlying reader uses sanitized header
             reader._fieldnames = cleaned_fieldnames
-        imported_keys = 0
+
+        batch: list[tuple[str, str, str, str | None]] = []
+        batch_size = 1000
+        processed_keys: set[str] = set()
+        total_translations = 0
+
+        def flush_batch():
+            nonlocal batch, total_translations
+            if not batch:
+                return
+            if execute_values:
+                now_str = datetime.now(UTC).isoformat()
+                values = [(key, lang, value, desc, now_str, now_str) for key, lang, value, desc in batch]
+                with conn.cursor() as cur:
+                    execute_values(cur, """
+                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                        VALUES %s
+                        ON CONFLICT (key, language) DO UPDATE SET
+                            value = EXCLUDED.value,
+                            description = COALESCE(EXCLUDED.description, localization.description),
+                            updated_at = EXCLUDED.updated_at
+                    """, values, template="(%s, %s, %s, %s, %s, %s)")
+                total_translations += len(batch)
+                batch.clear()
+            else:
+                for key, lang, value, desc in batch:
+                    payload = {'reference_key': key, lang: value, 'description': desc}
+                    upsert_localization_entry(payload, conn=conn)
+                    total_translations += 1
+                batch.clear()
+
         for csv_row in reader:
             if not csv_row:
                 continue
@@ -1811,7 +1840,6 @@ def seed_postgres_localization_from_csv(conn) -> None:
             if not reference_key:
                 continue
             description = (csv_row.get('DESCRIPTION') or csv_row.get('description') or '').strip()
-            payload: Dict[str, Any] = {'reference_key': reference_key, 'description': description}
             translations_added = False
             for column, value in csv_row.items():
                 if not column:
@@ -1825,14 +1853,17 @@ def seed_postgres_localization_from_csv(conn) -> None:
                 text_value = (value or '').strip()
                 if not text_value or text_value in LOCALIZATION_INVALID_VALUES:
                     continue
-                payload[language_code_to_field(lang_code)] = text_value
+                lang_field = language_code_to_field(lang_code)
+                batch.append((reference_key, lang_field, text_value, description or None))
                 translations_added = True
-            if not translations_added:
-                continue
-            upsert_localization_entry(payload, conn=conn)
-            imported_keys += 1
+                if len(batch) >= batch_size:
+                    flush_batch()
+            if translations_added:
+                processed_keys.add(reference_key)
+
+        flush_batch()
         conn.commit()
-        print(f"Imported {imported_keys} localization keys from CSV into PostgreSQL.")
+        print(f"Imported {len(processed_keys)} localization keys from CSV into PostgreSQL (upserted {total_translations} translations).")
 
 
 CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
