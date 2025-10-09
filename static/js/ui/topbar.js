@@ -478,7 +478,15 @@ export async function initTopbar(){
   
   // THEN call ensureTargetLangOptions with the correct locale
   ensureTargetLangOptions();
-  // Don't call loadCefrForLang here - already done in restoreCefr()
+  
+  // Wait a bit for async operations to complete, then restore CEFR again
+  // This ensures CEFR value persists even if something async reset it
+  setTimeout(() => {
+    console.log('🔄 Re-restoring CEFR after async operations...');
+    restoreCefr();
+    restoreTopic();
+  }, 1000);
+  
   saveSessionPrefs();
   bindNav();
   bindPrefs();
