@@ -442,20 +442,27 @@ function bindPrefs(){
 }
 
 export async function initTopbar(){
+  console.log('🎬 initTopbar() started');
+  
   // Clear any existing values first to prevent showing old values
   try {
     // Native language is now in settings
-    $('#target-lang').value = '';
-    $('#cefr').value = '';
-    $('#topic').value = '';
-  } catch(_) {}
+    if($('#target-lang')) $('#target-lang').value = '';
+    if($('#cefr')) $('#cefr').value = '';
+    if($('#topic')) $('#topic').value = '';
+    console.log('🧹 Cleared dropdown values');
+  } catch(e) {
+    console.warn('⚠️ Could not clear dropdown values:', e);
+  }
   
   await ensureNativeLangOptions();
   
   // Restore settings from localStorage FIRST
+  console.log('📥 Restoring settings from localStorage...');
   restoreSettings();
   restoreCefr();
   restoreTopic();
+  console.log('✅ Settings restored');
   
   // Set initial UI locale from native language
   try{ 
