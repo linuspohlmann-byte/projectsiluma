@@ -3246,126 +3246,56 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
             return;
         }
         
-        // For authenticated users, fetch bulk stats once for all levels
-        const headers = {};
-        if (window.authManager && window.authManager.isAuthenticated()) {
-            Object.assign(headers, window.authManager.getAuthHeaders());
+        // For authenticated users, rely on cached progress data
+        if (!window.cachedGroupProgress || Object.keys(window.cachedGroupProgress).length === 0) {
+            await loadCachedGroupProgress(groupId);
         }
-        
-        const response = await fetch(`/api/custom-levels/${groupId}/bulk-stats`, {
-            headers: headers
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.levels) {
-                // Apply progression logic to all levels
-                const levelCards = levelsContainer.querySelectorAll('.level-card');
-                levelCards.forEach(card => {
-                    const levelNumber = parseInt(card.dataset.level);
-                    const levelData = data.levels[levelNumber];
-                    
-                    if (levelData && levelData.success) {
-                        const userProgress = levelData.user_progress;
-                        const status = userProgress?.status || levelData.status;
-                        const score = userProgress?.score || levelData.last_score;
-                        
-                        let isUnlocked = false;
-                        
-                        if (status === 'completed' && Number(score || 0) > 0.6) {
-                            // Level completed with good score
-                            isUnlocked = true;
-                            card.classList.add('done');
-                            card.classList.remove('locked', 'unlocked');
-                        } else if (status === 'completed' && Number(score || 0) <= 0.6) {
-                            // Level completed but low score
-                            isUnlocked = true;
-                            card.classList.add('unlocked');
-                            card.classList.remove('locked', 'done');
-                        } else if (levelNumber === 1) {
-                            // Level 1 is always available
-                            isUnlocked = true;
-                            card.classList.add('unlocked');
-                            card.classList.remove('locked', 'done');
-                        } else if (levelNumber > 1) {
-                            // Check if previous level is completed
-                            const prevLevel = levelNumber - 1;
-                            const prevLevelData = data.levels[prevLevel];
-                            if (prevLevelData && prevLevelData.success) {
-                                const prevUserProgress = prevLevelData.user_progress;
-                                const prevStatus = prevUserProgress?.status || prevLevelData.status;
-                                const prevScore = prevUserProgress?.score || prevLevelData.last_score;
-                                const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
-                                
-                                if (isPrevCompleted) {
-                                    isUnlocked = true;
-                                    card.classList.add('unlocked');
-                                    card.classList.remove('locked', 'done');
-                                } else {
-                                    card.classList.add('locked');
-                                    card.classList.remove('unlocked', 'done');
-                                }
-                            } else {
-                                card.classList.add('locked');
-                                card.classList.remove('unlocked', 'done');
-                            }
-                        } else {
-                            card.classList.add('locked');
-                            card.classList.remove('unlocked', 'done');
-                        }
-                        
-                        // Set allowStart flag for unlocked levels
-                        if (isUnlocked) {
-                            card.dataset.allowStart = 'true';
-                        }
-                        
-                        // Cache the data for later use
-                        card.dataset.bulkData = JSON.stringify(levelData);
-                    } else {
-                        // Level data not found
-                        if (levelNumber === 1) {
-                            card.classList.add('unlocked');
-                            card.classList.remove('locked', 'done');
-                            card.dataset.allowStart = 'true';
-                        } else {
-                            card.classList.add('locked');
-                            card.classList.remove('unlocked', 'done');
-                        }
-                    }
-                });
-                console.log(`Applied bulk progression for ${levelCards.length} levels`);
-            } else {
-                // API response not successful - fallback
-                const levelCards = levelsContainer.querySelectorAll('.level-card');
-                levelCards.forEach(card => {
-                    const levelNumber = parseInt(card.dataset.level);
-                    if (levelNumber === 1) {
-                        card.classList.add('unlocked');
-                        card.classList.remove('locked', 'done');
-                        card.dataset.allowStart = 'true';
-                    } else {
-                        card.classList.add('locked');
-                        card.classList.remove('unlocked', 'done');
-                    }
-                });
-                console.log(`Applied bulk progression fallback - only level 1 unlocked`);
+
+        const progressMap = window.cachedGroupProgress || {};
+        const levelCards = levelsContainer.querySelectorAll('.level-card');
+
+        levelCards.forEach(card => {
+            const levelNumber = parseInt(card.dataset.level);
+            const normalized = progressMap[levelNumber];
+            const prevNormalized = progressMap[levelNumber - 1];
+
+            card.classList.remove('locked', 'unlocked', 'done', 'gold');
+
+            if (normalized) {
+                try {
+                    card.dataset.cachedProgressData = JSON.stringify(normalized);
+                } catch (_e) { /* ignore */ }
             }
-        } else {
-            // API request failed - fallback
-            const levelCards = levelsContainer.querySelectorAll('.level-card');
-            levelCards.forEach(card => {
-                const levelNumber = parseInt(card.dataset.level);
-                if (levelNumber === 1) {
-                    card.classList.add('unlocked');
-                    card.classList.remove('locked', 'done');
-                    card.dataset.allowStart = 'true';
+
+            const isCompleted = normalized?.status === 'completed';
+            const hasProgress = normalized ? Number(normalized.progress_percent || 0) > 0 : false;
+            const prevCompleted = prevNormalized?.status === 'completed';
+
+            let allowStart = false;
+            if (levelNumber === 1) {
+                allowStart = true;
+            } else if (prevCompleted) {
+                allowStart = true;
+            }
+
+            if (isCompleted) {
+                if (Number(normalized.score_percent || 0) >= 80) {
+                    card.classList.add('gold');
                 } else {
-                    card.classList.add('locked');
-                    card.classList.remove('unlocked', 'done');
+                    card.classList.add('done');
                 }
-            });
-            console.log(`Applied bulk progression fallback - only level 1 unlocked`);
-        }
+            } else if (hasProgress) {
+                card.classList.add('done');
+            }
+
+            if (allowStart) {
+                card.classList.add('unlocked');
+                card.dataset.allowStart = 'true';
+            } else {
+                card.classList.add('locked');
+                card.dataset.allowStart = 'false';
+            }
+        });
         
     } catch (error) {
         console.error(`Error applying bulk custom level progression:`, error);
