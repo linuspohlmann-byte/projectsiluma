@@ -1,5 +1,5 @@
-import os, json, sqlite3
-from flask import Flask, request, jsonify, send_from_directory, Blueprint, g
+import os, json, sqlite3, io, csv
+from flask import Flask, request, jsonify, send_from_directory, Blueprint, g, Response
 from flask_cors import CORS
 from datetime import datetime, UTC
 
@@ -7299,10 +7299,44 @@ def set_user_context():
     g.user_id = user['id'] if user else None
     g.session_token = session_token
 
-# Serve CSV file for direct access
+# Serve CSV file for direct access (generated from database)
 @app.route('/localization_complete.csv')
 def serve_csv():
-    return send_from_directory(APP_ROOT, 'localization_complete.csv')
+    try:
+        entries = get_all_localization_entries()
+        rows = []
+        language_fields = set()
+        
+        for entry in entries:
+            entry_dict = dict(entry)
+            rows.append(entry_dict)
+            for key in entry_dict.keys():
+                normalized_key = key.lower()
+                if normalized_key in {'id', 'reference_key', 'description', 'language', 'language_code'}:
+                    continue
+                language_fields.add(key)
+        
+        ordered_languages = sorted(language_fields)
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['KEY', 'DESCRIPTION', *ordered_languages])
+        
+        for entry in rows:
+            reference_key = entry.get('reference_key', '')
+            description = entry.get('description', '')
+            row = [reference_key, description]
+            for lang in ordered_languages:
+                value = entry.get(lang, '')
+                row.append(value if value is not None else '')
+            writer.writerow(row)
+        
+        csv_data = output.getvalue()
+        response = Response(csv_data, mimetype='text/csv; charset=utf-8')
+        response.headers['Content-Disposition'] = 'attachment; filename=localization_complete.csv'
+        return response
+    except Exception as e:
+        print(f"Error generating localization CSV from database: {e}")
+        return send_from_directory(APP_ROOT, 'localization_complete.csv')
 
 def periodic_sync():
     """Periodic synchronization of user data"""

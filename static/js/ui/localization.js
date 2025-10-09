@@ -3,6 +3,7 @@
  */
 
 let currentEditingEntry = null;
+const tt = (key, fallback) => (typeof window !== 'undefined' && typeof window.t === 'function') ? window.t(key, fallback) : fallback;
 
 // Initialize localization management
 export function initLocalization() {
@@ -346,7 +347,7 @@ window.editEntry = async function(entryId) {
 };
 
 window.deleteEntry = async function(entryId) {
-    if (!confirm('Are you sure you want to delete this entry?')) {
+    if (!confirm(tt('localization.delete_confirm', 'Are you sure you want to delete this entry?'))) {
         return;
     }
     
@@ -360,11 +361,11 @@ window.deleteEntry = async function(entryId) {
         if (result.success) {
             loadLocalizationEntries();
         } else {
-            alert(`Failed to delete entry: ${result.error}`);
+            alert(tt('localization.delete_failed', 'Failed to delete entry: {error}').replace('{error}', result.error || ''));
         }
     } catch (error) {
         console.error('Error deleting entry:', error);
-        alert(`Error deleting entry: ${error.message}`);
+        alert(tt('localization.delete_error', 'Error deleting entry: {error}').replace('{error}', error.message || ''));
     }
 };
 
@@ -374,17 +375,18 @@ async function triggerAiFill() {
     if (!button) return;
     
     // Show confirmation dialog
-    const confirmed = confirm(
-        'This will use AI to fill missing translations for the top 20 most spoken languages.\n\n' +
-        'This may take a few minutes and will use OpenAI API credits.\n\n' +
-        'Do you want to continue?'
-    );
+    const confirmed = confirm(tt(
+        'localization.ai_fill_confirm',
+        'This will use AI to fill missing translations for the top 20 most spoken languages.\n\n'
+        + 'This may take a few minutes and will use OpenAI API credits.\n\n'
+        + 'Do you want to continue?'
+    ));
     
     if (!confirmed) return;
     
     // Show loading state
     const originalText = button.textContent;
-    button.textContent = '🤖 AI Filling...';
+    button.textContent = tt('localization.ai_fill_in_progress', '🤖 AI filling...');
     button.disabled = true;
     
     try {
@@ -400,16 +402,16 @@ async function triggerAiFill() {
         const result = await response.json();
         
         if (result.success) {
-            alert('✅ AI translation filling completed successfully!\n\nPlease refresh the page to see the new translations.');
+            alert(tt('localization.ai_fill_success', '✅ AI translation filling completed successfully!\n\nPlease refresh the page to see the new translations.'));
             // Reload the localization entries
             loadLocalizationEntries();
         } else {
-            alert(`❌ AI translation filling failed: ${result.error}`);
+            alert(tt('localization.ai_fill_error', '❌ AI translation filling failed: {error}').replace('{error}', result.error || ''));
         }
         
     } catch (error) {
         console.error('Error during AI fill:', error);
-        alert(`❌ Error during AI fill: ${error.message}`);
+        alert(tt('localization.ai_fill_error_generic', '❌ Error during AI fill: {error}').replace('{error}', error.message || ''));
     } finally {
         // Restore button state
         button.textContent = originalText;

@@ -3,6 +3,8 @@
  * Handles display and interaction with published custom level groups
  */
 
+const tt = (key, fallback) => (typeof window !== 'undefined' && typeof window.t === 'function') ? window.t(key, fallback) : fallback;
+
 let marketplaceGroups = [];
 let currentMarketplacePage = 1;
 let marketplacePageSize = 12;
@@ -30,7 +32,7 @@ async function initMarketplace() {
         
     } catch (error) {
         console.error('Error initializing marketplace:', error);
-        showMarketplaceError('Fehler beim Laden des Marketplaces');
+        showMarketplaceError(tt('marketplace.load_error', 'Failed to load marketplace.'));
     }
 }
 
@@ -94,7 +96,7 @@ async function loadMarketplaceGroups(direction = null) {
         
     } catch (error) {
         console.error('Error loading marketplace groups:', error);
-        showMarketplaceError('Fehler beim Laden der Marketplace-Inhalte: ' + error.message);
+        showMarketplaceError(tt('marketplace.load_error_with_reason', 'Failed to load marketplace data: {reason}').replace('{reason}', error.message || ''));
     }
 }
 
@@ -104,14 +106,13 @@ function renderMarketplaceGroups() {
     if (!container) return;
     
     if (marketplaceGroups.length === 0) {
+        const emptyTitle = tt('marketplace.empty_title', 'No level groups found');
+        const emptyText = tt('marketplace.empty_text', 'No published level groups match your filters.<br>Try different filters or create your own level group!');
         container.innerHTML = `
             <div class="marketplace-empty">
                 <div class="marketplace-empty-icon">📚</div>
-                <h3 class="marketplace-empty-title">Keine Level-Gruppen gefunden</h3>
-                <p class="marketplace-empty-text">
-                    Es wurden keine publishten Level-Gruppen für die gewählten Filter gefunden.
-                    <br>Versuche andere Filter oder erstelle deine eigene Level-Gruppe!
-                </p>
+                <h3 class="marketplace-empty-title">${emptyTitle}</h3>
+                <p class="marketplace-empty-text">${emptyText}</p>
             </div>
         `;
         return;
@@ -498,7 +499,9 @@ function updateMarketplacePagination() {
         nextBtn.disabled = currentMarketplacePage >= marketplaceTotalPages;
         
         // Update page info
-        pageInfo.textContent = `Seite ${currentMarketplacePage} von ${marketplaceTotalPages}`;
+        pageInfo.textContent = tt('marketplace.page_info', 'Page {current} of {total}')
+            .replace('{current}', currentMarketplacePage)
+            .replace('{total}', marketplaceTotalPages);
     } else {
         pagination.style.display = 'none';
     }
@@ -512,7 +515,7 @@ function showMarketplaceLoading() {
     container.innerHTML = `
         <div class="marketplace-loading">
             <div class="loading-spinner"></div>
-            <p>Lade Marketplace-Inhalte...</p>
+            <p>${tt('marketplace.loading', 'Loading marketplace data...')}</p>
         </div>
     `;
 }
@@ -522,10 +525,11 @@ function showMarketplaceError(message) {
     const container = document.getElementById('marketplace-groups-container');
     if (!container) return;
     
+    const errorTitle = tt('errors.title', 'Error');
     container.innerHTML = `
         <div class="marketplace-empty">
             <div class="marketplace-empty-icon">❌</div>
-            <h3 class="marketplace-empty-title">Fehler</h3>
+            <h3 class="marketplace-empty-title">${errorTitle}</h3>
             <p class="marketplace-empty-text">${escapeHtml(message)}</p>
         </div>
     `;
@@ -569,15 +573,15 @@ function wireRatingControls(groupId){
 
     submitBtn.addEventListener('click', async ()=>{
         if(!window.authManager || !window.authManager.isAuthenticated()){
-            statusEl.textContent = 'Bitte anmelden, um zu bewerten.';
+            statusEl.textContent = tt('marketplace.login_to_rate', 'Please sign in to rate.');
             return;
         }
         if(current < 1 || current > 5){
-            statusEl.textContent = 'Bitte 1–5 Sterne wählen.';
+            statusEl.textContent = tt('marketplace.select_rating', 'Please choose between 1 and 5 stars.');
             return;
         }
         submitBtn.disabled = true;
-        statusEl.textContent = 'Senden...';
+        statusEl.textContent = tt('marketplace.sending', 'Sending...');
         try{
             const res = await fetch(`/api/marketplace/custom-level-groups/${groupId}/ratings`,{
                 method:'POST',
@@ -587,16 +591,16 @@ function wireRatingControls(groupId){
                 },
                 body: JSON.stringify({ stars: current, comment: commentEl.value || '' })
             });
-            const data = await res.json().catch(()=>({ success:false, error:'Unbekannter Fehler' }));
+            const data = await res.json().catch(()=>({ success:false, error: tt('errors.unknown', 'Unknown error') }));
             if(!res.ok || !data.success){
                 const code = data && data.code ? ` [${data.code}]` : '';
                 const detail = data && data.detail ? ` — ${data.detail}` : '';
-                throw new Error((data.error || 'Fehler beim Senden') + code + detail);
+                throw new Error((data.error || tt('marketplace.submit_error', 'Failed to submit rating')) + code + detail);
             }
-            statusEl.textContent = 'Danke für deine Bewertung!';
+            statusEl.textContent = tt('marketplace.thank_you', 'Thanks for your rating!');
         }catch(err){
             console.error(err);
-            statusEl.textContent = 'Fehler: ' + err.message;
+            statusEl.textContent = tt('marketplace.error_status', 'Error: {message}').replace('{message}', err.message || '');
         }finally{
             submitBtn.disabled = false;
         }

@@ -623,7 +623,10 @@ class OnboardingManager {
             font-weight: 500;
             animation: slideInRight 0.3s ease;
         `;
-        successDiv.textContent = 'Welcome to Siluma! Your preferences have been saved.';
+        const successMessage = (typeof window !== 'undefined' && typeof window.t === 'function')
+            ? window.t('onboarding.preferences_saved', 'Welcome to Siluma! Your preferences have been saved.')
+            : 'Welcome to Siluma! Your preferences have been saved.';
+        successDiv.textContent = successMessage;
         document.body.appendChild(successDiv);
 
         // Remove after 3 seconds

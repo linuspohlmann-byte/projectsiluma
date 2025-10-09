@@ -94,34 +94,6 @@ function resolveTranslation(key, { quiet = false } = {}) {
   return { value: undefined, normalizedKey };
 }
 
-function parseCSVLine(line) {
-  const result = [];
-  let current = '';
-  let insideQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"') {
-      const nextChar = line[i + 1];
-      if (insideQuotes && nextChar === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        insideQuotes = !insideQuotes;
-      }
-    } else if (char === ',' && !insideQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  result.push(current);
-  return result;
-}
-
 // Translation function
 export function t(key, fallback = '') {
   try {
@@ -245,7 +217,7 @@ function performLocaleChange(locale) {
     window.currentLocale = currentLocale;
   }
   
-  // First try to load from API (with caching), then fallback to CSV, then to default translations
+  // First try to load from API (with caching), then fallback to default translations
   loadTranslations(currentLocale).then(() => {
     console.log('🌍 Locale set to (API):', currentLocale);
     console.log('📋 Loaded API translations:', Object.keys(translations).length, 'keys');
@@ -260,33 +232,17 @@ function performLocaleChange(locale) {
       }));
     }
   }).catch(() => {
-    // Fallback to CSV-based translations
-    loadTranslationsFromCSV(currentLocale).then(() => {
-      console.log('🌍 Locale set to (CSV):', currentLocale);
-      
-      // Ensure translations are available globally
-      window.translations = translations;
-      console.log('📋 Loaded CSV translations:', Object.keys(translations).length, 'keys');
-      
-      // Trigger a custom event when translations are loaded
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('translationsLoaded', { 
-          detail: { locale: currentLocale, source: 'CSV' } 
-        }));
-      }
-    }).catch(() => {
-      // Final fallback to default translations
-      translations = defaultTranslations[currentLocale] || defaultTranslations['en'];
-      console.log('🌍 Locale set to (fallback):', currentLocale);
-      console.log('📋 Using fallback translations:', Object.keys(translations).length, 'keys');
-      
-      // Trigger a custom event when translations are loaded
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('translationsLoaded', { 
-          detail: { locale: currentLocale, source: 'fallback' } 
-        }));
-      }
-    });
+    // Final fallback to default translations
+    translations = defaultTranslations[currentLocale] || defaultTranslations['en'] || {};
+    console.log('🌍 Locale set to (fallback):', currentLocale);
+    console.log('📋 Using fallback translations:', Object.keys(translations).length, 'keys');
+    
+    // Trigger a custom event when translations are loaded
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('translationsLoaded', { 
+        detail: { locale: currentLocale, source: 'fallback' } 
+      }));
+    }
   });
 }
 
@@ -391,97 +347,6 @@ async function loadTranslations(locale) {
     // Reset flags on error
     loadingInProgress = false;
     localeSettingInProgress = false;
-    throw error;
-  }
-}
-
-// Load translations directly from CSV file
-async function loadTranslationsFromCSV(locale) {
-  try {
-    // Read CSV file directly
-    const response = await fetch('/localization_complete.csv');
-    const csvText = await response.text();
-    
-    if (!csvText) {
-      throw new Error('CSV file is empty or not found');
-    }
-    
-    console.debug('🔍 DEBUG: CSV file loaded, length:', csvText.length);
-    const csvTranslations = {};
-    
-    // Parse CSV content
-    const lines = csvText.split('\n');
-    const headerLine = (lines[0] || '').replace(/^\ufeff/, '');
-    const headers = parseCSVLine(headerLine);
-    
-    // Find the column index for the requested language
-    // Complete mapping for all languages in CSV (alphabetically sorted)
-    const langMapping = {
-      'aa': 'aa', 'ab': 'ab', 'ae': 'ae', 'af': 'af', 'ak': 'ak', 'am': 'am', 'an': 'an', 'ar': 'ar', 'as': 'as', 'av': 'av', 'ay': 'ay', 'az': 'az',
-      'ba': 'ba', 'be': 'be', 'bg': 'bg', 'bh': 'bh', 'bi': 'bi', 'bm': 'bm', 'bn': 'bn', 'bo': 'bo', 'br': 'br', 'bs': 'bs',
-      'ca': 'ca', 'ce': 'ce', 'ch': 'ch', 'co': 'co', 'cr': 'cr', 'cs': 'cs', 'cu': 'cu', 'cv': 'cv', 'cy': 'cy',
-      'da': 'da', 'de': 'de', 'dv': 'dv', 'dz': 'dz',
-      'ee': 'ee', 'el': 'el', 'en': 'en', 'eo': 'eo', 'es': 'es', 'et': 'et', 'eu': 'eu',
-      'fa': 'fa', 'ff': 'ff', 'fi': 'fi', 'fj': 'fj', 'fo': 'fo', 'fr': 'fr', 'fy': 'fy',
-      'ga': 'ga', 'gd': 'gd', 'gl': 'gl', 'gn': 'gn', 'gu': 'gu', 'gv': 'gv',
-      'ha': 'ha', 'he': 'he', 'hi': 'hi', 'ho': 'ho', 'hr': 'hr', 'ht': 'ht', 'hu': 'hu', 'hy': 'hy', 'hz': 'hz',
-      'ia': 'ia', 'id': 'id', 'ie': 'ie', 'ig': 'ig', 'ii': 'ii', 'ik': 'ik', 'io': 'io', 'is': 'is', 'it': 'it', 'iu': 'iu',
-      'ja': 'ja', 'jv': 'jv',
-      'ka': 'ka', 'kg': 'kg', 'ki': 'ki', 'kj': 'kj', 'kk': 'kk', 'kl': 'kl', 'km': 'km', 'kn': 'kn', 'ko': 'ko', 'kr': 'kr', 'ks': 'ks', 'ku': 'ku', 'kv': 'kv', 'kw': 'kw', 'ky': 'ky',
-      'la': 'la', 'lb': 'lb', 'lg': 'lg', 'li': 'li', 'ln': 'ln', 'lo': 'lo', 'lt': 'lt', 'lu': 'lu', 'lv': 'lv',
-      'mg': 'mg', 'mh': 'mh', 'mi': 'mi', 'mk': 'mk', 'ml': 'ml', 'mn': 'mn', 'mr': 'mr', 'ms': 'ms', 'mt': 'mt', 'my': 'my',
-      'na': 'na', 'nb': 'nb', 'nd': 'nd', 'ne': 'ne', 'ng': 'ng', 'nl': 'nl', 'nn': 'nn', 'no': 'no', 'nr': 'nr', 'nv': 'nv', 'ny': 'ny',
-      'oc': 'oc', 'oj': 'oj', 'om': 'om', 'or': 'or', 'os': 'os',
-      'pa': 'pa', 'pi': 'pi', 'pl': 'pl', 'ps': 'ps', 'pt': 'pt',
-      'qu': 'qu',
-      'rm': 'rm', 'rn': 'rn', 'ro': 'ro', 'ru': 'ru', 'rw': 'rw',
-      'sa': 'sa', 'sc': 'sc', 'sd': 'sd', 'se': 'se', 'sg': 'sg', 'si': 'si', 'sk': 'sk', 'sl': 'sl', 'sm': 'sm', 'sn': 'sn', 'so': 'so', 'sq': 'sq', 'sr': 'sr', 'ss': 'ss', 'st': 'st', 'su': 'su', 'sv': 'sv', 'sw': 'sw',
-      'ta': 'ta', 'te': 'te', 'tg': 'tg', 'th': 'th', 'ti': 'ti', 'tk': 'tk', 'tl': 'tl', 'tn': 'tn', 'to': 'to', 'tr': 'tr', 'ts': 'ts', 'tt': 'tt', 'tw': 'tw', 'ty': 'ty',
-      'ug': 'ug', 'uk': 'uk', 'ur': 'ur', 'uz': 'uz',
-      've': 've', 'vi': 'vi', 'vo': 'vo',
-      'wa': 'wa', 'wo': 'wo',
-      'xh': 'xh',
-      'yi': 'yi', 'yo': 'yo',
-      'za': 'za', 'zh': 'zh', 'zu': 'zu'
-    };
-    
-    const targetColumn = langMapping[locale] || 'en';
-    const keyIndex = headers.indexOf('KEY');
-    const targetIndex = headers.indexOf(targetColumn);
-    
-    if (keyIndex === -1 || targetIndex === -1) {
-      throw new Error(`Required columns not found: KEY=${keyIndex}, ${targetColumn}=${targetIndex}`);
-    }
-    
-    console.debug('🔍 DEBUG: Looking for locale:', locale, 'in column:', targetColumn);
-    
-    // Process each line
-    for (let i = 1; i < lines.length; i++) {
-      const rawLine = lines[i];
-      if (!rawLine) continue;
-
-      if (!rawLine.trim()) continue;
-      const parsed = parseCSVLine(rawLine.replace(/\r$/, ''));
-      if (parsed.length <= Math.max(keyIndex, targetIndex)) continue;
-
-      const key = parsed[keyIndex] ? parsed[keyIndex].trim() : '';
-      const translation = parsed[targetIndex] ? parsed[targetIndex].trim() : '';
-
-      if (key && translation && translation !== '#VALUE!' && translation !== '___') {
-        csvTranslations[key] = translation;
-      }
-    }
-
-    translations = { ...(defaultTranslations['en'] || {}), ...csvTranslations };
-    window.translations = translations;
-    translationsLoaded = true;
-    window.translationsLoaded = true;
-    translationCache.set(locale, translations);
-    console.debug('🔍 DEBUG: CSV returned translations structure:', Object.keys(translations).slice(0, 10));
-    console.debug('🔍 DEBUG: Sample translation for navigation.start:', translations['navigation.start']);
-    return true;
-  } catch (error) {
-    console.warn('Failed to load CSV translations for locale:', locale, error);
     throw error;
   }
 }

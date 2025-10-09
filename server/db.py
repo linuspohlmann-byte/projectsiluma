@@ -1,10 +1,183 @@
 
 # --- Level run helpers ---
-import os, sqlite3, json
+import os, sqlite3, json, csv
 import random
 import re
 from datetime import datetime, UTC
+from collections import defaultdict
+from typing import Dict, Any
 from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE
+
+
+PRIMARY_LANGUAGE_FIELDS: Dict[str, str] = {
+    'en': 'english',
+    'de': 'german',
+    'fr': 'french',
+    'es': 'spanish',
+    'pt': 'portuguese',
+    'it': 'italian',
+    'ru': 'russian',
+    'tr': 'turkish',
+    'ka': 'georgian',
+    'nl': 'dutch',
+    'sv': 'swedish',
+    'no': 'norwegian',
+    'da': 'danish',
+    'fi': 'finnish',
+    'pl': 'polish',
+    'cs': 'czech',
+    'sk': 'slovak',
+    'hu': 'hungarian',
+    'ro': 'romanian',
+    'bg': 'bulgarian',
+    'el': 'greek',
+    'uk': 'ukrainian',
+    'zh': 'chinese',
+    'ja': 'japanese',
+    'ko': 'korean',
+    'hi': 'hindi',
+    'ur': 'urdu',
+    'id': 'indonesian',
+    'ms': 'malay',
+    'th': 'thai',
+    'vi': 'vietnamese',
+    'fa': 'persian',
+    'ar': 'arabic',
+    'sw': 'swahili',
+}
+
+LANGUAGE_ALIASES: Dict[str, str] = {
+    'english': 'en',
+    'en': 'en',
+    'german': 'de',
+    'de': 'de',
+    'french': 'fr',
+    'fr': 'fr',
+    'italian': 'it',
+    'it': 'it',
+    'spanish': 'es',
+    'es': 'es',
+    'portuguese': 'pt',
+    'pt': 'pt',
+    'portuguese_br': 'pt',
+    'brazilian_portuguese': 'pt',
+    'russian': 'ru',
+    'ru': 'ru',
+    'turkish': 'tr',
+    'tr': 'tr',
+    'georgian': 'ka',
+    'ka': 'ka',
+    'dutch': 'nl',
+    'nl': 'nl',
+    'swedish': 'sv',
+    'sv': 'sv',
+    'norwegian': 'no',
+    'no': 'no',
+    'danish': 'da',
+    'da': 'da',
+    'finnish': 'fi',
+    'fi': 'fi',
+    'polish': 'pl',
+    'pl': 'pl',
+    'czech': 'cs',
+    'cs': 'cs',
+    'slovak': 'sk',
+    'sk': 'sk',
+    'hungarian': 'hu',
+    'hu': 'hu',
+    'romanian': 'ro',
+    'ro': 'ro',
+    'bulgarian': 'bg',
+    'bg': 'bg',
+    'greek': 'el',
+    'el': 'el',
+    'ukrainian': 'uk',
+    'uk': 'uk',
+    'chinese': 'zh',
+    'zh': 'zh',
+    'japanese': 'ja',
+    'ja': 'ja',
+    'korean': 'ko',
+    'ko': 'ko',
+    'hindi': 'hi',
+    'hi': 'hi',
+    'urdu': 'ur',
+    'ur': 'ur',
+    'indonesian': 'id',
+    'id': 'id',
+    'malay': 'ms',
+    'ms': 'ms',
+    'thai': 'th',
+    'th': 'th',
+    'vietnamese': 'vi',
+    'vi': 'vi',
+    'persian': 'fa',
+    'farsi': 'fa',
+    'fa': 'fa',
+    'arabic': 'ar',
+    'ar': 'ar',
+    'swahili': 'sw',
+    'sw': 'sw',
+    'bengali': 'bn',
+    'bn': 'bn',
+    'punjabi': 'pa',
+    'pa': 'pa',
+    'tamil': 'ta',
+    'ta': 'ta',
+    'telugu': 'te',
+    'te': 'te',
+    'marathi': 'mr',
+    'mr': 'mr',
+    'gujarati': 'gu',
+    'gu': 'gu',
+    'malagasy': 'mg',
+    'mg': 'mg',
+    'tagalog': 'tl',
+    'filipino': 'tl',
+    'tl': 'tl',
+    'azerbaijani': 'az',
+    'az': 'az',
+    'kazakh': 'kk',
+    'kk': 'kk',
+    'armenian': 'hy',
+    'hy': 'hy',
+    'nepali': 'ne',
+    'ne': 'ne',
+    'lao': 'lo',
+    'lo': 'lo',
+    'khmer': 'km',
+    'km': 'km',
+    'burmese': 'my',
+    'my': 'my',
+}
+
+LANGUAGE_CODE_TO_FIELD: Dict[str, str] = {code: field for code, field in PRIMARY_LANGUAGE_FIELDS.items()}
+LOCALIZATION_INVALID_VALUES = {'', '___', '#VALUE!'}
+
+
+def normalize_language_identifier(identifier: str | None) -> str | None:
+    """Normalize various language identifiers to ISO-ish codes"""
+    if not identifier:
+        return None
+    lang = str(identifier).strip().lower()
+    if not lang:
+        return None
+    lang = lang.replace('-', '_').replace(' ', '_')
+    if '.' in lang:
+        lang = lang.split('.', 1)[0]
+    return LANGUAGE_ALIASES.get(lang, lang if 1 < len(lang) <= 5 else None)
+
+
+def language_code_to_field(code: str) -> str:
+    """Map language code back to UI field name"""
+    if not code:
+        return code
+    return LANGUAGE_CODE_TO_FIELD.get(code, code)
+
+
+def using_postgresql() -> bool:
+    config = get_database_config()
+    return config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE
 
 def latest_run_id_for_level(level: int) -> int | None:
     config = get_database_config()
@@ -938,35 +1111,28 @@ def init_db():
             );
         """)
         
-        # Localization table
+        # Localization table - normalized by language
         execute_query(conn, """
             CREATE TABLE IF NOT EXISTS localization (
                 id SERIAL PRIMARY KEY,
-                reference_key VARCHAR(255) UNIQUE NOT NULL,
+                key VARCHAR(255) NOT NULL,
+                language VARCHAR(16) NOT NULL,
+                value TEXT NOT NULL,
                 description TEXT,
-                german TEXT,
-                english TEXT,
-                french TEXT,
-                italian TEXT,
-                spanish TEXT,
-                portuguese TEXT,
-                russian TEXT,
-                turkish TEXT,
-                georgian TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(key, language)
             );
         """)
-        
-        # Add missing language columns to existing localization table if they don't exist
-        language_columns = ['german', 'english', 'french', 'italian', 'spanish', 'portuguese', 'russian', 'turkish', 'georgian']
-        for column in language_columns:
-            try:
-                execute_query(conn, f"ALTER TABLE localization ADD COLUMN IF NOT EXISTS {column} TEXT;")
-            except Exception as e:
-                # Column might already exist, ignore the error
-                print(f"Note: Column {column} might already exist: {e}")
-                pass
+        try:
+            execute_query(conn, "ALTER TABLE localization ADD COLUMN IF NOT EXISTS description TEXT;")
+        except Exception as e:
+            print(f"Note: description column migration skipped: {e}")
+        try:
+            seed_postgres_localization_from_csv(conn.conn)
+        except Exception as e:
+            print(f"Warning: failed to seed localization data from CSV: {e}")
+        ensure_core_localization_entries()
         
         # Custom level groups table
         execute_query(conn, """
@@ -1140,6 +1306,7 @@ def init_db():
           FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         );
         """)
+        ensure_core_localization_entries()
         
         # User system tables
         cur.execute("""
@@ -1448,39 +1615,340 @@ def upsert_word_row(payload: dict) -> None:
 
 # --- Localization helpers ---
 
+def _pg_fetch_localization_rows(conn, reference_key: str | None = None, language_code: str | None = None):
+    """Fetch localization rows from PostgreSQL"""
+    query = "SELECT id, key, language, value, description FROM localization"
+    conditions = []
+    params: list[Any] = []
+    if reference_key:
+        conditions.append("key = %s")
+        params.append(reference_key)
+    if language_code:
+        conditions.append("language = %s")
+        params.append(language_code)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY key, language"
+    cur = conn.cursor()
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    normalized = []
+    for row in rows:
+        try:
+            normalized.append(dict(row))
+        except Exception:
+            # fallback for tuple rows
+            keys = ('id', 'key', 'language', 'value', 'description')
+            normalized.append({k: row[i] if i < len(row) else None for i, k in enumerate(keys)})
+    return normalized
+
+
+def _pg_aggregate_localization_rows(rows: list[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    aggregated: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        ref_key = row.get('key')
+        if not ref_key:
+            continue
+        entry = aggregated.setdefault(ref_key, {
+            'reference_key': ref_key,
+            'id': row.get('id'),
+            'description': row.get('description')
+        })
+        # Keep the smallest id so editing works
+        row_id = row.get('id')
+        if row_id is not None:
+            entry_id = entry.get('id')
+            if entry_id is None or (isinstance(row_id, int) and isinstance(entry_id, int) and row_id < entry_id):
+                entry['id'] = row_id
+        # Preserve description if we do not have one yet
+        if (not entry.get('description')) and row.get('description'):
+            entry['description'] = row.get('description')
+        lang_code = normalize_language_identifier(row.get('language'))
+        if not lang_code:
+            continue
+        alias = language_code_to_field(lang_code)
+        entry[alias] = row.get('value')
+    return aggregated
+
+
+def seed_postgres_localization_from_csv(conn) -> None:
+    """Populate PostgreSQL localization table from CSV if empty"""
+    csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
+    if not os.path.exists(csv_path):
+        print("Localization CSV not found, skipping PostgreSQL import.")
+        return
+    
+    try:
+        cur = execute_query(conn, "SELECT COUNT(*) AS count FROM localization")
+        row = cur.fetchone()
+        existing = 0
+        if row is not None:
+            if isinstance(row, dict):
+                existing = row.get('count') or row.get('COUNT') or 0
+            else:
+                existing = row[0]
+        if existing:
+            print(f"Localization table already contains {existing} entries, CSV import skipped.")
+            return
+    except Exception as exc:
+        print(f"Could not determine localization row count: {exc}")
+        return
+    
+    with open(csv_path, 'r', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        imported_keys = 0
+        for csv_row in reader:
+            if not csv_row:
+                continue
+            reference_key = (csv_row.get('KEY') or csv_row.get('key') or '').strip()
+            if not reference_key:
+                continue
+            description = (csv_row.get('DESCRIPTION') or csv_row.get('description') or '').strip()
+            payload: Dict[str, Any] = {'reference_key': reference_key, 'description': description}
+            translations_added = False
+            for column, value in csv_row.items():
+                if not column or column.upper() in {'KEY', 'DESCRIPTION'}:
+                    continue
+                lang_code = normalize_language_identifier(column)
+                if not lang_code:
+                    continue
+                text_value = (value or '').strip()
+                if not text_value or text_value in LOCALIZATION_INVALID_VALUES:
+                    continue
+                payload[language_code_to_field(lang_code)] = text_value
+                translations_added = True
+            if not translations_added:
+                continue
+            upsert_localization_entry(payload, conn=conn)
+            imported_keys += 1
+        conn.commit()
+        print(f"Imported {imported_keys} localization keys from CSV into PostgreSQL.")
+
+
+CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
+    {
+        'reference_key': 'lesson.replay_sentence',
+        'description': 'Tooltip for replay sentence button',
+        'en': 'Replay sentence',
+        'de': 'Satz erneut abspielen'
+    },
+    {
+        'reference_key': 'lesson.build_sentence',
+        'description': 'Label for sentence builder area',
+        'en': 'Build the sentence',
+        'de': 'Satz aufbauen'
+    },
+    {
+        'reference_key': 'lesson.available_words',
+        'description': 'Label for available words list',
+        'en': 'Available words',
+        'de': 'Verfügbare Wörter'
+    },
+    {
+        'reference_key': 'lesson.prompt_translate',
+        'description': 'Prompt shown when translation is missing',
+        'en': 'Please translate.',
+        'de': 'Bitte übersetzen.'
+    },
+    {
+        'reference_key': 'errors.generic',
+        'description': 'Generic error message',
+        'en': 'An error occurred.',
+        'de': 'Es ist ein Fehler aufgetreten.'
+    },
+    {
+        'reference_key': 'lesson.custom_level_start_failed',
+        'description': 'Alert when a custom level cannot be started',
+        'en': 'Failed to start custom level.',
+        'de': 'Fehler beim Starten des Custom Levels.'
+    },
+    {
+        'reference_key': 'lesson.level_locked',
+        'description': 'Message explaining a level is locked',
+        'en': 'Level {level} is locked. Complete level {requiredLevel} with at least 60%.',
+        'de': 'Level {level} ist gesperrt. Du musst Level {requiredLevel} mit mindestens 60% abschließen.'
+    },
+    {
+        'reference_key': 'onboarding.preferences_saved',
+        'description': 'Onboarding success message after saving preferences',
+        'en': 'Welcome to Siluma! Your preferences have been saved.',
+        'de': 'Willkommen bei Siluma! Deine Einstellungen wurden gespeichert.'
+    },
+    {
+        'reference_key': 'marketplace.load_error',
+        'description': 'Generic marketplace loading error',
+        'en': 'Failed to load marketplace.',
+        'de': 'Fehler beim Laden des Marketplaces.'
+    },
+    {
+        'reference_key': 'marketplace.load_error_with_reason',
+        'description': 'Marketplace loading error with appended reason',
+        'en': 'Failed to load marketplace data: {reason}',
+        'de': 'Fehler beim Laden der Marketplace-Inhalte: {reason}'
+    },
+    {
+        'reference_key': 'marketplace.empty_title',
+        'description': 'Title shown when no marketplace groups match filters',
+        'en': 'No level groups found',
+        'de': 'Keine Level-Gruppen gefunden'
+    },
+    {
+        'reference_key': 'marketplace.empty_text',
+        'description': 'Description when no marketplace groups match filters',
+        'en': 'No published level groups match your filters.<br>Try different filters or create your own level group!',
+        'de': 'Es wurden keine publizierten Level-Gruppen für die gewählten Filter gefunden.<br>Versuche andere Filter oder erstelle deine eigene Level-Gruppe!'
+    },
+    {
+        'reference_key': 'marketplace.page_info',
+        'description': 'Pagination label in marketplace',
+        'en': 'Page {current} of {total}',
+        'de': 'Seite {current} von {total}'
+    },
+    {
+        'reference_key': 'marketplace.loading',
+        'description': 'Loading message for marketplace',
+        'en': 'Loading marketplace data...',
+        'de': 'Lade Marketplace-Inhalte...'
+    },
+    {
+        'reference_key': 'marketplace.login_to_rate',
+        'description': 'Prompt to log in before rating',
+        'en': 'Please sign in to rate.',
+        'de': 'Bitte anmelden, um zu bewerten.'
+    },
+    {
+        'reference_key': 'marketplace.select_rating',
+        'description': 'Prompt to select star rating',
+        'en': 'Please choose between 1 and 5 stars.',
+        'de': 'Bitte 1–5 Sterne wählen.'
+    },
+    {
+        'reference_key': 'marketplace.sending',
+        'description': 'Status while rating is being submitted',
+        'en': 'Sending...',
+        'de': 'Senden...'
+    },
+    {
+        'reference_key': 'marketplace.submit_error',
+        'description': 'Generic error when rating submission fails',
+        'en': 'Failed to submit rating',
+        'de': 'Fehler beim Senden'
+    },
+    {
+        'reference_key': 'marketplace.thank_you',
+        'description': 'Thank you message after submitting rating',
+        'en': 'Thanks for your rating!',
+        'de': 'Danke für deine Bewertung!'
+    },
+    {
+        'reference_key': 'marketplace.error_status',
+        'description': 'Prefix shown when rating submission fails',
+        'en': 'Error: {message}',
+        'de': 'Fehler: {message}'
+    },
+    {
+        'reference_key': 'errors.title',
+        'description': 'Generic error title label',
+        'en': 'Error',
+        'de': 'Fehler'
+    },
+    {
+        'reference_key': 'errors.unknown',
+        'description': 'Message shown when error reason is unknown',
+        'en': 'Unknown error',
+        'de': 'Unbekannter Fehler'
+    },
+    {
+        'reference_key': 'localization.ai_fill_in_progress',
+        'description': 'Button label shown while AI fill runs',
+        'en': '🤖 AI filling...',
+        'de': '🤖 KI füllt aus...'
+    },
+    {
+        'reference_key': 'localization.delete_confirm',
+        'description': 'Confirmation prompt when deleting a localization entry',
+        'en': 'Are you sure you want to delete this entry?',
+        'de': 'Möchtest du diesen Eintrag wirklich löschen?'
+    },
+    {
+        'reference_key': 'localization.delete_failed',
+        'description': 'Error message when deleting localization entry fails',
+        'en': 'Failed to delete entry: {error}',
+        'de': 'Löschen des Eintrags fehlgeschlagen: {error}'
+    },
+    {
+        'reference_key': 'localization.delete_error',
+        'description': 'Generic delete error message',
+        'en': 'Error deleting entry: {error}',
+        'de': 'Fehler beim Löschen des Eintrags: {error}'
+    },
+    {
+        'reference_key': 'localization.ai_fill_confirm',
+        'description': 'Confirmation message before triggering AI fill',
+        'en': 'This will use AI to fill missing translations for the top 20 most spoken languages.\n\nThis may take a few minutes and will use OpenAI API credits.\n\nDo you want to continue?',
+        'de': 'Dies nutzt KI, um fehlende Übersetzungen für die 20 meistgesprochenen Sprachen zu ergänzen.\n\nDies kann einige Minuten dauern und OpenAI-Guthaben verbrauchen.\n\nMöchtest du fortfahren?'
+    },
+    {
+        'reference_key': 'localization.ai_fill_success',
+        'description': 'Success message after AI fill completes',
+        'en': '✅ AI translation filling completed successfully!\n\nPlease refresh the page to see the new translations.',
+        'de': '✅ KI-Übersetzungsergänzung erfolgreich abgeschlossen!\n\nBitte lade die Seite neu, um die neuen Übersetzungen zu sehen.'
+    },
+    {
+        'reference_key': 'localization.ai_fill_error',
+        'description': 'Error message when AI fill fails, with reason',
+        'en': '❌ AI translation filling failed: {error}',
+        'de': '❌ KI-Übersetzungsergänzung fehlgeschlagen: {error}'
+    },
+    {
+        'reference_key': 'localization.ai_fill_error_generic',
+        'description': 'Generic error message when AI fill throws',
+        'en': '❌ Error during AI fill: {error}',
+        'de': '❌ Fehler während der KI-Ergänzung: {error}'
+    }
+]
+
+
+def ensure_core_localization_entries():
+    """Ensure critical localization keys exist with defaults"""
+    for entry in CORE_LOCALIZATION_ENTRIES:
+        try:
+            upsert_localization_entry(entry)
+        except Exception as exc:
+            print(f"Warning: failed to upsert localization entry {entry.get('reference_key')}: {exc}")
+
+
 def get_localization_entry(reference_key: str, language: str = None):
     """Get a localization entry by reference key and optionally language"""
     from server.db_config import get_database_config
     
     config = get_database_config()
-    conn = get_db()
+    if config['type'] == 'postgresql':
+        conn = get_db_connection()
+    else:
+        conn = get_db()
     
     try:
         if config['type'] == 'postgresql':
-            cur = conn.cursor()
-            cur.execute(
-                'SELECT * FROM localization WHERE reference_key = %s',
-                (reference_key,)
-            )
-            row = cur.fetchone()
-            cur.close()
-            
-            if row:
-                # Convert row to dict
-                columns = [desc[0] for desc in cur.description] if hasattr(cur, 'description') else []
-                row_dict = dict(zip(columns, row)) if columns else {}
-                
-                if language:
-                    # Return only the requested language
-                    lang_column = language.lower()
-                    if lang_column in row_dict:
-                        return {lang_column: row_dict[lang_column]}
-                    else:
-                        return {}
-                else:
-                    # Return all translations
-                    return row_dict
-            return {}
+            lang_code = normalize_language_identifier(language)
+            rows = _pg_fetch_localization_rows(conn, reference_key, lang_code if lang_code else None)
+            if not rows and lang_code:
+                # Allow fallback to fetch other languages for metadata
+                rows = _pg_fetch_localization_rows(conn, reference_key, None)
+            if not rows:
+                return {}
+            aggregated = _pg_aggregate_localization_rows(rows)
+            entry = aggregated.get(reference_key, {})
+            if lang_code:
+                alias = language_code_to_field(lang_code)
+                return {
+                    'reference_key': reference_key,
+                    'language': lang_code,
+                    'description': entry.get('description'),
+                    alias: entry.get(alias)
+                }
+            return entry
         else:
             if language:
                 # Get specific language translation
@@ -1507,76 +1975,98 @@ def get_localization_entry(reference_key: str, language: str = None):
     finally:
         conn.close()
 
-def upsert_localization_entry(payload: dict) -> None:
+def upsert_localization_entry(payload: dict, conn=None) -> None:
     """Insert or update a localization entry"""
-    reference_key = (payload.get('reference_key') or '').strip()
-    description = (payload.get('description') or '').strip()
-    german = (payload.get('german') or '').strip()
-    english = (payload.get('english') or '').strip()
-    french = (payload.get('french') or '').strip()
-    italian = (payload.get('italian') or '').strip()
-    spanish = (payload.get('spanish') or '').strip()
-    portuguese = (payload.get('portuguese') or '').strip()
-    russian = (payload.get('russian') or '').strip()
-    turkish = (payload.get('turkish') or '').strip()
-    georgian = (payload.get('georgian') or '').strip()
+    reference_key = (payload.get('reference_key') or payload.get('key') or '').strip()
+    if not reference_key:
+        raise ValueError("reference_key is required for localization upsert")
+    description = (payload.get('description') or '').strip() or None
     
     now = datetime.now(UTC).isoformat()
     
     config = get_database_config()
-    conn = get_db_connection()
+    managed_connection = False
+    if conn is None:
+        conn = get_db_connection()
+        managed_connection = True
     try:
         if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            result = execute_query(conn, '''
-                UPDATE localization SET 
-                    description=COALESCE(%s, description), 
-                    german=COALESCE(%s, german), 
-                    english=COALESCE(%s, english), 
-                    french=COALESCE(%s, french), 
-                    italian=COALESCE(%s, italian), 
-                    spanish=COALESCE(%s, spanish), 
-                    portuguese=COALESCE(%s, portuguese), 
-                    russian=COALESCE(%s, russian), 
-                    turkish=COALESCE(%s, turkish), 
-                    georgian=COALESCE(%s, georgian), 
-                    updated_at=%s 
-                WHERE reference_key=%s
-            ''', (description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, reference_key))
+            translations: Dict[str, str] = {}
             
-            if result.rowcount == 0:
-                execute_query(conn, '''
-                    INSERT INTO localization (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, created_at, updated_at) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ''', (reference_key, description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, now))
+            explicit_language = normalize_language_identifier(payload.get('language'))
+            explicit_text = payload.get('text') or payload.get('value')
+            if explicit_language and explicit_text:
+                text_value = str(explicit_text).strip()
+                if text_value and text_value not in LOCALIZATION_INVALID_VALUES:
+                    translations[explicit_language] = text_value
+            
+            for key, value in payload.items():
+                if key in {'reference_key', 'key', 'description', 'language', 'text', 'value'}:
+                    continue
+                if value is None:
+                    continue
+                lang_code = normalize_language_identifier(key)
+                if not lang_code:
+                    continue
+                text_value = str(value).strip()
+                if text_value and text_value not in LOCALIZATION_INVALID_VALUES:
+                    translations[lang_code] = text_value
+            
+            if not translations:
+                if description is not None:
+                    execute_query(conn, """
+                        UPDATE localization
+                        SET description = %s, updated_at = %s
+                        WHERE key = %s
+                    """, (description, now, reference_key))
+            else:
+                for lang_code, text_value in translations.items():
+                    execute_query(conn, """
+                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (key, language) DO UPDATE SET
+                            value = EXCLUDED.value,
+                            description = COALESCE(EXCLUDED.description, localization.description),
+                            updated_at = EXCLUDED.updated_at
+                    """, (reference_key, lang_code, text_value, description, now, now))
         else:
-            # SQLite syntax
+            german = (payload.get('german') or '').strip() or None
+            english = (payload.get('english') or '').strip() or None
+            french = (payload.get('french') or '').strip() or None
+            italian = (payload.get('italian') or '').strip() or None
+            spanish = (payload.get('spanish') or '').strip() or None
+            portuguese = (payload.get('portuguese') or '').strip() or None
+            russian = (payload.get('russian') or '').strip() or None
+            turkish = (payload.get('turkish') or '').strip() or None
+            georgian = (payload.get('georgian') or '').strip() or None
+            
             cur = conn.cursor()
             cur.execute(
                 'UPDATE localization SET description=COALESCE(?, description), german=COALESCE(?, german), english=COALESCE(?, english), french=COALESCE(?, french), italian=COALESCE(?, italian), spanish=COALESCE(?, spanish), portuguese=COALESCE(?, portuguese), russian=COALESCE(?, russian), turkish=COALESCE(?, turkish), georgian=COALESCE(?, georgian), updated_at=? WHERE reference_key=?',
-                (description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, reference_key)
+                (description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, now, reference_key)
             )
             if cur.rowcount == 0:
                 cur.execute(
                     'INSERT INTO localization (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                    (reference_key, description or None, german or None, english or None, french or None, italian or None, spanish or None, portuguese or None, russian or None, turkish or None, georgian or None, now, now)
+                    (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, now, now)
                 )
-        conn.commit()
+        if managed_connection:
+            conn.commit()
     finally:
-        conn.close()
+        if managed_connection:
+            conn.close()
 
 def get_all_localization_entries():
     """Get all localization entries"""
-    import os
     config = get_database_config()
     conn = get_db_connection()
     try:
         if config['type'] == 'postgresql':
-            # PostgreSQL
-            cur = conn.cursor()
-            cur.execute('SELECT * FROM localization ORDER BY reference_key')
-            rows = cur.fetchall()
-            return rows
+            rows = _pg_fetch_localization_rows(conn)
+            aggregated = _pg_aggregate_localization_rows(rows)
+            entries = list(aggregated.values())
+            entries.sort(key=lambda e: e.get('reference_key', ''))
+            return entries
         else:
             # SQLite
             rows = conn.execute('SELECT * FROM localization ORDER BY reference_key').fetchall()
@@ -1585,160 +2075,223 @@ def get_all_localization_entries():
         conn.close()
 
 def get_localization_for_language(language_code: str):
-    """Get all localization entries for a specific language from database first, then CSV"""
-    import os
+    """Get all localization entries for a specific language"""
+    config = get_database_config()
+    lang_code = normalize_language_identifier(language_code)
+    if not lang_code:
+        return {}
     
-    # Language code to database column mapping
-    lang_mapping = {
-        'en': 'english', 'de': 'german', 'fr': 'french', 'es': 'spanish', 'it': 'italian',
-        'pt': 'portuguese', 'ru': 'russian', 'zh': 'chinese', 'ja': 'japanese', 'ko': 'korean',
-        'ar': 'arabic', 'hi': 'hindi', 'tr': 'turkish', 'pl': 'polish', 'nl': 'dutch',
-        'sv': 'swedish', 'da': 'danish', 'no': 'norwegian', 'fi': 'finnish', 'he': 'hebrew',
-        'th': 'thai', 'my': 'burmese', 'km': 'khmer', 'lo': 'lao', 'ka': 'georgian',
-        'hy': 'armenian', 'az': 'azerbaijani', 'kk': 'kazakh', 'ky': 'kyrgyz', 'uz': 'uzbek',
-        'tg': 'tajik', 'mn': 'mongolian', 'bo': 'tibetan', 'ne': 'nepali', 'si': 'sinhala',
-        'ml': 'malayalam', 'kn': 'kannada', 'pa': 'punjabi', 'or': 'oriya', 'as': 'assamese',
-        'dv': 'dhivehi', 'ps': 'pashto', 'sd': 'sindhi', 'ks': 'kashmiri', 'cs': 'czech',
-        'sk': 'slovak', 'sl': 'slovenian', 'hr': 'croatian', 'sr': 'serbian', 'bs': 'bosnian',
-        'mk': 'macedonian', 'bg': 'bulgarian', 'sq': 'albanian', 'el': 'greek', 'mt': 'maltese',
-        'cy': 'welsh', 'ga': 'irish', 'gd': 'scottish_gaelic', 'gv': 'manx', 'br': 'breton',
-        'co': 'corsican', 'ca': 'catalan', 'gl': 'galician', 'eu': 'basque', 'is': 'icelandic',
-        'fo': 'faroese', 'lb': 'luxembourgish', 'li': 'limburgish', 'fy': 'western_frisian',
-        'af': 'afrikaans', 'et': 'estonian', 'lv': 'latvian', 'lt': 'lithuanian', 'ha': 'hausa',
-        'yo': 'yoruba', 'ig': 'igbo', 'ff': 'fulfulde', 'am': 'amharic', 'om': 'oromo',
-        'ti': 'tigrinya', 'so': 'somali', 'zu': 'zulu', 'xh': 'xhosa', 'st': 'sotho',
-        'tn': 'tswana', 'ss': 'swati', 'nr': 'ndebele', 've': 'venda', 'ts': 'tsonga',
-        'sn': 'shona', 'ny': 'chichewa', 'rw': 'kinyarwanda', 'rn': 'kirundi', 'lg': 'luganda',
-        'mg': 'malagasy', 'wo': 'wolof', 'ms': 'malay', 'tl': 'filipino', 'jv': 'javanese',
-        'su': 'sundanese', 'qu': 'quechua', 'gn': 'guarani', 'ay': 'aymara', 'sm': 'samoan',
-        'to': 'tongan', 'ty': 'tahitian', 'mi': 'maori', 'fj': 'fijian', 'bi': 'bislama',
-        'eo': 'esperanto', 'ia': 'interlingua', 'ie': 'interlingue', 'io': 'ido', 'vo': 'volapuk',
-        'la': 'latin', 'cu': 'old_church_slavonic', 'pi': 'pali', 'sa': 'sanskrit', 'id': 'indonesian'
-    }
-    
-    result = {}
-    
-    # Always use CSV file first for complete translations
-    try:
-        csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
+    if config['type'] == 'postgresql':
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT key, value FROM localization WHERE language = %s ORDER BY key',
+                (lang_code,)
+            )
+            rows = cur.fetchall()
+            translations = {}
+            for row in rows:
+                if isinstance(row, dict):
+                    key = row.get('key')
+                    value = row.get('value')
+                else:
+                    key, value = row
+                if not key or value is None:
+                    continue
+                text_value = str(value).strip()
+                if text_value in LOCALIZATION_INVALID_VALUES:
+                    continue
+                translations[key] = text_value
+            return translations
+        finally:
+            conn.close()
+    else:
+        import os
         
-        # Read CSV without pandas
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        # Language code to database column mapping
+        lang_mapping = {
+            'en': 'english', 'de': 'german', 'fr': 'french', 'es': 'spanish', 'it': 'italian',
+            'pt': 'portuguese', 'ru': 'russian', 'zh': 'chinese', 'ja': 'japanese', 'ko': 'korean',
+            'ar': 'arabic', 'hi': 'hindi', 'tr': 'turkish', 'pl': 'polish', 'nl': 'dutch',
+            'sv': 'swedish', 'da': 'danish', 'no': 'norwegian', 'fi': 'finnish', 'he': 'hebrew',
+            'th': 'thai', 'my': 'burmese', 'km': 'khmer', 'lo': 'lao', 'ka': 'georgian',
+            'hy': 'armenian', 'az': 'azerbaijani', 'kk': 'kazakh', 'ky': 'kyrgyz', 'uz': 'uzbek',
+            'tg': 'tajik', 'mn': 'mongolian', 'bo': 'tibetan', 'ne': 'nepali', 'si': 'sinhala',
+            'ml': 'malayalam', 'kn': 'kannada', 'pa': 'punjabi', 'or': 'oriya', 'as': 'assamese',
+            'dv': 'dhivehi', 'ps': 'pashto', 'sd': 'sindhi', 'ks': 'kashmiri', 'cs': 'czech',
+            'sk': 'slovak', 'sl': 'slovenian', 'hr': 'croatian', 'sr': 'serbian', 'bs': 'bosnian',
+            'mk': 'macedonian', 'bg': 'bulgarian', 'sq': 'albanian', 'el': 'greek', 'mt': 'maltese',
+            'cy': 'welsh', 'ga': 'irish', 'gd': 'scottish_gaelic', 'gv': 'manx', 'br': 'breton',
+            'co': 'corsican', 'ca': 'catalan', 'gl': 'galician', 'eu': 'basque', 'is': 'icelandic',
+            'fo': 'faroese', 'lb': 'luxembourgish', 'li': 'limburgish', 'fy': 'western_frisian',
+            'af': 'afrikaans', 'et': 'estonian', 'lv': 'latvian', 'lt': 'lithuanian', 'ha': 'hausa',
+            'yo': 'yoruba', 'ig': 'igbo', 'ff': 'fulfulde', 'am': 'amharic', 'om': 'oromo',
+            'ti': 'tigrinya', 'so': 'somali', 'zu': 'zulu', 'xh': 'xhosa', 'st': 'sotho',
+            'tn': 'tswana', 'ss': 'swati', 'nr': 'ndebele', 've': 'venda', 'ts': 'tsonga',
+            'sn': 'shona', 'ny': 'chichewa', 'rw': 'kinyarwanda', 'rn': 'kirundi', 'lg': 'luganda',
+            'mg': 'malagasy', 'wo': 'wolof', 'ms': 'malay', 'tl': 'filipino', 'jv': 'javanese',
+            'su': 'sundanese', 'qu': 'quechua', 'gn': 'guarani', 'ay': 'aymara', 'sm': 'samoan',
+            'to': 'tongan', 'ty': 'tahitian', 'mi': 'maori', 'fj': 'fijian', 'bi': 'bislama',
+            'eo': 'esperanto', 'ia': 'interlingua', 'ie': 'interlingue', 'io': 'ido', 'vo': 'volapuk',
+            'la': 'latin', 'cu': 'old_church_slavonic', 'pi': 'pali', 'sa': 'sanskrit', 'id': 'indonesian'
+        }
         
-        if not lines:
-            raise Exception("CSV file is empty")
+        language_code = lang_code
+        result = {}
         
-        # Parse header
-        header_line = lines[0].strip().replace('\ufeff', '')
-        headers = [col.strip() for col in header_line.split(',')]
-        
-        # Find target language column
-        target_col = language_code.lower()
-        if target_col not in headers:
-            print(f"Language {target_col} not found in CSV headers: {headers[:10]}...")
-            raise Exception(f"Language {target_col} not found in CSV")
-        
-        target_index = headers.index(target_col)
-        # Handle BOM in KEY column
-        key_index = 0
-        for i, header in enumerate(headers):
-            if 'KEY' in header.upper():
-                key_index = i
-                break
-        
-        # Parse data rows with better CSV parsing
-        import csv
-        from io import StringIO
-        
-        # Join lines and create CSV reader
-        csv_content = ''.join(lines)
-        csv_reader = csv.reader(StringIO(csv_content))
-        
-        # Skip header
-        next(csv_reader)
-        
-        # Process all rows
-        for row in csv_reader:
-            if len(row) <= max(key_index, target_index):
-                continue
+        # Always use CSV file first for complete translations (legacy SQLite behaviour)
+        try:
+            csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
+            
+            # Read CSV without pandas
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            if not lines:
+                raise Exception("CSV file is empty")
+            
+            # Parse header
+            header_line = lines[0].strip().replace('\ufeff', '')
+            headers = [col.strip() for col in header_line.split(',')]
+            
+            # Find target language column
+            target_col = language_code.lower()
+            if target_col not in headers:
+                print(f"Language {target_col} not found in CSV headers: {headers[:10]}...")
+                raise Exception(f"Language {target_col} not found in CSV")
+            
+            target_index = headers.index(target_col)
+            # Handle BOM in KEY column
+            key_index = 0
+            for i, header in enumerate(headers):
+                if 'KEY' in header.upper():
+                    key_index = i
+                    break
+            
+            # Parse data rows with better CSV parsing
+            from io import StringIO
+            
+            # Join lines and create CSV reader
+            csv_content = ''.join(lines)
+            csv_reader = csv.reader(StringIO(csv_content))
+            
+            # Skip header
+            next(csv_reader)
+            
+            # Process all rows
+            for row in csv_reader:
+                if len(row) <= max(key_index, target_index):
+                    continue
+                    
+                key = row[key_index].strip() if key_index < len(row) else ''
+                translation = row[target_index].strip() if target_index < len(row) else ''
                 
-            key = row[key_index].strip() if key_index < len(row) else ''
-            translation = row[target_index].strip() if target_index < len(row) else ''
+                if key and translation and translation not in ['___', '#VALUE!', '']:
+                    result[key] = translation
             
-            if key and translation and translation not in ['___', '#VALUE!', '']:
-                result[key] = translation
-        
-        print(f"Found {len(result)} translations in CSV for {language_code}")
-        return result
-    except Exception as e:
-        print(f"Error reading CSV for language {language_code}: {e}")
-    
-    # Fallback to database if CSV fails
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        db_column = lang_mapping.get(language_code.lower(), language_code.lower())
-        
-        cur.execute(f'''
-            SELECT reference_key, {db_column} 
-            FROM localization 
-            WHERE {db_column} IS NOT NULL 
-            AND {db_column} != '' 
-            AND {db_column} != '#VALUE!'
-        ''')
-        
-        rows = cur.fetchall()
-        for row in rows:
-            key, translation = row
-            if key and translation and str(translation).strip():
-                result[key] = str(translation).strip()
-        
-        conn.close()
-        
-        # If we found translations in database, return them
-        if result:
-            print(f"Found {len(result)} translations in database for {language_code}")
+            print(f"Found {len(result)} translations in CSV for {language_code}")
             return result
+        except Exception as e:
+            print(f"Error reading CSV for language {language_code}: {e}")
+        
+        # Fallback to database if CSV fails
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            db_column = lang_mapping.get(language_code.lower(), language_code.lower())
             
-    except Exception as e:
-        print(f"Error reading from database for language {language_code}: {e}")
-    
-    return {}
+            cur.execute(f'''
+                SELECT reference_key, {db_column} 
+                FROM localization 
+                WHERE {db_column} IS NOT NULL 
+                AND {db_column} != '' 
+                AND {db_column} != '#VALUE!'
+            ''')
+            
+            rows = cur.fetchall()
+            for row in rows:
+                key, translation = row
+                if key and translation and str(translation).strip():
+                    result[key] = str(translation).strip()
+            
+            conn.close()
+            
+            # If we found translations in database, return them
+            if result:
+                print(f"Found {len(result)} translations in database for {language_code}")
+                return result
+                
+        except Exception as e:
+            print(f"Error reading from database for language {language_code}: {e}")
+        
+        return {}
 
 def get_missing_translations(language_code: str):
     """Get localization entries that are missing translations for a specific language"""
-    conn = get_db()
-    try:
-        # Map language codes to column names
-        lang_columns = {
-            'de': 'german',
-            'en': 'english',
-            'fr': 'french',
-            'it': 'italian',
-            'es': 'spanish',
-            'pt': 'portuguese',
-            'ru': 'russian',
-            'tr': 'turkish',
-            'ka': 'georgian'
-        }
-        
-        column = lang_columns.get(language_code.lower(), 'english')
-        
-        # Use database-agnostic query for empty string check
-        config = get_database_config()
-        if config['type'] == 'postgresql':
-            # PostgreSQL: use COALESCE to handle NULL and empty string
-            query = f'SELECT reference_key, description, {column} as translation FROM localization WHERE COALESCE({column}, \'\') = \'\' ORDER BY reference_key'
-        else:
-            # SQLite: use original syntax
+    config = get_database_config()
+    lang_code = normalize_language_identifier(language_code)
+    if not lang_code:
+        return []
+    
+    if config['type'] == 'postgresql':
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                WITH keys AS (
+                    SELECT DISTINCT key, MAX(description) AS description
+                    FROM localization
+                    GROUP BY key
+                )
+                SELECT k.key AS reference_key,
+                       k.description,
+                       t.value AS translation
+                FROM keys k
+                LEFT JOIN localization t
+                  ON t.key = k.key AND t.language = %s
+                WHERE t.key IS NULL OR COALESCE(t.value, '') = ''
+                ORDER BY k.key
+            """, (lang_code,))
+            rows = cur.fetchall()
+            results = []
+            for row in rows:
+                if isinstance(row, dict):
+                    reference_key = row.get('reference_key') or row.get('key')
+                    description = row.get('description')
+                    translation = row.get('translation')
+                else:
+                    reference_key, description, translation = row
+                results.append({
+                    'reference_key': reference_key,
+                    'description': description,
+                    'translation': translation
+                })
+            return results
+        finally:
+            conn.close()
+    else:
+        conn = get_db()
+        try:
+            # Map language codes to column names
+            lang_columns = {
+                'de': 'german',
+                'en': 'english',
+                'fr': 'french',
+                'it': 'italian',
+                'es': 'spanish',
+                'pt': 'portuguese',
+                'ru': 'russian',
+                'tr': 'turkish',
+                'ka': 'georgian'
+            }
+            
+            column = lang_columns.get(lang_code, 'english')
             query = f'SELECT reference_key, description, {column} as translation FROM localization WHERE {column} IS NULL OR {column} = "" ORDER BY reference_key'
-        
-        rows = conn.execute(query, None).fetchall()
-        
-        return rows
-    finally:
-        conn.close()
+            rows = conn.execute(query).fetchall()
+            return rows
+        finally:
+            conn.close()
 
 # --- User Management Functions ---
 

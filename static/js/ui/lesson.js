@@ -8,6 +8,7 @@ import { populateEvaluationScore, populateEvaluationStatus } from './evaluation.
 
 const $ = (sel)=> document.querySelector(sel);
 const $$ = (sel)=> Array.from(document.querySelectorAll(sel));
+const tt = (key, fallback) => (typeof window !== 'undefined' && typeof window.t === 'function') ? window.t(key, fallback) : fallback;
 
 // ---- Word data client cache ----
 const WORDS_CACHE = new Map(); // key: lang + '|' + word
@@ -880,7 +881,13 @@ async function renderCurrent(){
     
     console.log('🔧 MC sentence rendered, gapDone:', gapDone, 'gap element:', document.getElementById('mc-gap'));
     const rrow = document.createElement('div'); rrow.className='replay-row';
-    const rbtn = document.createElement('button'); rbtn.id='lesson-replay'; rbtn.className='icon-btn'; rbtn.title='Satz erneut abspielen'; rbtn.setAttribute('aria-label','Satz erneut abspielen'); rbtn.textContent='🔊';
+    const replayLabel = tt('lesson.replay_sentence', 'Replay sentence');
+    const rbtn = document.createElement('button');
+    rbtn.id = 'lesson-replay';
+    rbtn.className = 'icon-btn';
+    rbtn.title = replayLabel;
+    rbtn.setAttribute('aria-label', replayLabel);
+    rbtn.textContent = '🔊';
     rrow.appendChild(rbtn);
     wrap.appendChild(rrow);
     bindReplayFor(original);
@@ -932,7 +939,10 @@ async function renderCurrent(){
     const original = String(it.text_target||'');
     const rrow = document.createElement('div'); rrow.className='replay-row';
     const rbtn = document.createElement('button'); rbtn.id='lesson-replay'; rbtn.className='icon-btn';
-    rbtn.title='Satz erneut abspielen'; rbtn.setAttribute('aria-label','Satz erneut abspielen'); rbtn.textContent='🔊';
+    const replayLabelSb = tt('lesson.replay_sentence', 'Replay sentence');
+    rbtn.title = replayLabelSb;
+    rbtn.setAttribute('aria-label', replayLabelSb);
+    rbtn.textContent = '🔊';
     rrow.appendChild(rbtn);
     wrap.appendChild(rrow);
     bindReplayFor(original);
@@ -946,12 +956,12 @@ async function renderCurrent(){
 
     // Sections with labels
     const secTop = document.createElement('div'); secTop.className = 'sb-section';
-    const labTop = document.createElement('div'); labTop.className = 'sb-label'; labTop.textContent = 'Satz aufbauen';
+    const labTop = document.createElement('div'); labTop.className = 'sb-label'; labTop.textContent = tt('lesson.build_sentence', 'Build the sentence');
     let area = document.createElement('div'); area.id='sb-area'; area.className='sb-area';
     secTop.appendChild(labTop); secTop.appendChild(area);
 
     const secBot = document.createElement('div'); secBot.className = 'sb-section';
-    const labBot = document.createElement('div'); labBot.className = 'sb-label'; labBot.textContent = 'Verfügbare Wörter';
+    const labBot = document.createElement('div'); labBot.className = 'sb-label'; labBot.textContent = tt('lesson.available_words', 'Available words');
     let opts = document.createElement('div'); opts.id='sb-options'; opts.className='sb-options';
     secBot.appendChild(labBot); secBot.appendChild(opts);
 
@@ -1074,7 +1084,7 @@ async function renderCurrent(){
     }
     if(last<original.length) frag.appendChild(document.createTextNode(original.slice(last)));
     p.appendChild(frag);
-    const rbtn2 = document.createElement('button'); rbtn2.id='lesson-replay'; rbtn2.className='icon-btn'; rbtn2.title='Satz erneut abspielen'; rbtn2.setAttribute('aria-label','Satz erneut abspielen'); rbtn2.textContent='🔊';
+    const rbtn2 = document.createElement('button'); rbtn2.id='lesson-replay'; rbtn2.className='icon-btn'; const replayLabelTranslation = tt('lesson.replay_sentence', 'Replay sentence'); rbtn2.title=replayLabelTranslation; rbtn2.setAttribute('aria-label',replayLabelTranslation); rbtn2.textContent='🔊';
     rowWrap.appendChild(p);
     rowWrap.appendChild(rbtn2);
     wrap.appendChild(rowWrap);
@@ -1252,7 +1262,7 @@ async function submitAnswer(){
       box.classList.add(ok ? 'success' : 'error');
       box.innerHTML = (ok ? (window.t ? window.t('results.correct', 'Richtig') : 'Richtig') : (window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch')) + ` <i>${escapeHtml(translation)}</i>`; 
     }
-    const btnNext=$('#check'); if(btnNext){ btnNext.textContent='Weiter'; btnNext.disabled=false; btnNext.style.opacity='1'; btnNext.classList.add('continue'); btnNext.classList.remove('ready'); btnNext.onclick=nextItem; }
+    const btnNext=$('#check'); if(btnNext){ const continueLabel = tt('buttons.continue', 'Continue'); btnNext.textContent=continueLabel; btnNext.disabled=false; btnNext.style.opacity='1'; btnNext.classList.add('continue'); btnNext.classList.remove('ready'); btnNext.onclick=nextItem; }
     return;
   }
   // Translation branch as before
@@ -1260,7 +1270,7 @@ async function submitAnswer(){
   const it=RUN.items[(task?task.i:RUN.idx)]; if(!it) return;
   const user=$('#user-translation')?.value.trim(); 
   console.log('🔧 User translation:', user);
-  if(!user){ alert('Bitte übersetzen.'); return; }
+  if(!user){ alert(tt('lesson.prompt_translate', 'Please translate.')); return; }
   const btn=$('#check'); if(btn){ btn.disabled=true; btn.style.opacity='0.6'; }
   try{
     const headers = { 'Content-Type': 'application/json' };
@@ -1300,7 +1310,7 @@ async function submitAnswer(){
     js = await r.json(); 
     if(!js.success){ 
       console.error('❌ Submit API error:', js.error);
-      alert(js.error||'Fehler'); 
+      alert(js.error||tt('errors.generic', 'An error occurred')); 
       return; 
     }
     console.log('✅ Submit API success:', js);
@@ -1402,7 +1412,7 @@ async function submitAnswer(){
     }catch(_){}
 
     RUN.answered=true;
-    const btn2=$('#check'); if(btn2){ btn2.textContent='Weiter'; btn2.onclick=nextItem; btn2.disabled=false; btn2.style.opacity='1'; btn2.classList.add('continue'); btn2.classList.remove('ready'); }
+    const btn2=$('#check'); if(btn2){ const continueLabel2 = tt('buttons.continue', 'Continue'); btn2.textContent=continueLabel2; btn2.onclick=nextItem; btn2.disabled=false; btn2.style.opacity='1'; btn2.classList.add('continue'); btn2.classList.remove('ready'); }
   } finally { const b=$('#check'); if(b){ b.disabled=false; b.style.opacity=''; } }
 }
 
@@ -1634,7 +1644,7 @@ async function startLevel(lvl){
       });
       const js = await r.json();
       if (!js.success) { 
-        alert(js.error || 'Fehler beim Starten des Custom Levels'); 
+        alert(js.error || tt('lesson.custom_level_start_failed', 'Failed to start custom level'));
         hideLoader();
         return; 
       }
@@ -1711,7 +1721,10 @@ async function startLevel(lvl){
           if (typeof window.showLevelLockedMessage === 'function') {
             window.showLevelLockedMessage(lvl, prevLevel, prevScore);
           } else {
-            alert(`Level ${lvl} ist gesperrt. Du musst Level ${prevLevel} mit mindestens 60% abschließen.`);
+            const lockedMsg = tt('lesson.level_locked', 'Level {level} is locked. Complete level {requiredLevel} with at least 60%.')
+              .replace('{level}', lvl)
+              .replace('{requiredLevel}', prevLevel);
+            alert(lockedMsg);
           }
           return; // Don't start the level
         }
@@ -1755,7 +1768,7 @@ async function startLevel(lvl){
     }
     const r=await fetch('/api/level/start',{method:'POST',headers,body:JSON.stringify(payload)});
     const js=await r.json();
-    if(!js.success){ alert(js.error||'Fehler'); return; }
+    if(!js.success){ alert(js.error||tt('errors.generic', 'An error occurred')); return; }
     RUN.id=js.run_id; RUN.items=js.items; RUN.idx=0; RUN._overrideTopic='';
     // Keep _reuse=true to continue reusing existing levels
     // Baue die Queue, ermittle die erste anzuzeigende Aufgabe
