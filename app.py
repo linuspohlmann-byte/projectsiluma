@@ -3521,10 +3521,11 @@ def api_finish_custom_level(group_id, level_number):
         return jsonify({
             'success': True,
             'message': 'Custom level completed',
-            'score': score,
-            'status': 'completed' if score >= 0.6 else 'in_progress',
+            'score': progress_data.get('score') if progress_data else None,
+            'status': progress_data.get('status') if progress_data else ('completed' if (score or 0) >= 0.6 else 'in_progress'),
             'fam_counts': progress_data.get('fam_counts', {}) if progress_data else {},
-            'total_words': progress_data.get('total_words', 0) if progress_data else 0
+            'total_words': progress_data.get('total_words', 0) if progress_data else 0,
+            'completed_at': progress_data.get('completed_at') if progress_data else None
         })
         
     except Exception as e:

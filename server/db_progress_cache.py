@@ -491,8 +491,19 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, score:
         
         now = datetime.now(UTC).isoformat()
         
-        # Determine status based on score
-        status = 'completed' if score >= 0.6 else 'in_progress'
+        # Normalize score to integer percent (0-100)
+        try:
+            if score is None:
+                int_score = 0
+            else:
+                # If score looks like fraction 0..1 → convert to percent
+                int_score = int(round(float(score) * 100)) if float(score) <= 1.1 else int(round(float(score)))
+            int_score = max(0, min(100, int_score))
+        except Exception:
+            int_score = 0
+
+        # Determine status based on integer percent
+        status = 'completed' if int_score >= 60 else 'in_progress'
         
         try:
             if config['type'] == 'postgresql':
@@ -506,7 +517,7 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, score:
                         status = EXCLUDED.status,
                         completed_at = EXCLUDED.completed_at,
                         last_updated = EXCLUDED.last_updated
-                """, (user_id, group_id, level_number, score, status, now, now, now))
+                """, (user_id, group_id, level_number, int_score, status, now, now, now))
                 conn.commit()
             else:
                 cursor = conn.cursor()
@@ -522,14 +533,14 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, score:
                         UPDATE custom_level_progress 
                         SET score = ?, status = ?, completed_at = ?, last_updated = ?
                         WHERE user_id = ? AND group_id = ? AND level_number = ?
-                    """, (score, status, now, now, user_id, group_id, level_number))
+                    """, (int_score, status, now, now, user_id, group_id, level_number))
                 else:
                     # Insert new row
                     cursor.execute("""
                         INSERT INTO custom_level_progress 
                         (user_id, group_id, level_number, score, status, completed_at, last_updated, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (user_id, group_id, level_number, score, status, now, now, now))
+                    """, (user_id, group_id, level_number, int_score, status, now, now, now))
                 
                 conn.commit()
             
