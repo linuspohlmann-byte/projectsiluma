@@ -91,6 +91,24 @@ function restoreSettings(){
     }
   }catch(_){ }
 }
+function restoreCefr(){
+  try{
+    const per = localStorage.getItem( cefrKey() );
+    if(per && $('#cefr')){ 
+      $('#cefr').value = per; 
+      console.log('✅ Restored CEFR from language-specific key:', per);
+      return; 
+    }
+    const legacy = localStorage.getItem('siluma_cefr');
+    if(legacy){
+      localStorage.setItem( cefrKey(), legacy );
+      if($('#cefr')) {
+        $('#cefr').value = legacy;
+        console.log('🔄 Restored CEFR from legacy key:', legacy);
+      }
+    }
+  }catch(_){ }
+}
 function restoreTopic(){
   try{
     const per = localStorage.getItem( topicKey() );
@@ -419,6 +437,7 @@ export async function initTopbar(){
   
   // Restore settings from localStorage FIRST
   restoreSettings();
+  restoreCefr();
   restoreTopic();
   
   // Set initial UI locale from native language
@@ -435,7 +454,7 @@ export async function initTopbar(){
   
   // THEN call ensureTargetLangOptions with the correct locale
   ensureTargetLangOptions();
-  loadCefrForLang();
+  // Don't call loadCefrForLang here - already done in restoreCefr()
   saveSessionPrefs();
   bindNav();
   bindPrefs();
