@@ -93,21 +93,38 @@ function restoreSettings(){
 }
 function restoreCefr(){
   try{
-    const per = localStorage.getItem( cefrKey() );
-    if(per && $('#cefr')){ 
-      $('#cefr').value = per; 
+    const key = cefrKey();
+    const per = localStorage.getItem(key);
+    const legacy = localStorage.getItem('siluma_cefr');
+    const cefrElement = $('#cefr');
+    
+    console.log('🔍 restoreCefr called:', {
+      key: key,
+      perValue: per,
+      legacyValue: legacy,
+      elementExists: !!cefrElement,
+      currentValue: cefrElement?.value
+    });
+    
+    if(per && cefrElement){ 
+      cefrElement.value = per; 
       console.log('✅ Restored CEFR from language-specific key:', per);
       return; 
     }
-    const legacy = localStorage.getItem('siluma_cefr');
     if(legacy){
-      localStorage.setItem( cefrKey(), legacy );
-      if($('#cefr')) {
-        $('#cefr').value = legacy;
-        console.log('🔄 Restored CEFR from legacy key:', legacy);
+      localStorage.setItem(key, legacy);
+      if(cefrElement) {
+        cefrElement.value = legacy;
+        console.log('🔄 Restored CEFR from legacy key:', legacy, 'to', key);
+      } else {
+        console.warn('⚠️ CEFR element not found, cannot set value:', legacy);
       }
+    } else if(!per) {
+      console.warn('⚠️ No CEFR value in localStorage (neither specific nor legacy)');
     }
-  }catch(_){ }
+  }catch(e){ 
+    console.error('❌ Error in restoreCefr:', e);
+  }
 }
 function restoreTopic(){
   try{
