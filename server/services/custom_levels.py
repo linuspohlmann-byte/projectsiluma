@@ -5,21 +5,38 @@ Handles creation and management of user-defined level groups with AI-generated c
 
 import json
 import re
-import sqlite3
 from datetime import datetime, UTC
 from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from server.db import get_db, upsert_word_row
-from server.services.llm import llm_generate_sentences, suggest_topic, suggest_level_title, cefr_norm, llm_enrich_word, llm_enrich_words_batch
-from server.services.tts import ensure_tts_for_word, ensure_tts_for_sentence, batch_ensure_tts_for_sentences, batch_ensure_tts_for_words
 
-def create_custom_level_group(user_id: int, language: str, native_language: str, 
-                            group_name: str, context_description: str, 
-                            cefr_level: str = 'A1', num_levels: int = 10) -> Optional[int]:
+from server.db import get_db, upsert_word_row
+from server.db_config import get_database_config, get_db_connection, execute_query
+from server.services.llm import (
+    llm_generate_sentences,
+    suggest_topic,
+    suggest_level_title,
+    cefr_norm,
+    llm_enrich_word,
+    llm_enrich_words_batch,
+)
+from server.services.tts import (
+    ensure_tts_for_word,
+    ensure_tts_for_sentence,
+    batch_ensure_tts_for_sentences,
+    batch_ensure_tts_for_words,
+)
+
+def create_custom_level_group(
+    user_id: int,
+    language: str,
+    native_language: str,
+    group_name: str,
+    context_description: str,
+    cefr_level: str = "A1",
+    num_levels: int = 10,
+) -> Optional[int]:
     """Create a new custom level group"""
-    from server.db_config import get_database_config, get_db_connection, execute_query
-    
     config = get_database_config()
     conn = get_db_connection()
     try:
@@ -27,29 +44,51 @@ def create_custom_level_group(user_id: int, language: str, native_language: str,
         
         if config['type'] == 'postgresql':
             # PostgreSQL syntax
-            result = execute_query(conn, '''
+            result = execute_query(
+                conn,
+                """
                 INSERT INTO custom_level_groups 
                 (user_id, language, native_language, group_name, context_description, 
                  cefr_level, num_levels, created_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            ''', (user_id, language, native_language, group_name, context_description, 
-                  cefr_level, num_levels, now, now))
-            
+            """,
+                (
+                    user_id,
+                    language,
+                    native_language,
+                    group_name,
+                    context_description,
+                    cefr_level,
+                    num_levels,
+                    now,
+                    now,
+                ),
+            )
             row = result.fetchone()
-            group_id = row['id'] if row else None
+            group_id = row["id"] if row else None
         else:
             # SQLite syntax
-            cursor = conn.execute('''
+            cursor = conn.execute(
+                """
                 INSERT INTO custom_level_groups 
                 (user_id, language, native_language, group_name, context_description, 
                  cefr_level, num_levels, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, language, native_language, group_name, context_description, 
-                  cefr_level, num_levels, now, now))
-            
+            """,
+                (
+                    user_id,
+                    language,
+                    native_language,
+                    group_name,
+                    context_description,
+                    cefr_level,
+                    num_levels,
+                    now,
+                    now,
+                ),
+            )
             group_id = cursor.lastrowid
-        
         conn.commit()
         return group_id
     except Exception as e:
@@ -819,7 +858,7 @@ def unlock_custom_level_words_for_user(user_id: int, group_id: int, course_langu
         
         # Unlock all words for user
         success = db_manager.unlock_words_for_level(
-            user_id, native_language, 1, language, list(all_word_hashes)
+            user_id, native_language, 1, course_language, list(all_word_hashes)
         )
         
         if success:
@@ -837,25 +876,10 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
     """Migrate all existing custom levels to Multi-User-DB compatibility"""
     try:
         print("🔄 Starting migration of existing custom levels to Multi-User-DB...")
-        
+
         conn = get_db()
-        conn.row_factory = sqlite3.Row
-        
-        # Get all custom level groups
-        from server.db_config import get_database_config, get_db_connection, execute_query
-        
-        config = get_database_config()
-        conn = get_db_connection()
-        conn.row_factory = sqlite3.Row
-        
-        if config['type'] == 'postgresql':
-            # PostgreSQL syntax
-            result = execute_query(conn, "SELECT * FROM custom_level_groups ORDER BY id")
-            groups = result.fetchall()
-        else:
-            # SQLite syntax
-            cursor = conn.execute("SELECT * FROM custom_level_groups ORDER BY id")
-            groups = cursor.fetchall()
+        groups_cursor = conn.execute("SELECT * FROM custom_level_groups ORDER BY id")
+        groups = [dict(row) for row in groups_cursor.fetchall()]
         
         migration_stats = {
             'groups_processed': 0,
@@ -866,96 +890,107 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
         
         for group in groups:
             try:
-                group_id = group['id']
-                language = group['language']
-                native_language = group['native_language']
-                
-                print(f"📁 Processing custom level group {group_id}: {group['group_name']} ({language} -> {native_language})")
-                
-                # Get all levels for this group
-                if config['type'] == 'postgresql':
-                    # PostgreSQL syntax
-                    result = execute_query(conn, "SELECT * FROM custom_levels WHERE group_id = %s ORDER BY level_number", (group_id,))
-                    levels = result.fetchall()
-                else:
-                    # SQLite syntax
-                    cursor = conn.execute("SELECT * FROM custom_levels WHERE group_id = ? ORDER BY level_number", (group_id,))
-                    levels = cursor.fetchall()
+                group_id = group["id"]
+                language = group["language"]
+                native_language = group["native_language"]
+
+                print(
+                    f"📁 Processing custom level group {group_id}: "
+                    f"{group['group_name']} ({language} -> {native_language})"
+                )
+
+                levels_cursor = conn.execute(
+                    "SELECT * FROM custom_levels WHERE group_id = ? ORDER BY level_number",
+                    (group_id,),
+                )
+                levels = [dict(row) for row in levels_cursor.fetchall()]
                 
                 all_words = set()
                 
                 # Collect all words from all levels
                 for level in levels:
                     try:
-                        content = json.loads(level['content'])
-                        
+                        content = json.loads(level["content"])
+
                         # Extract words from level items
-                        for item in content.get('items', []):
-                            for word in item.get('words', []):
+                        for item in content.get("items", []):
+                            for word in item.get("words", []):
                                 if word and word.strip():
                                     # Remove trailing punctuation before adding
-                                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                                    clean_word = re.sub(
+                                        r"[.!?,;:—–-]+$", "", word.strip().lower()
+                                    )
                                     if clean_word:
                                         all_words.add(clean_word)
-                        
-                        migration_stats['levels_processed'] += 1
-                        
+
+                        migration_stats["levels_processed"] += 1
+
                     except Exception as e:
-                        error_msg = f"Error processing level {level['level_number']} in group {group_id}: {e}"
+                        error_msg = (
+                            f"Error processing level {level['level_number']} "
+                            f"in group {group_id}: {e}"
+                        )
                         print(f"❌ {error_msg}")
-                        migration_stats['errors'].append(error_msg)
-                
+                        migration_stats["errors"].append(error_msg)
+
                 if all_words:
                     print(f"📚 Found {len(all_words)} unique words in group {group_id}")
-                    
+
                     # Migrate words to Multi-User-DB
                     word_hashes = batch_enrich_words_for_custom_levels(
                         list(all_words), language, native_language, []
                     )
-                    
-                    migration_stats['words_migrated'] += len(word_hashes)
-                    
+
+                    migration_stats["words_migrated"] += len(word_hashes)
+
                     # Update level content with word hashes
                     for level in levels:
                         try:
-                            content = json.loads(level['content'])
-                            
+                            content = json.loads(level["content"])
+
                             # Ensure word hashes exist
                             content = ensure_custom_level_word_hashes(content, language, native_language)
-                            
+
                             # Update level in database
                             conn.execute(
                                 "UPDATE custom_levels SET content = ? WHERE id = ?",
-                                (json.dumps(content, ensure_ascii=False), level['id'])
+                                (json.dumps(content, ensure_ascii=False), level["id"]),
                             )
-                            
+
                         except Exception as e:
-                            error_msg = f"Error updating level {level['level_number']} in group {group_id}: {e}"
+                            error_msg = (
+                                f"Error updating level {level['level_number']} "
+                                f"in group {group_id}: {e}"
+                            )
                             print(f"❌ {error_msg}")
-                            migration_stats['errors'].append(error_msg)
-                
-                migration_stats['groups_processed'] += 1
+                            migration_stats["errors"].append(error_msg)
+
+                migration_stats["groups_processed"] += 1
                 print(f"✅ Completed migration for group {group_id}")
-                
+
             except Exception as e:
                 error_msg = f"Error processing group {group['id']}: {e}"
                 print(f"❌ {error_msg}")
-                migration_stats['errors'].append(error_msg)
-        
+                migration_stats["errors"].append(error_msg)
+
         # Commit all changes
         conn.commit()
         conn.close()
-        
+
         print(f"🎉 Migration completed!")
-        print(f"📊 Stats: {migration_stats['groups_processed']} groups, {migration_stats['levels_processed']} levels, {migration_stats['words_migrated']} words")
-        
-        if migration_stats['errors']:
+        print(
+            f"📊 Stats: {migration_stats['groups_processed']} groups, "
+            f"{migration_stats['levels_processed']} levels, "
+            f"{migration_stats['words_migrated']} words"
+        )
+
+        if migration_stats["errors"]:
             print(f"⚠️ {len(migration_stats['errors'])} errors occurred during migration")
-            for error in migration_stats['errors']:
+            for error in migration_stats["errors"]:
                 print(f"   - {error}")
-        
+
         return migration_stats
-        
+
     except Exception as e:
         print(f"❌ Critical error during custom level migration: {e}")
         return {

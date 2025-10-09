@@ -15,19 +15,18 @@ class RailwayConfig:
     DEBUG = False
     TESTING = False
     
-    # Database settings - Force SQLite on Railway for compatibility
+    # Database settings - default path if Postgres is not available
     DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'polo.db')
     
-    # Force SQLite usage on Railway
     @staticmethod
-    def force_sqlite_on_railway():
-        """Force SQLite usage on Railway by removing DATABASE_URL"""
-        import os
-        if os.environ.get('RAILWAY_ENVIRONMENT'):
-            # Remove DATABASE_URL to force SQLite fallback
-            if 'DATABASE_URL' in os.environ:
-                del os.environ['DATABASE_URL']
-                print("✅ Forced SQLite usage on Railway")
+    def ensure_database_config():
+        """
+        Ensure Railway keeps DATABASE_URL so the app can use PostgreSQL when available.
+        Log a helpful message when the variable is missing so fallbacks are explicit.
+        """
+        import logging
+        if not os.environ.get('DATABASE_URL'):
+            logging.warning("DATABASE_URL not set on Railway – falling back to local SQLite.")
     
     # File upload settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
@@ -79,8 +78,8 @@ class RailwayConfig:
         import os
         import logging
         
-        # Force SQLite usage on Railway
-        RailwayConfig.force_sqlite_on_railway()
+        # Ensure database configuration is correct (prefer PostgreSQL when available)
+        RailwayConfig.ensure_database_config()
         
         # Create necessary directories
         os.makedirs(RailwayConfig.USER_DATA_FOLDER, exist_ok=True)
@@ -100,4 +99,7 @@ class RailwayConfig:
         logging.info(f"Port: {RailwayConfig.PORT}")
         logging.info(f"TTS Cache: {RailwayConfig.TTS_CACHE_ENABLED}")
         logging.info(f"Background Sync: {RailwayConfig.SYNC_ENABLED}")
-        logging.info(f"Database: SQLite (forced)")
+        logging.info(
+            "Database: %s",
+            "PostgreSQL" if os.environ.get('DATABASE_URL') else "SQLite (fallback)"
+        )

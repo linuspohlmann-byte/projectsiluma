@@ -31,6 +31,9 @@ git push
 # Wait for deployment to complete
 # Then run the migration
 railway run python migrate_to_postgresql.py
+
+# Migrate existing custom level data
+railway run python migrate_custom_levels_to_postgres.py
 ```
 
 ### 4. Update Database Code (Optional)
