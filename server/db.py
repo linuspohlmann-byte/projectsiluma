@@ -175,6 +175,87 @@ def language_code_to_field(code: str) -> str:
     return LANGUAGE_CODE_TO_FIELD.get(code, code)
 
 
+def _pg_get_table_columns(conn, table_name: str) -> list[str]:
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = %s
+          AND table_schema = current_schema()
+        ORDER BY ordinal_position
+    """, (table_name,))
+    rows = cur.fetchall()
+    cur.close()
+    columns = []
+    for row in rows:
+        if isinstance(row, dict):
+            columns.append(row.get('column_name'))
+        else:
+            columns.append(row[0])
+    return columns
+
+
+def migrate_postgres_localization_table(conn) -> None:
+    """Migrate legacy wide localization table to normalized schema if needed"""
+    columns = _pg_get_table_columns(conn, 'localization')
+    if not columns:
+        return
+    if {'key', 'language', 'value'} <= set(columns):
+        return  # already normalized
+    if 'reference_key' not in columns:
+        print("Localization table present with unexpected schema; migration skipped.")
+        return
+    print("Migrating legacy localization table to normalized schema...")
+    execute_query(conn, "ALTER TABLE localization RENAME TO localization_legacy")
+    execute_query(conn, """
+        CREATE TABLE IF NOT EXISTS localization (
+            id SERIAL PRIMARY KEY,
+            key VARCHAR(255) NOT NULL,
+            language VARCHAR(16) NOT NULL,
+            value TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(key, language)
+        );
+    """)
+    legacy_columns = columns
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM localization_legacy")
+    rows = cur.fetchall()
+    cur.close()
+    language_columns = [c for c in legacy_columns if c not in {'id', 'reference_key', 'description', 'created_at', 'updated_at'}]
+    migrated = 0
+    for row in rows:
+        if isinstance(row, dict):
+            row_dict = row
+        else:
+            row_dict = {legacy_columns[i]: row[i] if i < len(row) else None for i in range(len(legacy_columns))}
+        payload = {
+            'reference_key': row_dict.get('reference_key'),
+            'description': row_dict.get('description')
+        }
+        inserted = False
+        for col in language_columns:
+            lang_code = normalize_language_identifier(col)
+            if not lang_code:
+                continue
+            value = row_dict.get(col)
+            if value is None:
+                continue
+            text_value = str(value).strip()
+            if not text_value or text_value in LOCALIZATION_INVALID_VALUES:
+                continue
+            payload[language_code_to_field(lang_code)] = text_value
+            inserted = True
+        if inserted:
+            upsert_localization_entry(payload, conn=conn)
+            migrated += 1
+    conn.commit()
+    execute_query(conn, "DROP TABLE localization_legacy")
+    print(f"Migrated {migrated} localization entries to normalized schema.")
+
+
 def using_postgresql() -> bool:
     config = get_database_config()
     return config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE
@@ -1112,6 +1193,10 @@ def init_db():
         """)
         
         # Localization table - normalized by language
+        try:
+            migrate_postgres_localization_table(conn.conn)
+        except Exception as e:
+            print(f"Warning: localization migration skipped: {e}")
         execute_query(conn, """
             CREATE TABLE IF NOT EXISTS localization (
                 id SERIAL PRIMARY KEY,
