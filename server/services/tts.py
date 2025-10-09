@@ -404,10 +404,16 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         pass
     return url_path
 
-def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3) -> Dict[str, str]:
+def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3, sentence_contexts: Dict[str, str] = None) -> Dict[str, str]:
     """
     Generate TTS for multiple words in parallel for better performance.
     Returns a dictionary mapping words to their audio URLs.
+    
+    Args:
+        words: List of words to generate audio for
+        language: Target language code
+        max_workers: Maximum number of parallel workers
+        sentence_contexts: Optional dictionary mapping words to their sentence contexts for better pronunciation
     """
     if not _openai_ready():
         print(f"⚠️ OpenAI not ready - batch TTS unavailable")
@@ -418,7 +424,16 @@ def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int
     def process_word(word: str) -> tuple[str, str | None]:
         """Process a single word and return (word, audio_url)"""
         try:
-            audio_url = ensure_tts_for_word(word, language)
+            # Check if we have a sentence context for this word
+            sentence_context = None
+            if sentence_contexts and word in sentence_contexts:
+                sentence_context = sentence_contexts[word]
+            
+            # Use context-aware TTS if available
+            if sentence_context:
+                audio_url = ensure_tts_for_word(word, language, context='word', sentence_context=sentence_context)
+            else:
+                audio_url = ensure_tts_for_word(word, language)
             return word, audio_url
         except Exception as e:
             print(f"❌ Error processing word '{word}': {e}")

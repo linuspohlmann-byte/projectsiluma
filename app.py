@@ -5087,8 +5087,8 @@ def api_word_enrich_batch():
         
         # Generate TTS for all words in parallel if requested
         if generate_audio:
-            from server.services.tts import ensure_tts_for_words_batch
-            audio_results = ensure_tts_for_words_batch(words, language, max_workers=3)
+            from server.services.tts import batch_ensure_tts_for_words
+            audio_results = batch_ensure_tts_for_words(words, language, sentence_contexts)
             
             # Merge audio URLs into enriched results
             for word, audio_url in audio_results.items():
