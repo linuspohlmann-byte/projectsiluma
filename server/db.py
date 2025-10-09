@@ -1,6 +1,6 @@
 
 # --- Level run helpers ---
-import os, sqlite3, json, csv
+import os, sqlite3, json, csv, threading
 import random
 import re
 from datetime import datetime, UTC
@@ -153,6 +153,8 @@ LANGUAGE_ALIASES: Dict[str, str] = {
 
 LANGUAGE_CODE_TO_FIELD: Dict[str, str] = {code: field for code, field in PRIMARY_LANGUAGE_FIELDS.items()}
 LOCALIZATION_INVALID_VALUES = {'', '___', '#VALUE!'}
+LOCALIZATION_SEED_LOCK = threading.Lock()
+LOCALIZATION_SEED_STARTED = False
 
 
 def normalize_language_identifier(identifier: str | None) -> str | None:
@@ -1213,11 +1215,8 @@ def init_db():
             execute_query(conn, "ALTER TABLE localization ADD COLUMN IF NOT EXISTS description TEXT;")
         except Exception as e:
             print(f"Note: description column migration skipped: {e}")
-        try:
-            seed_postgres_localization_from_csv(conn.conn)
-        except Exception as e:
-            print(f"Warning: failed to seed localization data from CSV: {e}")
         ensure_core_localization_entries()
+        trigger_localization_seed_if_needed()
         
         # Custom level groups table
         execute_query(conn, """
@@ -1866,6 +1865,35 @@ def seed_postgres_localization_from_csv(conn) -> None:
         flush_batch()
         conn.commit()
         print(f"Imported {len(processed_keys)} localization keys from CSV into PostgreSQL (upserted {total_translations} translations).")
+
+
+def trigger_localization_seed_if_needed():
+    """Kick off localization CSV sync in a background thread"""
+    global LOCALIZATION_SEED_STARTED
+    if not using_postgresql():
+        return
+    with LOCALIZATION_SEED_LOCK:
+        if LOCALIZATION_SEED_STARTED:
+            return
+        LOCALIZATION_SEED_STARTED = True
+
+    def _worker():
+        conn = None
+        try:
+            print("Starting asynchronous localization CSV synchronization...")
+            conn = get_db_connection()
+            seed_postgres_localization_from_csv(conn)
+        except Exception as exc:
+            print(f"Localization CSV sync failed: {exc}")
+            with LOCALIZATION_SEED_LOCK:
+                # allow retry on next init
+                global LOCALIZATION_SEED_STARTED
+                LOCALIZATION_SEED_STARTED = False
+        finally:
+            if conn:
+                conn.close()
+
+    threading.Thread(target=_worker, name="LocalizationSeeder", daemon=True).start()
 
 
 CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
