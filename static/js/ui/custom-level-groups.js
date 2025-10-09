@@ -2008,16 +2008,39 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
                 const progressData = await response.json();
                 if (progressData.success) {
                     // Get fam_counts from API
-                    const famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-                    
-                    // Store fam_counts for later use
-                    levelElement.dataset.famCounts = JSON.stringify(famCounts);
-                    
-                    // Calculate metrics from fam_counts
-                    totalWords = progressData.total_words || Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
+                    let famCounts = progressData.fam_counts || {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                    const incomingSum = Object.values(famCounts).reduce((s, c) => s + (Number(c) || 0), 0);
+
+                    // Existing cached data (from previous correct computation)
+                    let existingFamCounts = null;
+                    let existingSum = 0;
+                    try {
+                        if (levelElement.dataset.famCounts) {
+                            existingFamCounts = JSON.parse(levelElement.dataset.famCounts);
+                            existingSum = Object.values(existingFamCounts).reduce((s, c) => s + (Number(c) || 0), 0);
+                        }
+                    } catch(_e) { existingFamCounts = null; existingSum = 0; }
+
+                    // If API returned zeros but we already have valid data, KEEP the existing data
+                    if (incomingSum === 0 && existingSum > 0) {
+                        console.log('⚠️ Skipping overwrite with zeros; keeping previously computed fam_counts');
+                        famCounts = existingFamCounts;
+                    } else if (incomingSum > 0) {
+                        // Only store fam_counts if they are non-zero
+                        levelElement.dataset.famCounts = JSON.stringify(famCounts);
+                    }
+
+                    // Calculate metrics from fam_counts (prefer calculated total over API total)
+                    const calculated = Object.values(famCounts).reduce((sum, count) => sum + (Number(count) || 0), 0);
+                    totalWords = calculated > 0 ? calculated : (progressData.total_words || 0);
                     completedWords = Number(famCounts[5] || famCounts['5'] || 0);  // Familiarity 5 = learned
-                    levelScore = progressData.score || 0;  // Use score from DB
-                    
+
+                    // Keep last known score if API has no score
+                    try{
+                        const bulk = levelElement.dataset.bulkData ? JSON.parse(levelElement.dataset.bulkData) : null;
+                        levelScore = (typeof progressData.score === 'number') ? progressData.score : (bulk && typeof bulk.last_score === 'number' ? bulk.last_score : 0);
+                    }catch(_e){ levelScore = (typeof progressData.score === 'number') ? progressData.score : 0; }
+
                     console.log('✅ Custom level progress loaded:', progressData);
                     console.log('📊 Calculated metrics - Total:', totalWords, 'Learned:', completedWords, 'Score:', levelScore);
                 } else {
