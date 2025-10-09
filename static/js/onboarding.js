@@ -166,34 +166,50 @@ class OnboardingManager {
 
     async loadAvailableLanguages() {
         try {
+            console.log('📥 Loading available languages for onboarding...');
+            
             // Check cache first
             const cachedLanguages = localStorage.getItem('available_languages');
             if (cachedLanguages) {
                 try {
                     const languages = JSON.parse(cachedLanguages);
-                    if (languages.success && languages.languages) {
-                        console.log('Using cached available languages in onboarding');
-                        this.populateLanguageSelects(languages.languages);
+                    if (languages.success && languages.languages && languages.languages.length > 0) {
+                        console.log('✅ Using cached available languages:', languages.languages.length, 'languages');
+                        await this.populateLanguageSelects(languages.languages);
                         return;
                     }
                 } catch (error) {
-                    console.log('Error parsing cached languages in onboarding:', error);
+                    console.log('⚠️ Error parsing cached languages:', error);
                 }
             }
             
+            console.log('🌐 Fetching languages from API...');
             const response = await fetch('/api/available-languages');
+            
+            if (!response.ok) {
+                throw new Error(`API returned ${response.status}: ${response.statusText}`);
+            }
+            
             const languages = await response.json();
+            console.log('📋 API response:', languages);
             
             // Cache the result
-            if (languages.success) {
+            if (languages.success && languages.languages) {
                 localStorage.setItem('available_languages', JSON.stringify(languages));
+                console.log('✅ Cached', languages.languages.length, 'languages');
             }
             
-            if (languages.success) {
-                this.populateLanguageSelects(languages.languages);
+            if (languages.success && languages.languages && languages.languages.length > 0) {
+                console.log('✅ Populating language selects with', languages.languages.length, 'languages');
+                await this.populateLanguageSelects(languages.languages);
+            } else {
+                console.error('❌ No languages returned from API');
+                throw new Error('No languages available');
             }
         } catch (error) {
-            console.error('Failed to load available languages:', error);
+            console.error('❌ Failed to load available languages:', error);
+            // Show user-friendly error
+            this.showErrorMessage('Could not load language options. Please refresh the page.');
         }
     }
 
@@ -204,6 +220,7 @@ class OnboardingManager {
         // Populate native language select (same as available languages)
         if (nativeSelect) {
             nativeSelect.innerHTML = '';
+            console.log('📝 Populating native language select with', languages.length, 'languages');
             languages.forEach(lang => {
                 const option = document.createElement('option');
                 option.value = lang.code;
@@ -216,23 +233,41 @@ class OnboardingManager {
             const currentNative = localStorage.getItem('siluma_native') || 'de';
             if (nativeSelect.querySelector(`option[value="${currentNative}"]`)) {
                 nativeSelect.value = currentNative;
+                this.onboardingData.native_language = currentNative;
+                console.log('✅ Set native language to:', currentNative);
+            } else {
+                console.warn('⚠️ Native language', currentNative, 'not found in options');
             }
+            
+            console.log('✅ Native language select populated with', nativeSelect.options.length, 'options');
             
             // Apply localization to the select options
             if (window.applyI18n) {
                 window.applyI18n();
             }
+        } else {
+            console.error('❌ Native language select element not found');
         }
 
         // Populate target language select (same as available courses)
         if (targetSelect) {
             try {
                 const currentNativeLang = localStorage.getItem('siluma_native') || 'de';
-                const response = await fetch(`/api/available-courses?native_lang=${currentNativeLang}`);
-                const coursesData = await response.json();
+                console.log('🌐 Fetching available courses for native lang:', currentNativeLang);
                 
-                if (coursesData.success && coursesData.languages) {
+                const response = await fetch(`/api/available-courses?native_lang=${currentNativeLang}`);
+                
+                if (!response.ok) {
+                    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                }
+                
+                const coursesData = await response.json();
+                console.log('📋 Courses API response:', coursesData);
+                
+                if (coursesData.success && coursesData.languages && coursesData.languages.length > 0) {
                     targetSelect.innerHTML = '';
+                    console.log('📝 Populating target language select with', coursesData.languages.length, 'courses');
+                    
                     coursesData.languages.forEach(lang => {
                         const option = document.createElement('option');
                         option.value = lang.code;
@@ -245,15 +280,25 @@ class OnboardingManager {
                     const currentTarget = localStorage.getItem('siluma_target') || 'ar';
                     if (targetSelect.querySelector(`option[value="${currentTarget}"]`)) {
                         targetSelect.value = currentTarget;
+                        this.onboardingData.target_language = currentTarget;
+                        console.log('✅ Set target language to:', currentTarget);
+                    } else {
+                        console.warn('⚠️ Target language', currentTarget, 'not found in options');
                     }
+                    
+                    console.log('✅ Target language select populated with', targetSelect.options.length, 'options');
                     
                     // Apply localization to the select options
                     if (window.applyI18n) {
                         window.applyI18n();
                     }
+                } else {
+                    throw new Error('No courses returned from API');
                 }
             } catch (error) {
-                console.error('Failed to load available courses:', error);
+                console.error('❌ Failed to load available courses:', error);
+                console.log('⚠️ Using fallback: populating with all available languages');
+                
                 // Fallback to using the same languages list
                 targetSelect.innerHTML = '';
                 languages.forEach(lang => {
@@ -263,7 +308,17 @@ class OnboardingManager {
                     option.setAttribute('data-i18n', `language_names.${lang.code}`);
                     targetSelect.appendChild(option);
                 });
+                
+                const currentTarget = localStorage.getItem('siluma_target') || 'ar';
+                if (targetSelect.querySelector(`option[value="${currentTarget}"]`)) {
+                    targetSelect.value = currentTarget;
+                    this.onboardingData.target_language = currentTarget;
+                }
+                
+                console.log('✅ Target language select populated (fallback) with', targetSelect.options.length, 'options');
             }
+        } else {
+            console.error('❌ Target language select element not found');
         }
     }
 
@@ -433,8 +488,17 @@ class OnboardingManager {
         }
         
         if (cefrSelect) {
-            cefrSelect.value = this.onboardingData.proficiency_level;
-            console.log('✅ Set cefr to:', this.onboardingData.proficiency_level);
+            // Ensure the value exists in the select options
+            const valueToSet = this.onboardingData.proficiency_level;
+            const optionExists = Array.from(cefrSelect.options).some(opt => opt.value === valueToSet);
+            
+            if (optionExists) {
+                cefrSelect.value = valueToSet;
+                console.log('✅ Set cefr to:', valueToSet);
+            } else {
+                console.warn('⚠️ CEFR value', valueToSet, 'not found in options, keeping current value');
+                // Don't change the value if it doesn't exist
+            }
             
             // Trigger change event
             cefrSelect.dispatchEvent(new Event('change', { bubbles: true }));
