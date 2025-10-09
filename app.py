@@ -3548,56 +3548,31 @@ def api_get_custom_level_progress(group_id, level_number):
                 'error': 'Authentication required'
             }), 401
         
-        # Get cached progress (score/status) and compute fresh fam_counts to avoid race conditions
-        from server.db_progress_cache import (
-            get_custom_level_progress,
-            calculate_familiarity_counts_from_user_words,
-            update_custom_level_progress,
-        )
+        # Use ONLY cached progress from custom_level_progress (stable, already contains all data)
+        from server.db_progress_cache import get_custom_level_progress
         progress_data = get_custom_level_progress(user_id, group_id, level_number)
 
-        # Always compute fresh fam_counts (fast, avoids stale cache)
-        fresh_fam_counts = calculate_familiarity_counts_from_user_words(user_id, group_id, level_number)
-        total_words_calculated = sum(int(v or 0) for v in fresh_fam_counts.values())
-        print(f"🔄 Calculated fresh fam_counts for user={user_id}, group={group_id}, level={level_number}: {fresh_fam_counts}, total={total_words_calculated}")
+        if not progress_data:
+            return jsonify({
+                'success': True,
+                'score': None,
+                'status': 'not_started',
+                'fam_counts': {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
+                'total_words': 0,
+                'completed_at': None,
+                'last_updated': datetime.now(UTC).isoformat()
+            })
 
-        # Decide which fam_counts to use for response
-        if total_words_calculated > 0:
-            fam_counts_to_use = fresh_fam_counts
-            # Background cache update (non-blocking semantics in web request)
-            try:
-                score_cached = progress_data.get('score') if progress_data else None
-                status_cached = progress_data.get('status') if progress_data else 'not_started'
-                completed_at_cached = progress_data.get('completed_at') if progress_data else None
-                update_custom_level_progress(
-                    user_id,
-                    group_id,
-                    level_number,
-                    fresh_fam_counts,
-                    score_cached,
-                    status_cached,
-                    completed_at_cached,
-                )
-            except Exception as _e:
-                print(f"⚠️ Background cache update failed: {_e}")
-        else:
-            # Fall back to cached fam_counts if any
-            fam_counts_to_use = (progress_data or {}).get('fam_counts') or {0:0,1:0,2:0,3:0,4:0,5:0}
-            total_words_calculated = sum(int(v or 0) for v in fam_counts_to_use.values())
-
-        fam_counts_str = {str(k): int(v or 0) for k, v in fam_counts_to_use.items()}
-
-        score = progress_data.get('score') if progress_data else None
-        status = progress_data.get('status', 'not_started') if progress_data else 'not_started'
-        completed_at = progress_data.get('completed_at') if progress_data else None
+        fam_counts = progress_data.get('fam_counts') or {0:0,1:0,2:0,3:0,4:0,5:0}
+        fam_counts_str = {str(k): int(v or 0) for k, v in fam_counts.items()}
 
         return jsonify({
             'success': True,
-            'score': score,
-            'status': status,
+            'score': progress_data.get('score'),
+            'status': progress_data.get('status', 'not_started'),
             'fam_counts': fam_counts_str,
-            'total_words': total_words_calculated,
-            'completed_at': completed_at,
+            'total_words': int(progress_data.get('total_words') or 0),
+            'completed_at': progress_data.get('completed_at'),
             'last_updated': datetime.now(UTC).isoformat()
         })
         
