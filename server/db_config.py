@@ -14,7 +14,8 @@ try:  # Prefer latest psycopg (v3) driver
     USING_PSYCOPG3 = True
     PSYCOPG2_AVAILABLE = True  # maintain legacy flag name for callers
     PSYCOPG2_EXECUTE_VALUES = None  # execute_values helper not available in psycopg core
-except ImportError:
+except ImportError as exc_psycopg:
+    print(f"WARNING: psycopg import failed: {exc_psycopg}")
     try:  # Fall back to psycopg2 if present
         import psycopg2  # type: ignore
         from psycopg2.extras import RealDictCursor, execute_values as psycopg2_execute_values
@@ -23,13 +24,18 @@ except ImportError:
         USING_PSYCOPG3 = False
         PSYCOPG2_AVAILABLE = True
         PSYCOPG2_EXECUTE_VALUES = psycopg2_execute_values
-    except ImportError:
+    except ImportError as exc_psycopg2:
+        print(f"WARNING: psycopg2 import failed: {exc_psycopg2}")
         psycopg2 = None  # type: ignore
         POSTGRES_DRIVER = None
         USING_PSYCOPG3 = False
         PSYCOPG2_AVAILABLE = False
         PSYCOPG2_EXECUTE_VALUES = None
         print("WARNING: PostgreSQL driver not available. PostgreSQL support disabled.")
+
+
+if POSTGRES_DRIVER:
+    print(f"INFO: PostgreSQL driver selected: {POSTGRES_DRIVER}")
 
 
 def _connect_postgres(url: str):
