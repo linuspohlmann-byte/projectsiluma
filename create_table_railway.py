@@ -11,12 +11,8 @@ from urllib.parse import urlparse
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-except ImportError:
-    print("❌ psycopg2 not available. Please install it: pip install psycopg2-binary")
-    sys.exit(1)
+from server import postgres as psycopg2
+from server.postgres import RealDictCursor
 
 def create_user_word_familiarity_table():
     """Create the user_word_familiarity table in PostgreSQL"""

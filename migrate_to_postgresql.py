@@ -7,7 +7,7 @@ Run this script after setting up PostgreSQL in Railway
 import os
 import sys
 import sqlite3
-import psycopg2
+from server import postgres as psycopg2
 from urllib.parse import urlparse
 from datetime import datetime
 

@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 from urllib.parse import urlparse
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from server import postgres as psycopg2
+from server.postgres import RealDictCursor
 
 
 SQLITE_CANDIDATES: tuple[str, ...] = (
@@ -36,7 +36,7 @@ class SQLiteSource:
 @dataclass
 class PostgresTarget:
     url: str
-    connection: "psycopg2.extensions.connection"
+    connection: "server.postgres.ConnectionWrapper"
 
 
 def find_sqlite_database() -> Optional[SQLiteSource]:

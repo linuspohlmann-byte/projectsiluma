@@ -6,7 +6,8 @@ import re
 from datetime import datetime, UTC
 from collections import defaultdict
 from typing import Dict, Any
-from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE, PSYCOPG2_EXECUTE_VALUES
+from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE, PSYCOPG2_EXECUTE_VALUES, get_db_cursor
+from .postgres import RealDictCursor
 
 
 PRIMARY_LANGUAGE_FIELDS: Dict[str, str] = {
@@ -1028,10 +1029,13 @@ class ConnectionWrapper:
     def cursor(self, cursor_factory=None):
         """Get cursor with optional cursor_factory for PostgreSQL"""
         if self.config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
-            if cursor_factory:
-                return self.conn.cursor(cursor_factory=cursor_factory)
-            else:
-                return self.conn.cursor()
+            cursor = get_db_cursor(self.conn)
+            if cursor_factory is RealDictCursor:
+                # row_factory already applied in get_db_cursor
+                return cursor
+            if cursor_factory is not None:
+                raise TypeError("Unsupported cursor_factory requested")
+            return cursor
         else:
             # SQLite doesn't support cursor_factory
             return self.conn.cursor()

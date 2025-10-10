@@ -6,8 +6,8 @@ Fixes missing columns and schema issues in PostgreSQL database
 
 import os
 import sys
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from server import postgres as psycopg2
+from server.postgres import RealDictCursor
 
 def get_database_connection():
     """Get PostgreSQL database connection"""
