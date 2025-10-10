@@ -48,6 +48,12 @@ class _CompatConnection:
     def __exit__(self, exc_type, exc, tb):
         return self._conn.__exit__(exc_type, exc, tb)
 
+    def __setattr__(self, key: str, value: Any) -> None:
+        if key == "_conn":
+            super().__setattr__(key, value)
+        else:
+            setattr(self._conn, key, value)
+
 
 def connect(*args: Any, **kwargs: Any):
     """
