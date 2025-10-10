@@ -24,6 +24,31 @@ __all__ = [
 ]
 
 
+class _CompatConnection:
+    """Minimal wrapper to emulate psycopg2 connection behaviour."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def cursor(self, *args: Any, **kwargs: Any):
+        cursor_factory = kwargs.pop("cursor_factory", None)
+        if cursor_factory is extras.RealDictCursor:
+            kwargs["row_factory"] = dict_row
+        elif cursor_factory is not None:
+            raise TypeError("Unsupported cursor_factory requested in psycopg2 shim.")
+        return self._conn.cursor(*args, **kwargs)
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(self._conn, item)
+
+    def __enter__(self):
+        self._conn.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return self._conn.__exit__(exc_type, exc, tb)
+
+
 def connect(*args: Any, **kwargs: Any):
     """
     Thin wrapper around :func:`psycopg.connect` that honours the ``cursor_factory``
@@ -39,4 +64,4 @@ def connect(*args: Any, **kwargs: Any):
     if cursor_factory is extras.RealDictCursor:
         extras.apply_real_dict_cursor(conn)
 
-    return conn
+    return _CompatConnection(conn)
