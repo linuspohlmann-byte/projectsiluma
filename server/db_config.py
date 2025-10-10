@@ -10,12 +10,10 @@ USING_PSYCOPG3 = False
 try:  # Prefer latest psycopg (v3) driver
     import psycopg
     from psycopg.rows import dict_row as _psycopg_dict_row
-    from psycopg.extras import execute_values as _psycopg_execute_values
-
     POSTGRES_DRIVER = "psycopg"
     USING_PSYCOPG3 = True
     PSYCOPG2_AVAILABLE = True  # maintain legacy flag name for callers
-    PSYCOPG2_EXECUTE_VALUES = _psycopg_execute_values
+    PSYCOPG2_EXECUTE_VALUES = None  # execute_values helper not available in psycopg core
 except ImportError:
     try:  # Fall back to psycopg2 if present
         import psycopg2  # type: ignore
