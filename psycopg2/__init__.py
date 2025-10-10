@@ -58,9 +58,6 @@ def connect(*args: Any, **kwargs: Any):
     cursor_factory = kwargs.pop("cursor_factory", None)
     conn = psycopg.connect(*args, **kwargs)
 
-    # Default to dict-like rows for compatibility with psycopg2 RealDictCursor.
-    conn.row_factory = dict_row
-
     if cursor_factory is extras.RealDictCursor:
         extras.apply_real_dict_cursor(conn)
 
