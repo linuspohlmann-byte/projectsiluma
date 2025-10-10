@@ -1057,6 +1057,7 @@ def execute_sql(conn, query, params=None):
 
 def init_db():
     """Initialize database tables - supports both SQLite and PostgreSQL"""
+    print("init_db: start", flush=True)
     config = get_database_config()
     conn = get_db()
     
