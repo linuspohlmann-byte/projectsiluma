@@ -125,6 +125,7 @@ def main():
     # Start the actual app
     try:
         from app import app
+        print("✅ Flask application module imported.")
         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     except Exception as e:
         print(f"❌ Flask app startup failed: {e}")
