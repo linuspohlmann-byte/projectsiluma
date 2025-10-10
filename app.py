@@ -355,6 +355,56 @@ def debug_database_schema():
             'success': False
         }), 500
 
+@app.get('/api/debug/localization-stats')
+def debug_localization_stats():
+    """Return summary statistics for localization storage."""
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    config = get_database_config()
+    conn = get_db_connection()
+    try:
+        summary = {
+            'database_type': config['type'],
+            'keys': 0,
+            'rows': 0,
+            'top_languages': []
+        }
+        cursor = execute_query(conn, "SELECT COUNT(DISTINCT key) AS keys, COUNT(*) AS rows FROM localization")
+        row = cursor.fetchone()
+        if row:
+            if isinstance(row, dict):
+                summary['keys'] = int(row.get('keys', 0) or 0)
+                summary['rows'] = int(row.get('rows', 0) or 0)
+            else:
+                summary['keys'] = int(row[0] or 0)
+                summary['rows'] = int(row[1] or 0)
+        cursor.close()
+
+        cursor = execute_query(conn, """
+            SELECT language, COUNT(*) AS entries
+            FROM localization
+            GROUP BY language
+            ORDER BY entries DESC
+            LIMIT 10
+        """)
+        for lang_row in cursor.fetchall():
+            if isinstance(lang_row, dict):
+                summary['top_languages'].append({
+                    'language': lang_row.get('language'),
+                    'entries': int(lang_row.get('entries', 0) or 0)
+                })
+            else:
+                summary['top_languages'].append({
+                    'language': lang_row[0],
+                    'entries': int(lang_row[1] or 0)
+                })
+        cursor.close()
+
+        return jsonify({'success': True, 'summary': summary})
+    except Exception as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 500
+    finally:
+        conn.close()
+
 @app.get('/api/debug/tts-status')
 def debug_tts_status():
     """Debug endpoint to check TTS service status"""
