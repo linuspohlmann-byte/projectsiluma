@@ -124,18 +124,6 @@ def main():
 
     # Start the actual app
     try:
-        try:
-            from server.db import using_postgresql, get_db_connection, seed_postgres_localization_from_csv
-            if using_postgresql():
-                print("Synchronizing localization table before startup...")
-                conn = get_db_connection()
-                try:
-                    seed_postgres_localization_from_csv(conn)
-                finally:
-                    conn.close()
-        except Exception as sync_exc:
-            print(f"⚠️ Pre-start localization synchronization skipped: {sync_exc}")
-
         from app import app
         app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
     except Exception as e:

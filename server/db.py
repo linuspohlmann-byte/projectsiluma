@@ -1944,7 +1944,6 @@ def seed_postgres_localization_from_csv(conn) -> None:
 def trigger_localization_seed_if_needed():
     """Kick off localization CSV sync in a background thread"""
     global LOCALIZATION_SEED_STARTED
-    print(f"trigger_localization_seed_if_needed called (postgres={using_postgresql()})")
     if not using_postgresql():
         return
     with LOCALIZATION_SEED_LOCK:
