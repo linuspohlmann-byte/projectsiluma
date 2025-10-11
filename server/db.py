@@ -158,6 +158,30 @@ LOCALIZATION_SEED_LOCK = threading.Lock()
 LOCALIZATION_SEED_STARTED = False
 
 
+def _coerce_row_to_dict(row, description=None):
+    """Normalize DBAPI rows (tuple/list/Row) into plain dicts."""
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row
+    if hasattr(row, 'keys'):
+        try:
+            return dict(row)
+        except TypeError:
+            return {key: row[key] for key in row.keys()}
+    if description:
+        keys: list[str] = []
+        for column in description:
+            if isinstance(column, (tuple, list)):
+                keys.append(column[0])
+            elif hasattr(column, 'name'):
+                keys.append(column.name)
+            else:
+                keys.append(str(column))
+        return {keys[idx]: row[idx] for idx in range(min(len(keys), len(row)))}
+    return None
+
+
 def normalize_language_identifier(identifier: str | None) -> str | None:
     """Normalize various language identifiers to ISO-ish codes"""
     if not identifier:
@@ -1026,6 +1050,12 @@ class ConnectionWrapper:
             self._current_cursor.close()
         return self.conn.close()
     
+    @property
+    def description(self):
+        if self._current_cursor:
+            return getattr(self._current_cursor, 'description', None)
+        return None
+
     def cursor(self, cursor_factory=None):
         """Get cursor with optional cursor_factory for PostgreSQL"""
         if self.config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE:
@@ -1228,6 +1258,7 @@ def init_db():
         conn.commit()
         print("init_db: about to ensure core localization entries", flush=True)
         ensure_core_localization_entries(conn)
+        conn.commit()
         trigger_localization_seed_if_needed()
         print("init_db: localization seed triggered", flush=True)
         
@@ -2632,10 +2663,7 @@ def get_user_by_username(username: str):
                 (username,)
             )
             row = cursor.fetchone()
-            # Convert PostgreSQL row to dict-like object for compatibility
-            if row:
-                return dict(row)
-            return None
+            return _coerce_row_to_dict(row, getattr(cursor, 'description', None))
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -2661,10 +2689,7 @@ def get_user_by_email(email: str):
                 (email,)
             )
             row = cursor.fetchone()
-            # Convert PostgreSQL row to dict-like object for compatibility
-            if row:
-                return dict(row)
-            return None
+            return _coerce_row_to_dict(row, getattr(cursor, 'description', None))
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -2690,10 +2715,11 @@ def get_user_by_id(user_id: int):
                 'SELECT id, username, email, password_hash, created_at, last_login, is_active, settings FROM users WHERE id=%s AND is_active=TRUE',
                 (user_id,)
             )
+            description = getattr(cur, 'description', None)
             row = cur.fetchone()
             cur.close()
             
-            return row
+            return _coerce_row_to_dict(row, description)
         else:
             # SQLite has updated_at column
             row = conn.execute(
@@ -2827,10 +2853,11 @@ def get_user_by_session(session_token: str):
                 JOIN user_sessions s ON u.id = s.user_id
                 WHERE s.session_token = %s AND s.expires_at > NOW() AND u.is_active = TRUE
             ''', (session_token,))
+            description = getattr(cur, 'description', None)
             row = cur.fetchone()
             cur.close()
             
-            return row
+            return _coerce_row_to_dict(row, description)
         else:
             # SQLite has updated_at column
             row = conn.execute('''
