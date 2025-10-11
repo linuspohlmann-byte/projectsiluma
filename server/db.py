@@ -1064,10 +1064,11 @@ def init_db():
     print("init_db: start", flush=True)
     config = get_database_config()
     conn = get_db()
+    print(f"init_db: database type={config.get('type')}", flush=True)
     
     if config['type'] == 'postgresql':
         # PostgreSQL table creation
-        
+        print("init_db: creating PostgreSQL tables", flush=True)
         # Users table
         execute_query(conn, """
             CREATE TABLE IF NOT EXISTS users (
@@ -1178,12 +1179,14 @@ def init_db():
                 native_lang VARCHAR(10)
             );
         """)
+        print("init_db: created base tables", flush=True)
         
         # Add missing columns to existing level_runs table if they don't exist
         try:
             execute_query(conn, "ALTER TABLE level_runs ADD COLUMN IF NOT EXISTS target_lang VARCHAR(10)")
             execute_query(conn, "ALTER TABLE level_runs ADD COLUMN IF NOT EXISTS native_lang VARCHAR(10)")
             conn.commit()
+            print("init_db: ensured level_runs columns", flush=True)
         except Exception as e:
             print(f"Warning: Could not add columns to level_runs: {e}")
         
@@ -1216,12 +1219,14 @@ def init_db():
                 UNIQUE(key, language)
             );
         """)
+        print("init_db: ensured localization table", flush=True)
         try:
             execute_query(conn, "ALTER TABLE localization ADD COLUMN IF NOT EXISTS description TEXT;")
         except Exception as e:
             print(f"Note: description column migration skipped: {e}")
         ensure_core_localization_entries()
         trigger_localization_seed_if_needed()
+        print("init_db: localization seed triggered", flush=True)
         
         # Custom level groups table
         execute_query(conn, """
@@ -1288,9 +1293,11 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
             );
         """)
+        print("init_db: ensured custom level tables", flush=True)
         
     else:
         # SQLite table creation (legacy)
+        print("init_db: creating SQLite tables", flush=True)
         cur = conn.cursor()
         cur.execute("""
         CREATE TABLE IF NOT EXISTS words (
@@ -1396,6 +1403,7 @@ def init_db():
         );
         """)
         ensure_core_localization_entries()
+        print("init_db: ensured SQLite localization entries", flush=True)
         
         # User system tables
         cur.execute("""
@@ -1461,6 +1469,7 @@ def init_db():
         conn.commit()
     
     conn.close()
+    print("init_db: done", flush=True)
 
 def create_custom_level_group_ratings_table():
     """Create ratings table explicitly; safe to run multiple times."""
