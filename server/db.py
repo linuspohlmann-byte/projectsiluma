@@ -2176,10 +2176,15 @@ CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
 def ensure_core_localization_entries():
     """Ensure critical localization keys exist with defaults"""
     for entry in CORE_LOCALIZATION_ENTRIES:
+        ref = entry.get('reference_key')
+        print(f"init_db: upserting core localization '{ref}'", flush=True)
         try:
             upsert_localization_entry(entry)
+            print(f"init_db: upserted '{ref}'", flush=True)
         except Exception as exc:
             print(f"Warning: failed to upsert localization entry {entry.get('reference_key')}: {exc}")
+
+    print("init_db: core localization entries done", flush=True)
 
 
 def get_localization_entry(reference_key: str, language: str = None):
