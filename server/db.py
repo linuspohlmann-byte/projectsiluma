@@ -1219,6 +1219,7 @@ def init_db():
                 UNIQUE(key, language)
             );
         """)
+        conn.commit()
         print("init_db: ensured localization table", flush=True)
         try:
             execute_query(conn, "ALTER TABLE localization ADD COLUMN IF NOT EXISTS description TEXT;")
@@ -1294,6 +1295,7 @@ def init_db():
             );
         """)
         print("init_db: ensured custom level tables", flush=True)
+        conn.commit()
         
     else:
         # SQLite table creation (legacy)
