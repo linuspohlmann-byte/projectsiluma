@@ -1227,7 +1227,7 @@ def init_db():
             print(f"Note: description column migration skipped: {e}")
         conn.commit()
         print("init_db: about to ensure core localization entries", flush=True)
-        ensure_core_localization_entries()
+        ensure_core_localization_entries(conn)
         trigger_localization_seed_if_needed()
         print("init_db: localization seed triggered", flush=True)
         
@@ -1406,7 +1406,7 @@ def init_db():
           FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         );
         """)
-        ensure_core_localization_entries()
+        ensure_core_localization_entries(conn)
         print("init_db: ensured SQLite localization entries", flush=True)
         
         # User system tables
@@ -2175,18 +2175,32 @@ CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
 ]
 
 
-def ensure_core_localization_entries():
+def ensure_core_localization_entries(conn=None):
     """Ensure critical localization keys exist with defaults"""
+    managed_connection = False
+    if conn is None:
+        config = get_database_config()
+        if config['type'] == 'postgresql':
+            conn = get_db_connection()
+        else:
+            conn = get_db()
+        managed_connection = True
+
     for entry in CORE_LOCALIZATION_ENTRIES:
         ref = entry.get('reference_key')
         print(f"init_db: upserting core localization '{ref}'", flush=True)
         try:
-            upsert_localization_entry(entry)
+            upsert_localization_entry(entry, conn=conn)
             print(f"init_db: upserted '{ref}'", flush=True)
         except Exception as exc:
             print(f"Warning: failed to upsert localization entry {entry.get('reference_key')}: {exc}")
 
     print("init_db: core localization entries done", flush=True)
+    if managed_connection:
+        try:
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def get_localization_entry(reference_key: str, language: str = None):
