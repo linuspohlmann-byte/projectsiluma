@@ -1225,6 +1225,7 @@ def init_db():
             execute_query(conn, "ALTER TABLE localization ADD COLUMN IF NOT EXISTS description TEXT;")
         except Exception as e:
             print(f"Note: description column migration skipped: {e}")
+        conn.commit()
         print("init_db: about to ensure core localization entries", flush=True)
         ensure_core_localization_entries()
         trigger_localization_seed_if_needed()
