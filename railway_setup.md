@@ -44,7 +44,7 @@ RAILWAY_ENVIRONMENT=true
 
 ### ✅ Dependencies
 - Entfernt: numpy, pandas, pillow (unused)
-- Behalten: psycopg2-binary für PostgreSQL
+- Behalten: pg8000 für PostgreSQL
 - Kleinere Deployment-Größe
 
 ### ✅ Railway Config

@@ -13,10 +13,9 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from typing import Iterable, Optional
-from urllib.parse import urlparse
 
-from server import postgres as psycopg2
-from server.postgres import RealDictCursor
+from server import postgres
+from server.postgres import ConnectionWrapper, RealDictCursor
 
 
 SQLITE_CANDIDATES: tuple[str, ...] = (
@@ -36,7 +35,7 @@ class SQLiteSource:
 @dataclass
 class PostgresTarget:
     url: str
-    connection: "server.postgres.ConnectionWrapper"
+    connection: "ConnectionWrapper"
 
 
 def find_sqlite_database() -> Optional[SQLiteSource]:
@@ -57,15 +56,7 @@ def connect_postgres() -> Optional[PostgresTarget]:
         print("❌ DATABASE_URL environment variable not set. Aborting migration.")
         return None
 
-    parsed = urlparse(database_url)
-    conn = psycopg2.connect(
-        host=parsed.hostname,
-        port=parsed.port,
-        database=parsed.path[1:],
-        user=parsed.username,
-        password=parsed.password,
-        cursor_factory=RealDictCursor,
-    )
+    conn = postgres.connect(database_url, cursor_factory=RealDictCursor)
     conn.autocommit = False
     print("✅ Connected to PostgreSQL target.")
     return PostgresTarget(url=database_url, connection=conn)
@@ -278,7 +269,7 @@ def sync_sequences(target: PostgresTarget) -> None:
                 """,
                     (sequence,),
                 )
-            except psycopg2.Error as exc:
+            except postgres.Error as exc:
                 print(f"⚠️ Could not advance sequence {sequence}: {exc}")
 
     target.connection.commit()

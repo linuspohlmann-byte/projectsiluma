@@ -53,7 +53,7 @@ def _dict_row_factory(cursor, row):
 
 class CursorWrapper:
     def __init__(self, cursor, dict_rows: bool = False):
-        self._cursor = cursor
+        object.__setattr__(self, '_cursor', cursor)
         if dict_rows:
             self._cursor.row_factory = _dict_row_factory
 
@@ -84,6 +84,19 @@ class CursorWrapper:
     def __getattr__(self, item):  # pragma: no cover - passthrough for rarely used attrs
         return getattr(self._cursor, item)
 
+    def __setattr__(self, name, value):
+        if name.startswith('_'):
+            object.__setattr__(self, name, value)
+        else:  # propagate attribute assignments to underlying cursor
+            setattr(self._cursor, name, value)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
 
 class ConnectionWrapper:
     def __init__(self, conn, default_cursor_factory=None):
@@ -102,6 +115,14 @@ class ConnectionWrapper:
 
     def rollback(self) -> None:
         self._conn.rollback()
+
+    @property
+    def autocommit(self):
+        return self._conn.autocommit
+
+    @autocommit.setter
+    def autocommit(self, value):
+        self._conn.autocommit = value
 
     def close(self) -> None:
         self._conn.close()

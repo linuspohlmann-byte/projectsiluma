@@ -5,11 +5,8 @@ Run this script after setting up PostgreSQL in Railway
 """
 
 import os
-import sys
 import sqlite3
-from server import postgres as psycopg2
-from urllib.parse import urlparse
-from datetime import datetime
+from server import postgres
 
 def get_sqlite_connection():
     """Get SQLite connection"""
@@ -30,14 +27,7 @@ def get_postgresql_connection():
         return None
     
     try:
-        parsed = urlparse(database_url)
-        conn = psycopg2.connect(
-            host=parsed.hostname,
-            port=parsed.port,
-            database=parsed.path[1:],
-            user=parsed.username,
-            password=parsed.password
-        )
+        conn = postgres.connect(database_url)
         conn.autocommit = True
         return conn
     except Exception as e:

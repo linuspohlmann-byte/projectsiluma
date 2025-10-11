@@ -6,7 +6,7 @@ import re
 from datetime import datetime, UTC
 from collections import defaultdict
 from typing import Dict, Any
-from .db_config import get_db_connection, execute_query, get_database_config, PSYCOPG2_AVAILABLE, PSYCOPG2_EXECUTE_VALUES, get_db_cursor
+from .db_config import get_db_connection, execute_query, get_database_config, POSTGRES_DRIVER_AVAILABLE, POSTGRES_EXECUTE_VALUES, get_db_cursor
 from .postgres import RealDictCursor
 
 
@@ -261,7 +261,7 @@ def migrate_postgres_localization_table(conn) -> None:
 
 def using_postgresql() -> bool:
     config = get_database_config()
-    return config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE
+    return config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE
 
 def latest_run_id_for_level(level: int) -> int | None:
     config = get_database_config()
@@ -1028,7 +1028,7 @@ class ConnectionWrapper:
     
     def cursor(self, cursor_factory=None):
         """Get cursor with optional cursor_factory for PostgreSQL"""
-        if self.config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
+        if self.config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE:
             cursor = get_db_cursor(self.conn)
             if cursor_factory is RealDictCursor:
                 # row_factory already applied in get_db_cursor
@@ -1761,9 +1761,12 @@ def _pg_aggregate_localization_rows(rows: list[Dict[str, Any]]) -> Dict[str, Dic
     return aggregated
 
 
-def seed_postgres_localization_from_csv(conn) -> None:
-    """Populate PostgreSQL localization table from CSV if empty"""
-    csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
+def seed_postgres_localization_from_csv(conn, csv_path=None) -> None:
+    """Populate PostgreSQL localization table from CSV if empty."""
+    if csv_path is not None:
+        csv_path = os.fspath(csv_path)
+    else:
+        csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
     if not os.path.exists(csv_path):
         print("Localization CSV not found, skipping PostgreSQL import.")
         return
@@ -1818,9 +1821,9 @@ def seed_postgres_localization_from_csv(conn) -> None:
         now_str = datetime.now(UTC).isoformat()
         upsert_values = [(key, lang, val, desc, now_str, now_str) for key, lang, val, desc, _ in rows_to_fix]
         try:
-            if PSYCOPG2_EXECUTE_VALUES:
+            if POSTGRES_EXECUTE_VALUES:
                 with conn.cursor() as cur_upsert:
-                    PSYCOPG2_EXECUTE_VALUES(cur_upsert, """
+                    POSTGRES_EXECUTE_VALUES(cur_upsert, """
                         INSERT INTO localization (key, language, value, description, created_at, updated_at)
                         VALUES %s
                         ON CONFLICT (key, language) DO UPDATE SET
@@ -1880,11 +1883,11 @@ def seed_postgres_localization_from_csv(conn) -> None:
             nonlocal batch, total_translations
             if not batch:
                 return
-            if PSYCOPG2_EXECUTE_VALUES:
+            if POSTGRES_EXECUTE_VALUES:
                 now_str = datetime.now(UTC).isoformat()
                 values = [(key, lang, value, desc, now_str, now_str) for key, lang, value, desc in batch]
                 with conn.cursor() as cur:
-                    PSYCOPG2_EXECUTE_VALUES(cur, """
+                    POSTGRES_EXECUTE_VALUES(cur, """
                         INSERT INTO localization (key, language, value, description, created_at, updated_at)
                         VALUES %s
                         ON CONFLICT (key, language) DO UPDATE SET

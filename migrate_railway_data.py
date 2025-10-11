@@ -7,13 +7,13 @@ This script will:
 3. Migrate all data including words, users, progress, etc.
 """
 
-import os
-import sys
-import sqlite3
-from server import postgres as psycopg2
-from urllib.parse import urlparse
-from datetime import datetime
 import json
+import os
+import sqlite3
+import sys
+from datetime import datetime
+
+from server import postgres
 
 def get_sqlite_connection():
     """Get SQLite connection to local database"""
@@ -43,14 +43,7 @@ def get_postgresql_connection():
         return None
     
     try:
-        parsed = urlparse(database_url)
-        conn = psycopg2.connect(
-            host=parsed.hostname,
-            port=parsed.port,
-            database=parsed.path[1:],
-            user=parsed.username,
-            password=parsed.password
-        )
+        conn = postgres.connect(database_url)
         conn.autocommit = True
         print("✅ Connected to Railway PostgreSQL database")
         return conn

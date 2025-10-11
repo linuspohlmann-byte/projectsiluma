@@ -10,9 +10,9 @@ except ImportError:
     PG8000_AVAILABLE = False
     print("WARNING: pg8000 not available. PostgreSQL support disabled.")
 
-# Maintain legacy constant names used elsewhere in the codebase
-PSYCOPG2_AVAILABLE = PG8000_AVAILABLE
-PSYCOPG2_EXECUTE_VALUES = None  # Not available with pg8000
+# Expose pg8000 driver availability to the rest of the app
+POSTGRES_DRIVER_AVAILABLE = PG8000_AVAILABLE
+POSTGRES_EXECUTE_VALUES = None  # pg8000 lacks psycopg2.execute_values equivalent
 
 
 def _is_sqlite_forced() -> bool:
@@ -56,7 +56,7 @@ def get_database_config():
         return _build_sqlite_config()
 
     database_url = os.getenv('DATABASE_URL')
-    if database_url and PSYCOPG2_AVAILABLE:
+    if database_url and POSTGRES_DRIVER_AVAILABLE:
         try:
             connect_kwargs = _parse_database_url(database_url)
             # Attempt a quick connection to validate credentials
@@ -71,7 +71,7 @@ def get_database_config():
             print(f"WARNING: PostgreSQL connection failed, falling back to SQLite: {exc}")
             return _build_sqlite_config()
     else:
-        if database_url and not PSYCOPG2_AVAILABLE:
+        if database_url and not POSTGRES_DRIVER_AVAILABLE:
             print("WARNING: DATABASE_URL set but pg8000 not available. Using SQLite instead.")
         return _build_sqlite_config()
 
@@ -80,7 +80,7 @@ def get_db_connection():
     """Get database connection based on environment"""
     config = get_database_config()
 
-    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
+    if config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE:
         try:
             connect_kwargs = config.get('connect_kwargs') or _parse_database_url(config['url'])
             conn = pg8000.connect(**connect_kwargs)
@@ -114,7 +114,7 @@ def get_db_cursor(conn):
     """Get appropriate cursor for database type"""
     config = get_database_config()
 
-    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
+    if config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE:
         cursor = conn.cursor()
         cursor.row_factory = _dict_row
         return cursor
@@ -127,7 +127,7 @@ def execute_query(conn, query, params=None):
     config = get_database_config()
     cursor = get_db_cursor(conn)
 
-    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
+    if config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE:
         # pg8000 also uses %s for parameters
         if params:
             cursor.execute(query.replace('?', '%s'), params)
@@ -146,7 +146,7 @@ def get_lastrowid(cursor):
     """Get last inserted row ID"""
     config = get_database_config()
 
-    if config['type'] == 'postgresql' and PSYCOPG2_AVAILABLE:
+    if config['type'] == 'postgresql' and POSTGRES_DRIVER_AVAILABLE:
         if cursor.description:
             row = cursor.fetchone()
             if isinstance(row, dict):

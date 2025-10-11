@@ -110,7 +110,7 @@ def calculate_translation_similarity(user_text, correct_text):
 
 
 def _extract_row_value(row, key, default=0):
-    """Safely extract a column value from sqlite/psycopg rows."""
+    """Safely extract a column value from sqlite/PostgreSQL rows."""
     if row is None:
         return default
     if isinstance(row, dict):
@@ -525,7 +525,7 @@ def debug_cleanup_duplicate_words():
     """Clean up duplicate entries in words table before adding UNIQUE constraint"""
     try:
         import os
-        from server import postgres as psycopg2
+        from server import postgres
         from server.postgres import RealDictCursor
         
         # Get database connection
@@ -536,7 +536,7 @@ def debug_cleanup_duplicate_words():
                 'error': 'DATABASE_URL environment variable not set'
             }), 500
         
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         
         try:
             print("🚀 Cleaning up duplicate words...")
@@ -609,7 +609,7 @@ def debug_list_georgian_words():
     """List Georgian words in the database"""
     try:
         import os
-        from server import postgres as psycopg2
+        from server import postgres
         from server.postgres import RealDictCursor
         
         # Get database connection
@@ -620,7 +620,7 @@ def debug_list_georgian_words():
                 'error': 'DATABASE_URL environment variable not set'
             }), 500
         
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         
         try:
             cursor = conn.cursor()
@@ -658,7 +658,7 @@ def debug_check_words_with_punctuation():
     """Check for words with punctuation marks that might be duplicates"""
     try:
         import os
-        from server import postgres as psycopg2
+        from server import postgres
         import re
         
         # Get database connection
@@ -669,7 +669,7 @@ def debug_check_words_with_punctuation():
                 'error': 'DATABASE_URL environment variable not set'
             }), 500
         
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         
         try:
             cursor = conn.cursor()
@@ -735,7 +735,7 @@ def debug_remove_trailing_punctuation():
     """Remove trailing punctuation from words that have duplicates without punctuation"""
     try:
         import os
-        from server import postgres as psycopg2
+        from server import postgres
         import re
         
         # Get database connection
@@ -746,7 +746,7 @@ def debug_remove_trailing_punctuation():
                 'error': 'DATABASE_URL environment variable not set'
             }), 500
         
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         
         try:
             cursor = conn.cursor()
@@ -852,7 +852,7 @@ def debug_add_words_unique_constraint():
     """Add UNIQUE constraint to words table for (word, language, native_language)"""
     try:
         import os
-        from server import postgres as psycopg2
+        from server import postgres
         from server.postgres import RealDictCursor
         
         # Get database connection
@@ -863,7 +863,7 @@ def debug_add_words_unique_constraint():
                 'error': 'DATABASE_URL environment variable not set'
             }), 500
         
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         
         try:
             print("🚀 Adding UNIQUE constraint to words table...")
@@ -915,7 +915,7 @@ def debug_run_database_schema_migration():
     """Run database schema migration to fix missing columns and schema issues"""
     try:
         import os
-        from server import postgres as psycopg2
+        from server import postgres
         from server.postgres import RealDictCursor
         
         # Get database connection
@@ -926,7 +926,7 @@ def debug_run_database_schema_migration():
                 'error': 'DATABASE_URL environment variable not set'
             }), 500
         
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         
         try:
             print("🚀 Starting database schema migration...")
@@ -7867,7 +7867,7 @@ def api_create_postgresql_tables():
 def api_database_info():
     """Get database information and table list"""
     try:
-        from server import postgres as psycopg2
+        from server import postgres
         from urllib.parse import urlparse
         import os
         
@@ -7877,7 +7877,7 @@ def api_database_info():
             try:
                 # Parse and connect to PostgreSQL
                 parsed = urlparse(database_url)
-                conn = psycopg2.connect(
+                conn = postgres.connect(
                     host=parsed.hostname,
                     port=parsed.port,
                     database=parsed.path[1:],
@@ -7937,7 +7937,7 @@ def api_database_info():
 def api_create_test_user():
     """Create a test user directly"""
     try:
-        from server import postgres as psycopg2
+        from server import postgres
         from urllib.parse import urlparse
         import os
         import hashlib
@@ -7952,7 +7952,7 @@ def api_create_test_user():
         
         # Parse and connect to PostgreSQL
         parsed = urlparse(database_url)
-        conn = psycopg2.connect(
+        conn = postgres.connect(
             host=parsed.hostname,
             port=parsed.port,
             database=parsed.path[1:],
@@ -8005,7 +8005,7 @@ def api_create_test_user():
 def api_test_postgresql():
     """Test PostgreSQL connection directly"""
     try:
-        from server import postgres as psycopg2
+        from server import postgres
         from urllib.parse import urlparse
         import os
         
@@ -8016,7 +8016,7 @@ def api_test_postgresql():
         
         # Parse and connect
         parsed = urlparse(database_url)
-        conn = psycopg2.connect(
+        conn = postgres.connect(
             host=parsed.hostname,
             port=parsed.port,
             database=parsed.path[1:],

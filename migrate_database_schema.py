@@ -5,9 +5,8 @@ Fixes missing columns and schema issues in PostgreSQL database
 """
 
 import os
-import sys
-from server import postgres as psycopg2
-from server.postgres import RealDictCursor
+
+from server import postgres
 
 def get_database_connection():
     """Get PostgreSQL database connection"""
@@ -19,7 +18,7 @@ def get_database_connection():
             return None
         
         # Parse database URL
-        conn = psycopg2.connect(database_url)
+        conn = postgres.connect(database_url)
         return conn
     except Exception as e:
         print(f"❌ Error connecting to database: {e}")

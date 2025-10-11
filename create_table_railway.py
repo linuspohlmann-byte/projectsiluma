@@ -6,12 +6,10 @@ This script will be deployed to Railway and run there
 
 import os
 import sys
-from urllib.parse import urlparse
-
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from server import postgres as psycopg2
+from server import postgres
 from server.postgres import RealDictCursor
 
 def create_user_word_familiarity_table():
@@ -28,23 +26,13 @@ def create_user_word_familiarity_table():
         return False
     
     try:
-        # Parse DATABASE_URL
-        parsed = urlparse(database_url)
-        
-        print(f"🔧 Connecting to PostgreSQL database: {parsed.hostname}:{parsed.port}/{parsed.path[1:]}")
-        
         # Connect to PostgreSQL
-        conn = psycopg2.connect(
-            host=parsed.hostname,
-            port=parsed.port,
-            database=parsed.path[1:],  # Remove leading slash
-            user=parsed.username,
-            password=parsed.password,
-            cursor_factory=RealDictCursor
-        )
+        conn = postgres.connect(database_url, cursor_factory=RealDictCursor)
         
         cursor = conn.cursor()
         
+        print("🔧 Connecting to PostgreSQL database...")
+
         print("🔧 Creating user_word_familiarity table...")
         
         # Create the table
