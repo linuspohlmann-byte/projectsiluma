@@ -3785,15 +3785,22 @@ def api_enrich_custom_level_words(group_id, level_number):
                         }
                         
                         if config['type'] == 'postgresql':
+                            insert_values = (
+                                insert_data['word'], insert_data['language'], insert_data['native_language'],
+                                insert_data['translation'], insert_data['example'], insert_data['example_native'],
+                                insert_data['lemma'], insert_data['pos'], insert_data['ipa'], insert_data['audio_url'],
+                                insert_data['gender'], insert_data['plural'], insert_data['conj'], insert_data['comp'],
+                                insert_data['synonyms'], insert_data['collocations'], insert_data['cefr'],
+                                insert_data['freq_rank'], insert_data['tags'], insert_data['note'], insert_data['info']
+                            )
                             execute_query(conn, '''
                                 INSERT INTO words (
                                     word, language, native_language, translation, example, example_native,
                                     lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
                                     collocations, cefr, freq_rank, tags, note, info
                                 ) VALUES (
-                                    %(word)s, %(language)s, %(native_language)s, %(translation)s, %(example)s, %(example_native)s,
-                                    %(lemma)s, %(pos)s, %(ipa)s, %(audio_url)s, %(gender)s, %(plural)s, %(conj)s, %(comp)s, %(synonyms)s,
-                                    %(collocations)s, %(cefr)s, %(freq_rank)s, %(tags)s, %(note)s, %(info)s
+                                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                    %s, %s, %s, %s, %s, %s
                                 )
                                 ON CONFLICT (word, language, native_language) 
                                 DO UPDATE SET
@@ -3816,7 +3823,7 @@ def api_enrich_custom_level_words(group_id, level_number):
                                     note = EXCLUDED.note,
                                     info = EXCLUDED.info,
                                     updated_at = CURRENT_TIMESTAMP
-                            ''', insert_data)
+                            ''', insert_values)
                         else:
                             # SQLite fallback
                             cur = conn.cursor()
@@ -4936,15 +4943,22 @@ def api_word_upsert():
             
             if config['type'] == 'postgresql':
                 # PostgreSQL syntax - use INSERT ... ON CONFLICT for upsert
+                insert_values = (
+                    insert_data['word'], insert_data['language'], insert_data['native_language'],
+                    insert_data['translation'], insert_data['example'], insert_data['example_native'],
+                    insert_data['lemma'], insert_data['pos'], insert_data['ipa'], insert_data['audio_url'],
+                    insert_data['gender'], insert_data['plural'], insert_data['conj'], insert_data['comp'],
+                    insert_data['synonyms'], insert_data['collocations'], insert_data['cefr'],
+                    insert_data['freq_rank'], insert_data['tags'], insert_data['note'], insert_data['info']
+                )
                 execute_query(conn, '''
                     INSERT INTO words (
                         word, language, native_language, translation, example, example_native,
                         lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
                         collocations, cefr, freq_rank, tags, note, info
                     ) VALUES (
-                        %(word)s, %(language)s, %(native_language)s, %(translation)s, %(example)s, %(example_native)s,
-                        %(lemma)s, %(pos)s, %(ipa)s, %(audio_url)s, %(gender)s, %(plural)s, %(conj)s, %(comp)s, %(synonyms)s,
-                        %(collocations)s, %(cefr)s, %(freq_rank)s, %(tags)s, %(note)s, %(info)s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (word, language, native_language) 
                     DO UPDATE SET
@@ -4967,7 +4981,7 @@ def api_word_upsert():
                         note = EXCLUDED.note,
                         info = EXCLUDED.info,
                         updated_at = CURRENT_TIMESTAMP
-                ''', insert_data)
+                ''', insert_values)
             else:
                 # SQLite syntax (fallback)
                 cur = conn.cursor()

@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-from server.db import get_db, upsert_word_row
+from server.db import get_db, upsert_word_row, _coerce_row_to_dict
 from server.db_config import get_database_config, get_db_connection, execute_query
 from server.services.llm import (
     llm_generate_sentences,
@@ -504,11 +504,13 @@ def get_custom_level_groups(user_id: int, language: str = None, native_language:
         query += " ORDER BY created_at DESC"
         
         cursor = conn.execute(query, params)
+        description = getattr(cursor, 'description', None)
         
-        groups = []
+        groups: list[dict[str, Any]] = []
         for row in cursor.fetchall():
-            groups.append(dict(row))
-        
+            group = _coerce_row_to_dict(row, description)
+            if group is not None:
+                groups.append(group)
         return groups
     except Exception as e:
         print(f"Error getting custom level groups: {e}")
@@ -526,7 +528,8 @@ def get_custom_level_group(group_id: int, user_id: int) -> Optional[Dict[str, An
         ''', (group_id, user_id))
         
         row = cursor.fetchone()
-        return dict(row) if row else None
+        group = _coerce_row_to_dict(row, getattr(cursor, 'description', None))
+        return group if group else None
     except Exception as e:
         print(f"Error getting custom level group: {e}")
         return None
@@ -552,8 +555,8 @@ def get_custom_level(group_id: int, level_number: int, user_id: int = None) -> O
         ''', (group_id, level_number))
         
         row = cursor.fetchone()
-        if row:
-            level_data = dict(row)
+        level_data = _coerce_row_to_dict(row, getattr(cursor, 'description', None))
+        if level_data:
             level_data['content'] = json.loads(level_data['content'])
             
             # Ensure word hashes exist for Multi-User-DB compatibility
@@ -588,8 +591,11 @@ def get_custom_levels_for_group(group_id: int) -> List[Dict[str, Any]]:
         # Get group info for language/native_language
         group_info = get_custom_level_group(group_id, None)
         
+        description = getattr(cursor, 'description', None)
         for row in cursor.fetchall():
-            level_data = dict(row)
+            level_data = _coerce_row_to_dict(row, description)
+            if not level_data:
+                continue
             level_data['content'] = json.loads(level_data['content'])
             
             # Ensure word hashes exist for Multi-User-DB compatibility
@@ -879,7 +885,12 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
 
         conn = get_db()
         groups_cursor = conn.execute("SELECT * FROM custom_level_groups ORDER BY id")
-        groups = [dict(row) for row in groups_cursor.fetchall()]
+        group_description = getattr(groups_cursor, 'description', None)
+        groups = [
+            row_data
+            for row in groups_cursor.fetchall()
+            if (row_data := _coerce_row_to_dict(row, group_description))
+        ]
         
         migration_stats = {
             'groups_processed': 0,
@@ -903,7 +914,12 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
                     "SELECT * FROM custom_levels WHERE group_id = ? ORDER BY level_number",
                     (group_id,),
                 )
-                levels = [dict(row) for row in levels_cursor.fetchall()]
+                level_description = getattr(levels_cursor, 'description', None)
+                levels = [
+                    row_data
+                    for row in levels_cursor.fetchall()
+                    if (row_data := _coerce_row_to_dict(row, level_description))
+                ]
                 
                 all_words = set()
                 

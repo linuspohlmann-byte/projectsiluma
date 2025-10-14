@@ -1850,13 +1850,17 @@ def seed_postgres_localization_from_csv(conn, csv_path=None) -> None:
     
     def normalize_existing_languages():
         """Ensure stored language identifiers use normalized codes (e.g., en, de)."""
+        cur_existing = None
         try:
-            with conn.cursor() as cur_existing:
-                cur_existing.execute("SELECT id, key, language, value, description FROM localization")
-                rows = cur_existing.fetchall()
+            cur_existing = conn.cursor()
+            cur_existing.execute("SELECT id, key, language, value, description FROM localization")
+            rows = cur_existing.fetchall()
         except Exception as exc:
             print(f"Warning: Could not inspect existing localization rows: {exc}")
             return
+        finally:
+            if cur_existing is not None:
+                cur_existing.close()
         if not rows:
             return
         rows_to_fix: list[tuple[str, str, Any, Any, Any]] = []
@@ -1883,7 +1887,8 @@ def seed_postgres_localization_from_csv(conn, csv_path=None) -> None:
         upsert_values = [(key, lang, val, desc, now_str, now_str) for key, lang, val, desc, _ in rows_to_fix]
         try:
             if POSTGRES_EXECUTE_VALUES:
-                with conn.cursor() as cur_upsert:
+                cur_upsert = conn.cursor()
+                try:
                     POSTGRES_EXECUTE_VALUES(cur_upsert, """
                         INSERT INTO localization (key, language, value, description, created_at, updated_at)
                         VALUES %s
@@ -1892,18 +1897,22 @@ def seed_postgres_localization_from_csv(conn, csv_path=None) -> None:
                             description = COALESCE(EXCLUDED.description, localization.description),
                             updated_at = EXCLUDED.updated_at
                     """, upsert_values, template="(%s, %s, %s, %s, %s, %s)")
+                finally:
+                    cur_upsert.close()
             else:
                 for key, lang, val, desc, _ in rows_to_fix:
                     cur_upsert = conn.cursor()
-                    cur_upsert.execute("""
-                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (key, language) DO UPDATE SET
-                            value = COALESCE(EXCLUDED.value, localization.value),
-                            description = COALESCE(EXCLUDED.description, localization.description),
-                            updated_at = EXCLUDED.updated_at
-                    """, (key, lang, val, desc, now_str, now_str))
-                    cur_upsert.close()
+                    try:
+                        cur_upsert.execute("""
+                            INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (key, language) DO UPDATE SET
+                                value = COALESCE(EXCLUDED.value, localization.value),
+                                description = COALESCE(EXCLUDED.description, localization.description),
+                                updated_at = EXCLUDED.updated_at
+                        """, (key, lang, val, desc, now_str, now_str))
+                    finally:
+                        cur_upsert.close()
         except Exception as exc:
             print(f"Warning: Failed to normalize localization entries: {exc}")
             conn.rollback()
@@ -3032,7 +3041,8 @@ def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, na
                 JOIN words w ON uwf.word_id = w.id
                 WHERE uwf.user_id = %s AND w.word = %s AND w.language = %s AND w.native_language = %s
             ''', (user_id, word, language, native_language))
-            row = result.fetchone()
+            description = getattr(result, 'description', None)
+            row = _coerce_row_to_dict(result.fetchone(), description)
             print(f"🔍 Query result: {row}")
         else:
             # SQLite syntax
@@ -3043,6 +3053,7 @@ def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, na
                 JOIN words w ON uwf.word_id = w.id
                 WHERE uwf.user_id = ? AND w.word = ? AND w.language = ? AND w.native_language = ?
             ''', (user_id, word, language, native_language)).fetchone()
+            row = _coerce_row_to_dict(row, getattr(cur, 'description', None))
         
         return row
     finally:
@@ -3061,18 +3072,21 @@ def update_user_word_familiarity_by_word(user_id: int, word: str, language: str,
             result = execute_query(conn, '''
                 SELECT id FROM words WHERE word = %s AND language = %s AND native_language = %s
             ''', (word, language, native_language))
-            word_row = result.fetchone()
+            word_row = _coerce_row_to_dict(result.fetchone(), getattr(result, 'description', None))
         else:
             cur = conn.cursor()
-            word_row = cur.execute('SELECT id FROM words WHERE word = ? AND language = ? AND native_language = ?', (word, language, native_language)).fetchone()
+            word_row = _coerce_row_to_dict(
+                cur.execute('SELECT id FROM words WHERE word = ? AND language = ? AND native_language = ?', (word, language, native_language)).fetchone(),
+                getattr(cur, 'description', None)
+            )
         
         if not word_row:
             print(f"❌ Word not found: {word} ({language} -> {native_language})")
             return False
         else:
-            print(f"✅ Word found: {word} ({language} -> {native_language}) with ID: {word_row['id'] if config['type'] == 'postgresql' else word_row[0]}")
+            print(f"✅ Word found: {word} ({language} -> {native_language}) with ID: {word_row.get('id')}")
         
-        word_id = word_row['id'] if config['type'] == 'postgresql' else word_row[0]
+        word_id = word_row.get('id')
         
         # Get current values by querying the database directly
         if config['type'] == 'postgresql':
@@ -3081,18 +3095,18 @@ def update_user_word_familiarity_by_word(user_id: int, word: str, language: str,
                 FROM user_word_familiarity
                 WHERE user_id = %s AND word_id = %s
             ''', (user_id, word_id))
-            current_row = result.fetchone()
+            current_row = _coerce_row_to_dict(result.fetchone(), getattr(result, 'description', None))
         else:
             cur = conn.cursor()
-            current_row = cur.execute('''
+            current_row = _coerce_row_to_dict(cur.execute('''
                 SELECT seen_count, correct_count, user_comment
                 FROM user_word_familiarity
                 WHERE user_id = ? AND word_id = ?
-            ''', (user_id, word_id)).fetchone()
+            ''', (user_id, word_id)).fetchone(), getattr(cur, 'description', None))
         
-        seen_count = current_row['seen_count'] if current_row else 0
-        correct_count = current_row['correct_count'] if current_row else 0
-        current_user_comment = current_row['user_comment'] if current_row else ''
+        seen_count = current_row.get('seen_count', 0) if current_row else 0
+        correct_count = current_row.get('correct_count', 0) if current_row else 0
+        current_user_comment = current_row.get('user_comment', '') if current_row else ''
         
         # Use provided user_comment or keep existing one
         final_user_comment = user_comment if user_comment is not None else current_user_comment
