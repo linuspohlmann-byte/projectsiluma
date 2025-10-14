@@ -14,6 +14,7 @@ from server.db import (
     # marketplace ratings
     # legacy level ratings kept above; new marketplace ratings below
     get_localization_entry, upsert_localization_entry, get_all_localization_entries,
+    _coerce_row_to_dict,
 )
 from server.db import (
     get_localization_for_language, get_missing_translations,
@@ -3149,14 +3150,18 @@ def api_get_marketplace_custom_level_groups():
                 ''', (language, native_language, limit, offset))
             
             groups = []
+            description = getattr(cursor, 'description', None)
             for row in cursor.fetchall():
-                group_data = dict(row)
+                group_data = _coerce_row_to_dict(row, description) or {}
+                if not group_data:
+                    continue
                 # Add level count
-                level_count = conn.execute(
+                level_count_row = conn.execute(
                     'SELECT COUNT(*) as count FROM custom_levels WHERE group_id = ?',
                     (group_data['id'],)
                 ).fetchone()
-                group_data['num_levels'] = level_count['count'] if level_count else 0
+                level_count = _coerce_row_to_dict(level_count_row, getattr(conn, 'description', None))
+                group_data['num_levels'] = (level_count or {}).get('count', 0)
                 # Add rating stats
                 try:
                     stats = get_group_rating_stats(group_data['id'])
@@ -3168,15 +3173,16 @@ def api_get_marketplace_custom_level_groups():
                 groups.append(group_data)
             
             # Get total count
-            total_count = conn.execute('''
+            total_count_row = conn.execute('''
                 SELECT COUNT(*) as count FROM custom_level_groups 
                 WHERE status = 'published' AND language = ? AND native_language = ?
             ''', (language, native_language)).fetchone()
+            total_count = _coerce_row_to_dict(total_count_row, getattr(conn, 'description', None))
             
             return jsonify({
                 'success': True,
                 'groups': groups,
-                'total': total_count['count'] if total_count else 0,
+                'total': (total_count or {}).get('count', 0),
                 'limit': limit,
                 'offset': offset
             })
