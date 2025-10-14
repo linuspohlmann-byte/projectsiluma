@@ -760,23 +760,40 @@ def get_group_rating_stats(group_id: int) -> dict:
     conn = get_db_connection()
     try:
         if config['type'] == 'postgresql':
-            row = execute_query(conn, '''
+            cursor_avg = execute_query(conn, '''
                 SELECT AVG(stars) AS avg_stars, COUNT(*) AS cnt FROM custom_level_group_ratings WHERE group_id=%s
-            ''', (group_id,)).fetchone()
-            dist_rows = execute_query(conn, '''
+            ''', (group_id,))
+            avg_description = getattr(cursor_avg, 'description', None)
+            row = cursor_avg.fetchone()
+            cursor_dist = execute_query(conn, '''
                 SELECT stars, COUNT(*) AS c FROM custom_level_group_ratings WHERE group_id=%s GROUP BY stars
-            ''', (group_id,)).fetchall()
+            ''', (group_id,))
+            dist_rows = cursor_dist.fetchall()
+            dist_description = getattr(cursor_dist, 'description', None)
         else:
             cur = conn.cursor()
             row = cur.execute('SELECT AVG(stars) AS avg_stars, COUNT(*) AS cnt FROM custom_level_group_ratings WHERE group_id=?', (group_id,)).fetchone()
+            avg_description = getattr(cur, 'description', None)
             dist_rows = cur.execute('SELECT stars, COUNT(*) AS c FROM custom_level_group_ratings WHERE group_id=? GROUP BY stars', (group_id,)).fetchall()
+            dist_description = getattr(cur, 'description', None)
 
-        avg_val = float(row['avg_stars']) if row and row['avg_stars'] is not None else 0.0
-        cnt_val = int(row['cnt']) if row and row['cnt'] is not None else 0
+        row_dict = _coerce_row_to_dict(row, avg_description) or {}
+        avg_val = float(row_dict.get('avg_stars')) if row_dict.get('avg_stars') is not None else 0.0
+        cnt_val = int(row_dict.get('cnt')) if row_dict.get('cnt') is not None else 0
         dist = {str(i): 0 for i in range(1,6)}
         for r in dist_rows or []:
-            s = int(r['stars']) if isinstance(r, dict) or hasattr(r, '__getitem__') else int(r[0])
-            c = int(r['c']) if isinstance(r, dict) or hasattr(r, '__getitem__') else int(r[1])
+            row_data = _coerce_row_to_dict(r, dist_description)
+            if not row_data:
+                if isinstance(r, dict):
+                    row_data = r
+                else:
+                    continue
+            stars_val = row_data.get('stars')
+            count_val = row_data.get('c')
+            if stars_val is None or count_val is None:
+                continue
+            s = int(stars_val)
+            c = int(count_val)
             if 1 <= s <= 5:
                 dist[str(s)] = c
         return { 'avg': round(avg_val, 2), 'count': cnt_val, 'dist': dist }
