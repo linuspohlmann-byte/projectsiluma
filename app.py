@@ -4374,9 +4374,17 @@ def api_words_learning():
                     GROUP BY COALESCE(uwf.familiarity, 0)
                 """, params)
                 for crow in dist_cursor.fetchall():
-                    fam_key = str(crow['familiarity'] or 0)
-                    stats[fam_key] = crow['count'] or 0
-                    total_count += crow['count'] or 0
+                    # Handle both dict and tuple/list results
+                    if isinstance(crow, dict):
+                        fam_key = str(crow.get('familiarity', 0) or 0)
+                        count = crow.get('count', 0) or 0
+                    elif isinstance(crow, (list, tuple)) and len(crow) >= 2:
+                        fam_key = str(crow[0] or 0)
+                        count = crow[1] or 0
+                    else:
+                        continue
+                    stats[fam_key] = count
+                    total_count += count
                 
                 data_cursor = execute_query(conn, f"""
                     SELECT 
@@ -4428,9 +4436,17 @@ def api_words_learning():
                     GROUP BY COALESCE(uwf.familiarity, 0)
                 """, params)
                 for crow in dist_cursor.fetchall():
-                    fam_key = str(crow['familiarity'] or 0)
-                    stats[fam_key] = crow['count'] or 0
-                    total_count += crow['count'] or 0
+                    # Handle both dict and tuple/list results
+                    if isinstance(crow, dict):
+                        fam_key = str(crow.get('familiarity', 0) or 0)
+                        count = crow.get('count', 0) or 0
+                    elif isinstance(crow, (list, tuple)) and len(crow) >= 2:
+                        fam_key = str(crow[0] or 0)
+                        count = crow[1] or 0
+                    else:
+                        continue
+                    stats[fam_key] = count
+                    total_count += count
                 
                 data_cursor = execute_query(conn, f"""
                     SELECT 
@@ -4461,7 +4477,27 @@ def api_words_learning():
             
             learning_words = []
             for row in rows:
-                accessor = row.get if isinstance(row, dict) else row.__getitem__
+                # Handle both dict and tuple/list results
+                if isinstance(row, dict):
+                    def accessor(key):
+                        return row.get(key)
+                elif isinstance(row, (list, tuple)):
+                    # Map column names to indices based on SELECT order
+                    column_map = {
+                        'word_id': 0, 'word': 1, 'translation': 2, 'language': 3, 'native_language': 4,
+                        'ipa': 5, 'pos': 6, 'cefr': 7, 'example': 8, 'example_native': 9,
+                        'audio_url': 10, 'familiarity': 11, 'seen_count': 12, 'correct_count': 13,
+                        'last_reviewed': 14, 'created_at': 15, 'user_comment': 16
+                    }
+                    def accessor(key):
+                        idx = column_map.get(key, -1)
+                        if idx >= 0 and idx < len(row):
+                            return row[idx]
+                        return None
+                else:
+                    def accessor(key):
+                        return getattr(row, key, None)
+                
                 familiarity = accessor('familiarity') or 0
                 last_reviewed = accessor('last_reviewed') or accessor('created_at')
                 if last_reviewed and hasattr(last_reviewed, 'isoformat'):
