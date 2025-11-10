@@ -4865,12 +4865,52 @@ def api_words_get_many():
                 # SQLite syntax (fallback)
                 cur = conn.cursor()
                 placeholders = ','.join('?' for _ in words)
-                rows = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND language=? AND native_language=?', (*words, language, native_language)).fetchall()
+                result = cur.execute(f'SELECT * FROM words WHERE word IN ({placeholders}) AND language=? AND native_language=?', (*words, language, native_language))
+                rows = result.fetchall()
             
             # Convert to dict with word as key
             word_data_map = {}
             for row in rows:
-                word_data = dict(row)
+                # Handle both dict and tuple/list results
+                if isinstance(row, dict):
+                    word_data = dict(row)
+                elif isinstance(row, (list, tuple)):
+                    # Convert tuple/list to dict using cursor description
+                    if result and hasattr(result, 'description') and result.description:
+                        word_data = {result.description[i][0]: row[i] for i in range(min(len(row), len(result.description)))}
+                    else:
+                        # Fallback: try to get description from cursor
+                        try:
+                            desc = None
+                            if result:
+                                desc = getattr(result, 'description', None)
+                            if not desc and hasattr(conn, 'cursor'):
+                                try:
+                                    temp_cursor = conn.cursor()
+                                    desc = getattr(temp_cursor, 'description', None)
+                                except:
+                                    pass
+                            if desc:
+                                word_data = {desc[i][0]: row[i] for i in range(min(len(row), len(desc)))}
+                            else:
+                                # Last resort: use column names from words table schema
+                                column_names = ['id', 'word', 'translation', 'language', 'native_language', 'ipa', 'pos', 
+                                              'gender', 'plural', 'lemma', 'example', 'example_native', 'audio_url',
+                                              'conj', 'comp', 'synonyms', 'collocations', 'cefr', 'freq_rank', 'tags', 
+                                              'note', 'info', 'created_at', 'updated_at']
+                                word_data = {column_names[i]: row[i] for i in range(min(len(row), len(column_names)))}
+                        except Exception as e:
+                            print(f"⚠️ Warning: Error converting row to dict: {e}")
+                            # If all else fails, create a minimal dict
+                            word_data = {'word': row[1] if len(row) > 1 else '', 'language': row[3] if len(row) > 3 else '', 
+                                       'native_language': row[4] if len(row) > 4 else ''}
+                else:
+                    # Try to convert using _coerce_row_to_dict
+                    from server.db import _coerce_row_to_dict
+                    word_data = _coerce_row_to_dict(row, getattr(result, 'description', None))
+                    if not word_data:
+                        word_data = {}
+                
                 # Parse JSON fields
                 for json_field in ['conj', 'comp', 'synonyms', 'collocations', 'tags', 'info']:
                     if word_data.get(json_field):
@@ -4881,7 +4921,8 @@ def api_words_get_many():
                     else:
                         word_data[json_field] = None
                 
-                word_data_map[word_data['word']] = word_data
+                if 'word' in word_data:
+                    word_data_map[word_data['word']] = word_data
             
             # Convert to list format expected by frontend
             out = []
@@ -4908,8 +4949,15 @@ def api_words_get_many():
             conn.close()
         
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
         print(f"❌ Error in get_many: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"❌ Traceback: {error_trace}")
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'error_type': type(e).__name__
+        }), 500
 
 
 @words_bp.post('/api/word/upsert')
