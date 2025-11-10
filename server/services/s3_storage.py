@@ -5,6 +5,7 @@ Handles uploading and serving audio files from AWS S3
 import os
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
+from boto3.exceptions import S3UploadFailedError
 from typing import Optional
 import logging
 
@@ -71,9 +72,10 @@ class S3AudioStorage:
                     }
                 )
                 logger.info(f"Successfully uploaded {s3_key} to S3 with ACL")
-            except ClientError as acl_error:
+            except (ClientError, S3UploadFailedError) as acl_error:
                 # If ACL fails, try without ACL (bucket might use bucket policy instead)
-                if 'AccessControlListNotSupported' in str(acl_error) or 'InvalidRequest' in str(acl_error):
+                error_str = str(acl_error)
+                if 'AccessControlListNotSupported' in error_str or 'InvalidRequest' in error_str or 'ACL' in error_str:
                     logger.warning(f"ACL not supported for bucket, trying without ACL: {acl_error}")
                     self.s3_client.upload_file(
                         local_file_path, 
