@@ -304,19 +304,45 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     sig = _hl.sha1(f"openai:{model}:{voice}".encode('utf-8')).hexdigest()[:6]
     fname = f"{_slug(word)}__{sig}.mp3"
     fpath = os.path.join(subdir, fname)
+    url_path = f'/media/tts/{lang}/{fname}'
+    
+    # First, check if audio_url already exists in database for this word
+    try:
+        conn = get_db_connection()
+        result = execute_query(conn, 'SELECT audio_url FROM words WHERE word=? AND language=?', (word, lang))
+        row = result.fetchone()
+        if row:
+            if isinstance(row, dict):
+                existing_url = row.get('audio_url')
+            elif isinstance(row, (list, tuple)) and len(row) > 0:
+                existing_url = row[0]
+            else:
+                existing_url = None
+            
+            if existing_url and existing_url.strip():
+                existing_url = existing_url.strip()
+                conn.close()
+                print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
+                return existing_url
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Warning: Could not check DB for existing audio_url: {e}")
+        try:
+            conn.close()
+        except:
+            pass
     
     # Check if S3 is enabled
     if _s3_ready():
         # Check if file exists in S3 first
         if tts_audio_exists(lang, fname, 'tts'):
             # Return local URL - proxy endpoint will load from S3
-            url_path = f'/media/tts/{lang}/{fname}'
             # Update DB with local URL
             try:
                 conn = get_db_connection()
                 now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
-                             (url_path, now, word, lang, lang, ''))
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                             (url_path, now, word, lang))
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -334,8 +360,8 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             try:
                 conn = get_db_connection()
                 now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
-                             (url_path, now, word, lang, lang, ''))
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                             (url_path, now, word, lang))
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -396,8 +422,8 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             try:
                 conn = get_db_connection()
                 now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
-                             (url_path, now, word, lang, lang, ''))
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                             (url_path, now, word, lang))
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -428,8 +454,8 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     try:
         conn = get_db_connection()
         now = datetime.now(UTC).isoformat()
-        execute_query(conn, 'UPDATE words SET audio_url=%s, updated_at=%s WHERE word=%s AND (language=%s OR %s=%s)',
-                     (url_path, now, word, lang, lang, ''))
+        execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                     (url_path, now, word, lang))
         conn.commit()
         conn.close()
     except Exception as e:
