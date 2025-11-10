@@ -4339,8 +4339,12 @@ def api_words_learning():
         from server.db_config import get_database_config, get_db_connection, execute_query
         
         config = get_database_config()
-        conn = get_db_connection()
+        conn = None
         try:
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({'success': False, 'error': 'Failed to connect to database'}), 500
+            
             stats = {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0}
             total_count = 0
             rows = []
@@ -4498,10 +4502,21 @@ def api_words_learning():
                 }
             })
         finally:
-            conn.close()
+            if conn:
+                try:
+                    conn.close()
+                except Exception as close_error:
+                    print(f"⚠️ Error closing connection: {close_error}")
     except Exception as e:
-        print(f"Error getting learning words: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Error getting learning words: {e}")
+        print(f"❌ Traceback: {error_trace}")
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'error_type': type(e).__name__
+        }), 500
 
 @words_bp.get('/api/words/count')
 def api_words_count():

@@ -99,9 +99,11 @@ def get_db_connection():
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as exc:
-        print(f"ERROR: Failed to connect to SQLite: {exc}")
+        error_msg = f"ERROR: Failed to connect to SQLite: {exc}"
+        print(error_msg)
         print(f"ERROR: SQLite path: {config['path']}")
-        raise exc
+        # Re-raise with more context
+        raise ConnectionError(f"Failed to connect to database (SQLite path: {config['path']}): {exc}") from exc
 
 
 def _dict_row(cursor, row):
