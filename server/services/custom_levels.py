@@ -84,7 +84,16 @@ def create_custom_level_group(
                 ),
             )
             row = result.fetchone()
-            group_id = row["id"] if row else None
+            # Handle both dict and tuple/list results
+            if row:
+                if isinstance(row, dict):
+                    group_id = row.get('id')
+                elif isinstance(row, (list, tuple)) and len(row) > 0:
+                    group_id = row[0]
+                else:
+                    group_id = None
+            else:
+                group_id = None
         else:
             # SQLite syntax
             cursor = conn.execute(
