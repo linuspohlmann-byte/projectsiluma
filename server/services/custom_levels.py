@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 from server.db import get_db, upsert_word_row, _coerce_row_to_dict
-from server.db import create_custom_level_groups_table, create_custom_levels_table
 from server.db_config import get_database_config, get_db_connection, execute_query
 from server.services.llm import (
     llm_generate_sentences,
@@ -38,13 +37,6 @@ def create_custom_level_group(
     num_levels: int = 10,
 ) -> Optional[int]:
     """Create a new custom level group"""
-    # Failsafe: ensure required tables exist (idempotent)
-    try:
-        create_custom_level_groups_table()
-        create_custom_levels_table()
-    except Exception as _e:
-        print(f"Warning: ensure tables failed (will try insert anyway): {_e}")
-    
     config = get_database_config()
     conn = get_db_connection()
     try:
@@ -117,24 +109,48 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
         topics = []
         
         for i in range(1, num_levels + 1):
-            # Get previous topics for story context
-            previous_topics = [topic for _, topic in topics]
-            
-            topic = suggest_topic(language, native_language, cefr_level, context_description, i, previous_topics)
-            topics.append((i, topic))
-            print(f"✅ Generated topic for level {i}: {topic}")
+            try:
+                # Get previous topics for story context
+                previous_topics = [topic for _, topic in topics]
+                
+                topic = suggest_topic(language, native_language, cefr_level, context_description, i, previous_topics)
+                if not topic:
+                    print(f"⚠️ Warning: suggest_topic returned None for level {i}, using fallback")
+                    topic = f"{context_description} - Level {i}"
+                topics.append((i, topic))
+                print(f"✅ Generated topic for level {i}: {topic}")
+            except Exception as e:
+                import traceback
+                print(f"❌ Error generating topic for level {i}: {e}")
+                print(f"❌ Traceback: {traceback.format_exc()}")
+                # Use fallback topic
+                topic = f"{context_description} - Level {i}"
+                topics.append((i, topic))
+                print(f"✅ Using fallback topic for level {i}: {topic}")
         
         # Step 2: Generate titles sequentially for story progression
         print("📝 Generating titles sequentially for story progression...")
         titles = []
         
         for i, topic in topics:
-            # Get all topics and previous titles for story context in title generation
-            all_topics = [t for _, t in topics]
-            previous_titles = [t for _, t in titles]
-            title = suggest_level_title(language, native_language, topic, i, cefr_level, context_description, all_topics, previous_titles)
-            titles.append((i, title))
-            print(f"✅ Generated title for level {i}: {title}")
+            try:
+                # Get all topics and previous titles for story context in title generation
+                all_topics = [t for _, t in topics]
+                previous_titles = [t for _, t in titles]
+                title = suggest_level_title(language, native_language, topic, i, cefr_level, context_description, all_topics, previous_titles)
+                if not title:
+                    print(f"⚠️ Warning: suggest_level_title returned None for level {i}, using fallback")
+                    title = f"Level {i}: {topic}"
+                titles.append((i, title))
+                print(f"✅ Generated title for level {i}: {title}")
+            except Exception as e:
+                import traceback
+                print(f"❌ Error generating title for level {i}: {e}")
+                print(f"❌ Traceback: {traceback.format_exc()}")
+                # Use fallback title
+                title = f"Level {i}: {topic}"
+                titles.append((i, title))
+                print(f"✅ Using fallback title for level {i}: {title}")
         
         # Sort by level number
         topics.sort(key=lambda x: x[0])
@@ -164,7 +180,10 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
         return True
         
     except Exception as e:
-        print(f"Error generating custom levels: {e}")
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Error generating custom levels: {e}")
+        print(f"❌ Traceback: {error_trace}")
         return False
 
 def generate_custom_levels_original(group_id: int, language: str, native_language: str, 

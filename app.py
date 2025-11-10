@@ -2260,24 +2260,6 @@ def api_create_custom_level_group():
         if num_levels < 1 or num_levels > 20:
             return jsonify({'success': False, 'error': 'Number of levels must be between 1 and 20'}), 400
         
-        # Prevent duplicates by (user_id, language, group_name)
-        try:
-            conn = get_db()
-            cur = conn.execute(
-                "SELECT id FROM custom_level_groups WHERE user_id = ? AND language = ? AND group_name = ?",
-                (user_id, language, group_name)
-            )
-            row = cur.fetchone()
-            if row and (row.get('id') if isinstance(row, dict) else (row[0] if row else None)):
-                return jsonify({
-                    'success': False,
-                    'error': 'A level group with this name already exists for this language',
-                    'code': 'duplicate_group'
-                }), 409
-        except Exception:
-            # If the duplicate check fails, continue; insertion may still succeed or give a clear DB error
-            pass
-        
         # Create the level group
         group_id = create_custom_level_group(
             user_id=user_id,
@@ -2292,49 +2274,37 @@ def api_create_custom_level_group():
         if not group_id:
             return jsonify({'success': False, 'error': 'Failed to create level group'}), 500
         
-        # Generate AI-powered levels in background to avoid request 500s on slow/failed generation
-        try:
-            import threading
-            def _bg_generate():
-                try:
-                    generate_custom_levels(
-                        group_id=group_id,
-                        language=language,
-                        native_language=native_language,
-                        context_description=context_description,
-                        cefr_level=cefr_level,
-                        num_levels=num_levels
-                    )
-                except Exception as _e:
-                    try:
-                        print(f"Background generation failed for group {group_id}: {_e}")
-                    except Exception:
-                        pass
-            threading.Thread(target=_bg_generate, daemon=True).start()
-        except Exception:
-            # If background thread fails to start, fall back to inline generation (best effort)
-            try:
-                generate_custom_levels(
-                    group_id=group_id,
-                    language=language,
-                    native_language=native_language,
-                    context_description=context_description,
-                    cefr_level=cefr_level,
-                    num_levels=num_levels
-                )
-            except Exception:
-                # Keep the group even if generation failed; client can trigger manual generation
-                pass
+        # Generate AI-powered levels
+        success = generate_custom_levels(
+            group_id=group_id,
+            language=language,
+            native_language=native_language,
+            context_description=context_description,
+            cefr_level=cefr_level,
+            num_levels=num_levels
+        )
+        
+        if not success:
+            # Clean up the group if level generation failed
+            delete_custom_level_group(group_id, user_id)
+            return jsonify({'success': False, 'error': 'Failed to generate levels'}), 500
         
         return jsonify({
             'success': True,
             'group_id': group_id,
-            'message': f'Custom level group "{group_name}" created. Levels are being generated in the background.'
+            'message': f'Custom level group "{group_name}" created successfully with {num_levels} levels'
         })
         
     except Exception as e:
-        print(f"Error creating custom level group: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Error creating custom level group: {e}")
+        print(f"❌ Traceback: {error_trace}")
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'error_type': type(e).__name__
+        }), 500
 
 @custom_levels_bp.get('/api/custom-level-groups')
 @require_auth()

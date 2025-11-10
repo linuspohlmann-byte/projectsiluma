@@ -1,4 +1,4 @@
-import os, json, math, urllib.request
+import os, json, math, urllib.request, urllib.error
 from typing import List, Dict
 from .cache import cached_enrichment
 OPENAI_KEY  = os.environ.get('OPENAI_API_KEY')
@@ -9,7 +9,22 @@ def _http_json(url, payload, headers):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode('utf-8'))
-    except Exception:
+    except urllib.error.HTTPError as e:
+        print(f"❌ HTTP Error in _http_json: {e.code} - {e.reason}")
+        try:
+            error_body = e.read().decode('utf-8')
+            print(f"❌ Error response body: {error_body[:500]}")
+        except:
+            pass
+        return None
+    except urllib.error.URLError as e:
+        print(f"❌ URL Error in _http_json: {e.reason}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON Decode Error in _http_json: {e}")
+        return None
+    except Exception as e:
+        print(f"❌ Unexpected error in _http_json: {type(e).__name__}: {e}")
         return None
 
 def _http_binary(url, payload, headers):
@@ -344,7 +359,14 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
             }
             headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
             data = _http_json(f'{OPENAI_BASE}/chat/completions', payload_llm, headers)
-            text = (data or {}).get('choices', [{}])[0].get('message', {}).get('content', '')
+            if not data or not isinstance(data, dict):
+                print(f"⚠️ Warning: _http_json returned invalid data for topic generation (level {level})")
+                return f"{base_topic} - Level {level}"
+            choices = data.get('choices', [])
+            if not choices or not isinstance(choices, list) or len(choices) == 0:
+                print(f"⚠️ Warning: No choices in LLM response for topic generation (level {level})")
+                return f"{base_topic} - Level {level}"
+            text = choices[0].get('message', {}).get('content', '')
             topic = (text or '').strip().strip('"').strip("'").replace('\n',' ').strip()
             if topic and len(topic) > 48:
                 topic = topic[:48].rsplit(' ',1)[0]
@@ -472,7 +494,14 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
                         }
                         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
                         data = _http_json(f'{OPENAI_BASE}/chat/completions', payload_llm, headers)
-                        text = (data or {}).get('choices', [{}])[0].get('message', {}).get('content', '')
+                        if not data or not isinstance(data, dict):
+                            print(f"⚠️ Warning: _http_json returned invalid data for topic translation (level {level_num})")
+                            return mapped_topic
+                        choices = data.get('choices', [])
+                        if not choices or not isinstance(choices, list) or len(choices) == 0:
+                            print(f"⚠️ Warning: No choices in LLM response for topic translation (level {level_num})")
+                            return mapped_topic
+                        text = choices[0].get('message', {}).get('content', '')
                         translated = (text or '').strip().strip('"').strip("'").replace('\n',' ').strip()
                         if translated and len(translated) > 48:
                             translated = translated[:48].rsplit(' ',1)[0]
@@ -506,7 +535,14 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
         }
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
         data = _http_json(f'{OPENAI_BASE}/chat/completions', payload_llm, headers)
-        text = (data or {}).get('choices', [{}])[0].get('message', {}).get('content', '')
+        if not data or not isinstance(data, dict):
+            print(f"⚠️ Warning: _http_json returned invalid data for topic generation (fallback)")
+            return (allowed[0] if allowed else 'Alltag')
+        choices = data.get('choices', [])
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            print(f"⚠️ Warning: No choices in LLM response for topic generation (fallback)")
+            return (allowed[0] if allowed else 'Alltag')
+        text = choices[0].get('message', {}).get('content', '')
         topic = (text or '').strip().strip('"').strip("'").replace('\n',' ').strip()
         if topic and len(topic) > 48:
             topic = topic[:48].rsplit(' ',1)[0]
@@ -579,7 +615,14 @@ def suggest_level_title(target_lang: str, native_lang: str, topic: str, level: i
         }
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
         data = _http_json(f'{OPENAI_BASE}/chat/completions', payload_llm, headers)
-        text = (data or {}).get('choices', [{}])[0].get('message', {}).get('content', '')
+        if not data or not isinstance(data, dict):
+            print(f"⚠️ Warning: _http_json returned invalid data for level title generation (level {level})")
+            return f"{topic}" if topic and topic.lower() not in ['level 1', 'level 2', 'level 3', 'level 4', 'level 5'] else f"Level {level}"
+        choices = data.get('choices', [])
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            print(f"⚠️ Warning: No choices in LLM response for level title generation (level {level})")
+            return f"{topic}" if topic and topic.lower() not in ['level 1', 'level 2', 'level 3', 'level 4', 'level 5'] else f"Level {level}"
+        text = choices[0].get('message', {}).get('content', '')
         title = (text or '').strip().strip('"').strip("'").replace('\n',' ').strip()
         if title and len(title) > 60:
             title = title[:60].rsplit(' ',1)[0]
