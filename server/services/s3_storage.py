@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class S3AudioStorage:
     def __init__(self):
-        self.bucket_name = os.environ.get('S3_BUCKET_NAME', 'projectsiluma')
+        self.bucket_name = os.environ.get('S3_BUCKET_NAME', 'siluma-audio-files')
         self.region = os.environ.get('AWS_DEFAULT_REGION', 'eu-central-1')
         
         # Check if S3 credentials are available
@@ -58,14 +58,15 @@ class S3AudioStorage:
             return None
             
         try:
-            # Upload file to S3
+            # Upload file to S3 with public read access
             self.s3_client.upload_file(
                 local_file_path, 
                 self.bucket_name, 
                 s3_key,
                 ExtraArgs={
                     'ContentType': 'audio/mpeg',
-                    'CacheControl': 'max-age=31536000'  # 1 year cache
+                    'CacheControl': 'max-age=31536000',  # 1 year cache
+                    'ACL': 'public-read'  # Make file publicly accessible
                 }
             )
             
@@ -82,32 +83,6 @@ class S3AudioStorage:
             return None
         except Exception as e:
             logger.error(f"Unexpected error uploading {s3_key}: {e}")
-            return None
-    
-    def upload_audio_bytes(self, audio_bytes: bytes, s3_key: str, content_type: str = 'audio/mpeg') -> Optional[str]:
-        """
-        Upload raw audio bytes to S3 and return public URL.
-        This avoids writing temporary files to local disk.
-        """
-        if not self.s3_client:
-            logger.error("S3 client not initialized")
-            return None
-        try:
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=s3_key,
-                Body=audio_bytes,
-                ContentType=content_type,
-                CacheControl='max-age=31536000'
-            )
-            public_url = f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{s3_key}"
-            logger.info(f"Successfully uploaded {s3_key} to S3 (bytes)")
-            return public_url
-        except ClientError as e:
-            logger.error(f"Failed to upload (bytes) {s3_key} to S3: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error uploading (bytes) {s3_key}: {e}")
             return None
     
     def file_exists(self, s3_key: str) -> bool:
@@ -183,13 +158,6 @@ def upload_tts_audio(local_file_path: str, language: str, filename: str, audio_t
     """
     s3_key = f"media/{audio_type}/{language}/{filename}"
     return s3_storage.upload_audio_file(local_file_path, s3_key)
-
-def upload_tts_audio_bytes(audio_bytes: bytes, language: str, filename: str, audio_type: str = 'tts') -> Optional[str]:
-    """
-    Upload TTS audio bytes directly to S3 (no local temp file).
-    """
-    s3_key = f"media/{audio_type}/{language}/{filename}"
-    return s3_storage.upload_audio_bytes(audio_bytes, s3_key, content_type='audio/mpeg')
 
 def get_tts_audio_url(language: str, filename: str, audio_type: str = 'tts') -> str:
     """

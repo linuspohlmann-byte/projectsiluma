@@ -11,7 +11,7 @@ from typing import List, Dict
 from .llm import _http_binary, OPENAI_KEY, OPENAI_BASE
 from server.db import get_db
 from .cache import cached_tts
-from .s3_storage import upload_tts_audio, get_tts_audio_url, tts_audio_exists, upload_tts_audio_bytes
+from .s3_storage import upload_tts_audio, get_tts_audio_url, tts_audio_exists
 import concurrent.futures
 import threading
 
@@ -265,14 +265,6 @@ def _s3_ready() -> bool:
         print(f"⚠️ S3 readiness check failed: {e}")
         return False
 
-def _s3_only() -> bool:
-    """
-    If True, do not write any local audio files; return failure if S3 upload is not possible.
-    Controlled by env S3_ONLY_AUDIO=true/1/yes.
-    """
-    v = str(os.environ.get('S3_ONLY_AUDIO', '')).strip().lower()
-    return v in ('1', 'true', 'yes', 'on')
-
 def _slug(s: str) -> str:
     return ''.join(c.lower() if c.isalnum() else '-' for c in s).strip('-') or 'word'
 
@@ -378,9 +370,11 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     except Exception as e:
         print(f"❌ OpenAI TTS API error for '{word}': {e}")
         return None
-    # Prefer uploading bytes to S3 to avoid local file creation
+    with open(fpath,'wb') as f: f.write(audio)
+    
+    # Upload to S3 if enabled, otherwise use local URL
     if _s3_ready():
-        s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts')
+        s3_url = upload_tts_audio(fpath, lang, fname, 'tts')
         if s3_url:
             # Update DB with S3 URL
             try:
@@ -390,29 +384,33 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
                 conn.commit(); conn.close()
             except Exception:
                 pass
+            # Optionally remove local file to save space
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
             return s3_url
         else:
-            print(f"⚠️ S3 upload (bytes) failed for '{word}'")
-            if _s3_only():
-                # Strict mode: do not write locally
-                return None
-    # Fallback to local file system (only if allowed)
-    if not _s3_only():
-        try:
-            with open(fpath,'wb') as f: f.write(audio)
-        except Exception as e:
-            print(f"❌ Failed to write local audio file '{fpath}': {e}")
+            # S3 is enabled but upload failed - this is an error condition
+            # Don't fall back to local file system on Railway
+            print(f"❌ S3 upload failed for '{word}' - S3 is enabled but upload failed. Cannot use local file system.")
+            # Try to clean up local file
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
             return None
-        url_path = f'/media/tts/{lang}/{fname}'
-        try:
-            conn = get_db(); now = datetime.now(UTC).isoformat()
-            conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
-                         (url_path, now, word, lang, lang))
-            conn.commit(); conn.close()
-        except Exception:
-            pass
-        return url_path
-    return None
+    
+    # Fallback to local file system (only if S3 is NOT enabled)
+    url_path = f'/media/tts/{lang}/{fname}'
+    try:
+        conn = get_db(); now = datetime.now(UTC).isoformat()
+        conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
+                     (url_path, now, word, lang, lang))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+    return url_path
 
 def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3, sentence_contexts: Dict[str, str] = None) -> Dict[str, str]:
     """
@@ -524,25 +522,32 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     except Exception as e:
         print(f"❌ OpenAI TTS API error for sentence: {e}")
         return None
-    # Prefer uploading bytes to S3 to avoid local file creation
+    with open(fpath, 'wb') as f: f.write(audio)
+    
+    # Upload to S3 if enabled, otherwise use local URL
     if _s3_ready():
-        s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts_sentences')
+        s3_url = upload_tts_audio(fpath, lang, fname, 'tts_sentences')
         if s3_url:
+            # Optionally remove local file to save space
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
             return s3_url
         else:
-            print(f"⚠️ S3 upload (bytes) failed for sentence")
-            if _s3_only():
-                return None
-    # Fallback to local file system (only if allowed)
-    if not _s3_only():
-        try:
-            with open(fpath, 'wb') as f: f.write(audio)
-        except Exception as e:
-            print(f"❌ Failed to write local sentence audio '{fpath}': {e}")
+            # S3 is enabled but upload failed - this is an error condition
+            # Don't fall back to local file system on Railway
+            print(f"❌ S3 upload failed for sentence - S3 is enabled but upload failed. Cannot use local file system.")
+            # Try to clean up local file
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
             return None
-        url_path = f"/media/tts_sentences/{lang}/{fname}"
-        return url_path
-    return None
+    
+    # Fallback to local file system (only if S3 is NOT enabled)
+    url_path = f"/media/tts_sentences/{lang}/{fname}"
+    return url_path
 
 def ensure_tts_for_alphabet_letter(letter: str, language: str, instructions: str | None = None) -> str | None:
     """
