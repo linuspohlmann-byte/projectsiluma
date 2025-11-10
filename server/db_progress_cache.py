@@ -215,21 +215,59 @@ def get_custom_level_progress(user_id: int, group_id: int, level_number: int) ->
                 
                 row = result.fetchone()
                 if row:
-                    return {
-                        'total_words': row['total_words'],
-                        'fam_counts': {
-                            0: row['familiarity_0'],
-                            1: row['familiarity_1'],
-                            2: row['familiarity_2'],
-                            3: row['familiarity_3'],
-                            4: row['familiarity_4'],
-                            5: row['familiarity_5']
-                        },
-                        'score': row['score'],
-                        'status': row['status'],
-                        'completed_at': row['completed_at'],
-                        'last_updated': row['last_updated']
-                    }
+                    # Handle both dict and tuple/list results
+                    if isinstance(row, dict):
+                        return {
+                            'total_words': row.get('total_words', 0),
+                            'fam_counts': {
+                                0: row.get('familiarity_0', 0),
+                                1: row.get('familiarity_1', 0),
+                                2: row.get('familiarity_2', 0),
+                                3: row.get('familiarity_3', 0),
+                                4: row.get('familiarity_4', 0),
+                                5: row.get('familiarity_5', 0)
+                            },
+                            'score': row.get('score'),
+                            'status': row.get('status'),
+                            'completed_at': row.get('completed_at'),
+                            'last_updated': row.get('last_updated')
+                        }
+                    elif isinstance(row, (list, tuple)) and len(row) >= 11:
+                        return {
+                            'total_words': row[0] or 0,
+                            'fam_counts': {
+                                0: row[1] or 0,
+                                1: row[2] or 0,
+                                2: row[3] or 0,
+                                3: row[4] or 0,
+                                4: row[5] or 0,
+                                5: row[6] or 0
+                            },
+                            'score': row[7],
+                            'status': row[8],
+                            'completed_at': row[9],
+                            'last_updated': row[10]
+                        }
+                    else:
+                        # Try to convert using _coerce_row_to_dict
+                        from server.db import _coerce_row_to_dict
+                        row_dict = _coerce_row_to_dict(row, getattr(result, 'description', None))
+                        if row_dict:
+                            return {
+                                'total_words': row_dict.get('total_words', 0),
+                                'fam_counts': {
+                                    0: row_dict.get('familiarity_0', 0),
+                                    1: row_dict.get('familiarity_1', 0),
+                                    2: row_dict.get('familiarity_2', 0),
+                                    3: row_dict.get('familiarity_3', 0),
+                                    4: row_dict.get('familiarity_4', 0),
+                                    5: row_dict.get('familiarity_5', 0)
+                                },
+                                'score': row_dict.get('score'),
+                                'status': row_dict.get('status'),
+                                'completed_at': row_dict.get('completed_at'),
+                                'last_updated': row_dict.get('last_updated')
+                            }
             else:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -289,21 +327,62 @@ def get_custom_level_group_progress(user_id: int, group_id: int) -> Dict[int, Di
                 
                 progress_data = {}
                 for row in result.fetchall():
-                    progress_data[row['level_number']] = {
-                        'total_words': row['total_words'],
-                        'fam_counts': {
-                            0: row['familiarity_0'],
-                            1: row['familiarity_1'],
-                            2: row['familiarity_2'],
-                            3: row['familiarity_3'],
-                            4: row['familiarity_4'],
-                            5: row['familiarity_5']
-                        },
-                        'score': row['score'],
-                        'status': row['status'],
-                        'completed_at': row['completed_at'],
-                        'last_updated': row['last_updated']
-                    }
+                    # Handle both dict and tuple/list results
+                    if isinstance(row, dict):
+                        level_num = row.get('level_number')
+                        progress_data[level_num] = {
+                            'total_words': row.get('total_words', 0),
+                            'fam_counts': {
+                                0: row.get('familiarity_0', 0),
+                                1: row.get('familiarity_1', 0),
+                                2: row.get('familiarity_2', 0),
+                                3: row.get('familiarity_3', 0),
+                                4: row.get('familiarity_4', 0),
+                                5: row.get('familiarity_5', 0)
+                            },
+                            'score': row.get('score'),
+                            'status': row.get('status'),
+                            'completed_at': row.get('completed_at'),
+                            'last_updated': row.get('last_updated')
+                        }
+                    elif isinstance(row, (list, tuple)) and len(row) >= 11:
+                        level_num = row[0]
+                        progress_data[level_num] = {
+                            'total_words': row[1] or 0,
+                            'fam_counts': {
+                                0: row[2] or 0,
+                                1: row[3] or 0,
+                                2: row[4] or 0,
+                                3: row[5] or 0,
+                                4: row[6] or 0,
+                                5: row[7] or 0
+                            },
+                            'score': row[8],
+                            'status': row[9],
+                            'completed_at': row[10],
+                            'last_updated': row[11] if len(row) > 11 else None
+                        }
+                    else:
+                        # Try to convert using _coerce_row_to_dict
+                        from server.db import _coerce_row_to_dict
+                        row_dict = _coerce_row_to_dict(row, getattr(result, 'description', None))
+                        if row_dict and row_dict.get('level_number'):
+                            level_num = row_dict.get('level_number')
+                            progress_data[level_num] = {
+                                'total_words': row_dict.get('total_words', 0),
+                                'fam_counts': {
+                                    0: row_dict.get('familiarity_0', 0),
+                                    1: row_dict.get('familiarity_1', 0),
+                                    2: row_dict.get('familiarity_2', 0),
+                                    3: row_dict.get('familiarity_3', 0),
+                                    4: row_dict.get('familiarity_4', 0),
+                                    5: row_dict.get('familiarity_5', 0)
+                                },
+                                'score': row_dict.get('score'),
+                                'status': row_dict.get('status'),
+                                'completed_at': row_dict.get('completed_at'),
+                                'last_updated': row_dict.get('last_updated')
+                            }
             else:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -401,9 +480,19 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
                 
                 found_word_list = []
                 for row in result.fetchall():
-                    familiarity = max(0, min(5, row['familiarity'] or 0))
+                    # Handle both dict and tuple/list results
+                    if isinstance(row, dict):
+                        familiarity = max(0, min(5, row.get('familiarity', 0) or 0))
+                        word = row.get('word', '')
+                    elif isinstance(row, (list, tuple)) and len(row) >= 2:
+                        familiarity = max(0, min(5, row[1] or 0))
+                        word = row[0] if len(row) > 0 else ''
+                    else:
+                        continue
+                    
                     familiarity_counts[familiarity] += 1
-                    found_word_list.append(row['word'])
+                    if word:
+                        found_word_list.append(word)
                 
                 print(f"🔍 cache: found {len(found_word_list)} words in user_word_familiarity table")
                 print(f"🔍 cache: sample found words: {found_word_list[:5]}")

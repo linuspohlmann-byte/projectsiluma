@@ -3733,9 +3733,24 @@ def api_enrich_custom_level_words(group_id, level_number):
                         existing = result.fetchone()
                     else:
                         cur = conn.cursor()
-                        existing = cur.execute('SELECT translation FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language)).fetchone()
+                        result = cur.execute('SELECT translation FROM words WHERE word=? AND language=? AND native_language=?', (word, language, native_language))
+                        existing = result.fetchone()
                     
-                    if existing and existing.get('translation'):
+                    # Handle both dict and tuple/list results
+                    has_translation = False
+                    if existing:
+                        if isinstance(existing, dict):
+                            has_translation = bool(existing.get('translation'))
+                        elif isinstance(existing, (list, tuple)) and len(existing) > 0:
+                            has_translation = bool(existing[0])
+                        else:
+                            # Try to convert using _coerce_row_to_dict
+                            from server.db import _coerce_row_to_dict
+                            existing_dict = _coerce_row_to_dict(existing, getattr(result, 'description', None))
+                            if existing_dict:
+                                has_translation = bool(existing_dict.get('translation'))
+                    
+                    if has_translation:
                         # Word already has translation, skip
                         print(f"Word '{word}' already exists in words table, skipping enrichment")
                         continue
