@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 from server.db import get_db, upsert_word_row, _coerce_row_to_dict
+from server.db import create_custom_level_groups_table, create_custom_levels_table
 from server.db_config import get_database_config, get_db_connection, execute_query
 from server.services.llm import (
     llm_generate_sentences,
@@ -37,6 +38,13 @@ def create_custom_level_group(
     num_levels: int = 10,
 ) -> Optional[int]:
     """Create a new custom level group"""
+    # Failsafe: ensure required tables exist (idempotent)
+    try:
+        create_custom_level_groups_table()
+        create_custom_levels_table()
+    except Exception as _e:
+        print(f"Warning: ensure tables failed (will try insert anyway): {_e}")
+    
     config = get_database_config()
     conn = get_db_connection()
     try:
