@@ -58,31 +58,53 @@ class S3AudioStorage:
             return None
             
         try:
-            # Upload file to S3 with public read access
-            self.s3_client.upload_file(
-                local_file_path, 
-                self.bucket_name, 
-                s3_key,
-                ExtraArgs={
-                    'ContentType': 'audio/mpeg',
-                    'CacheControl': 'max-age=31536000',  # 1 year cache
-                    'ACL': 'public-read'  # Make file publicly accessible
-                }
-            )
+            # Try uploading with ACL first (for older buckets)
+            try:
+                self.s3_client.upload_file(
+                    local_file_path, 
+                    self.bucket_name, 
+                    s3_key,
+                    ExtraArgs={
+                        'ContentType': 'audio/mpeg',
+                        'CacheControl': 'max-age=31536000',  # 1 year cache
+                        'ACL': 'public-read'  # Make file publicly accessible
+                    }
+                )
+                logger.info(f"Successfully uploaded {s3_key} to S3 with ACL")
+            except ClientError as acl_error:
+                # If ACL fails, try without ACL (bucket might use bucket policy instead)
+                if 'AccessControlListNotSupported' in str(acl_error) or 'InvalidRequest' in str(acl_error):
+                    logger.warning(f"ACL not supported for bucket, trying without ACL: {acl_error}")
+                    self.s3_client.upload_file(
+                        local_file_path, 
+                        self.bucket_name, 
+                        s3_key,
+                        ExtraArgs={
+                            'ContentType': 'audio/mpeg',
+                            'CacheControl': 'max-age=31536000'  # 1 year cache
+                        }
+                    )
+                    logger.info(f"Successfully uploaded {s3_key} to S3 without ACL")
+                else:
+                    raise  # Re-raise if it's a different error
             
             # Generate public URL
             public_url = f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{s3_key}"
-            logger.info(f"Successfully uploaded {s3_key} to S3")
+            logger.info(f"✅ Audio file uploaded: {s3_key} -> {public_url}")
             return public_url
             
         except ClientError as e:
-            logger.error(f"Failed to upload {s3_key} to S3: {e}")
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get('Error', {}).get('Message', str(e))
+            logger.error(f"❌ Failed to upload {s3_key} to S3: {error_code} - {error_message}")
             return None
         except FileNotFoundError:
-            logger.error(f"Local file not found: {local_file_path}")
+            logger.error(f"❌ Local file not found: {local_file_path}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error uploading {s3_key}: {e}")
+            logger.error(f"❌ Unexpected error uploading {s3_key}: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def file_exists(self, s3_key: str) -> bool:

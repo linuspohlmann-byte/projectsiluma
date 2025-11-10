@@ -374,8 +374,10 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     
     # Upload to S3 if enabled, otherwise use local URL
     if _s3_ready():
+        print(f"🔵 Uploading TTS audio for '{word}' to S3...")
         s3_url = upload_tts_audio(fpath, lang, fname, 'tts')
         if s3_url:
+            print(f"✅ S3 upload successful for '{word}': {s3_url}")
             # Update DB with S3 URL
             try:
                 conn = get_db(); now = datetime.now(UTC).isoformat()
