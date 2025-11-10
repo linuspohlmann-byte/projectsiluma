@@ -2260,6 +2260,24 @@ def api_create_custom_level_group():
         if num_levels < 1 or num_levels > 20:
             return jsonify({'success': False, 'error': 'Number of levels must be between 1 and 20'}), 400
         
+        # Prevent duplicates by (user_id, language, group_name)
+        try:
+            conn = get_db()
+            cur = conn.execute(
+                "SELECT id FROM custom_level_groups WHERE user_id = ? AND language = ? AND group_name = ?",
+                (user_id, language, group_name)
+            )
+            row = cur.fetchone()
+            if row and (row.get('id') if isinstance(row, dict) else (row[0] if row else None)):
+                return jsonify({
+                    'success': False,
+                    'error': 'A level group with this name already exists for this language',
+                    'code': 'duplicate_group'
+                }), 409
+        except Exception:
+            # If the duplicate check fails, continue; insertion may still succeed or give a clear DB error
+            pass
+        
         # Create the level group
         group_id = create_custom_level_group(
             user_id=user_id,
