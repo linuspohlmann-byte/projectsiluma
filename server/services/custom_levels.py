@@ -37,9 +37,27 @@ def create_custom_level_group(
     num_levels: int = 10,
 ) -> Optional[int]:
     """Create a new custom level group"""
-    config = get_database_config()
-    conn = get_db_connection()
+    import traceback
+    from server.db import create_custom_level_groups_table
+    conn = None
     try:
+        config = get_database_config()
+        print(f"📊 Database config: type={config.get('type')}, url={'set' if config.get('url') else 'not set'}")
+        
+        # Ensure tables exist before inserting
+        try:
+            create_custom_level_groups_table()
+            print("✅ Ensured custom_level_groups table exists")
+        except Exception as table_error:
+            print(f"⚠️ Warning: Could not ensure table exists: {table_error}")
+            # Continue anyway - table might already exist
+        
+        conn = get_db_connection()
+        if not conn:
+            print("❌ Failed to get database connection: conn is None")
+            return None
+        
+        print(f"✅ Database connection established: type={config.get('type')}")
         now = datetime.now(UTC).isoformat()
         
         if config['type'] == 'postgresql':
@@ -89,13 +107,28 @@ def create_custom_level_group(
                 ),
             )
             group_id = cursor.lastrowid
+        
         conn.commit()
+        print(f"✅ Successfully created custom level group with id: {group_id}")
         return group_id
     except Exception as e:
-        print(f"Error creating custom level group: {e}")
+        error_trace = traceback.format_exc()
+        print(f"❌ Error creating custom level group: {e}")
+        print(f"❌ Traceback: {error_trace}")
+        if conn:
+            try:
+                conn.rollback()
+                print("✅ Rolled back transaction")
+            except Exception as rollback_error:
+                print(f"⚠️ Error during rollback: {rollback_error}")
         return None
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+                print("✅ Database connection closed")
+            except Exception as close_error:
+                print(f"⚠️ Error closing connection: {close_error}")
 
 def generate_custom_levels(group_id: int, language: str, native_language: str, 
                           context_description: str, cefr_level: str, num_levels: int) -> bool:
@@ -495,22 +528,58 @@ def update_word_count_for_level(group_id: int, level_number: int, content: Dict[
 
 def save_custom_level(group_id: int, level_number: int, title: str, topic: str, content: Dict[str, Any]) -> bool:
     """Save a custom level to the database"""
-    conn = get_db()
+    import traceback
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    conn = None
     try:
+        config = get_database_config()
+        conn = get_db_connection()
+        if not conn:
+            print(f"❌ Failed to get database connection for saving level {level_number}")
+            return False
+        
         now = datetime.now(UTC).isoformat()
-        conn.execute('''
-            INSERT INTO custom_levels 
-            (group_id, level_number, title, topic, content, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (group_id, level_number, title, topic, json.dumps(content, ensure_ascii=False), now, now))
+        content_json = json.dumps(content, ensure_ascii=False)
+        
+        if config['type'] == 'postgresql':
+            execute_query(
+                conn,
+                """
+                INSERT INTO custom_levels 
+                (group_id, level_number, title, topic, content, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (group_id, level_number) 
+                DO UPDATE SET title = EXCLUDED.title, topic = EXCLUDED.topic, 
+                             content = EXCLUDED.content, updated_at = EXCLUDED.updated_at
+                """,
+                (group_id, level_number, title, topic, content_json, now, now)
+            )
+        else:
+            conn.execute('''
+                INSERT INTO custom_levels 
+                (group_id, level_number, title, topic, content, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (group_id, level_number, title, topic, content_json, now, now))
         
         conn.commit()
+        print(f"✅ Successfully saved custom level {level_number} for group {group_id}")
         return True
     except Exception as e:
-        print(f"Error saving custom level: {e}")
+        error_trace = traceback.format_exc()
+        print(f"❌ Error saving custom level {level_number} for group {group_id}: {e}")
+        print(f"❌ Traceback: {error_trace}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return False
     finally:
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def get_custom_level_groups(user_id: int, language: str = None, native_language: str = None) -> List[Dict[str, Any]]:
     """Get custom level groups for a user with optional language and native_language filtering"""
