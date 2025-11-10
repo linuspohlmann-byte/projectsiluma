@@ -309,22 +309,23 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     if _s3_ready():
         # Check if file exists in S3 first
         if tts_audio_exists(lang, fname, 'tts'):
-            s3_url = get_tts_audio_url(lang, fname, 'tts')
-            # Update DB with S3 URL
+            # Return local URL - proxy endpoint will load from S3
+            url_path = f'/media/tts/{lang}/{fname}'
+            # Update DB with local URL
             try:
                 conn = get_db_connection()
                 now = datetime.now(UTC).isoformat()
                 execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
-                             (s3_url, now, word, lang, lang, ''))
+                             (url_path, now, word, lang, lang, ''))
                 conn.commit()
                 conn.close()
             except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with S3 URL: {e}")
+                print(f"⚠️ Warning: Could not update DB with URL: {e}")
                 try:
                     conn.close()
                 except:
                     pass
-            return s3_url
+            return url_path
     else:
         # Fallback to local file system
         url_path = f'/media/tts/{lang}/{fname}'
@@ -333,7 +334,7 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             try:
                 conn = get_db_connection()
                 now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=%s, updated_at=%s WHERE word=%s AND (language=%s OR %s=%s)',
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
                              (url_path, now, word, lang, lang, ''))
                 conn.commit()
                 conn.close()
@@ -390,16 +391,17 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         s3_url = upload_tts_audio(fpath, lang, fname, 'tts')
         if s3_url:
             print(f"✅ S3 upload successful for '{word}': {s3_url}")
-            # Update DB with S3 URL
+            # Update DB with local URL (proxy endpoint will load from S3)
+            url_path = f'/media/tts/{lang}/{fname}'
             try:
                 conn = get_db_connection()
                 now = datetime.now(UTC).isoformat()
                 execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
-                             (s3_url, now, word, lang, lang, ''))
+                             (url_path, now, word, lang, lang, ''))
                 conn.commit()
                 conn.close()
             except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with S3 URL: {e}")
+                print(f"⚠️ Warning: Could not update DB with URL: {e}")
                 try:
                     conn.close()
                 except:
@@ -409,7 +411,7 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
                 os.remove(fpath)
             except Exception:
                 pass
-            return s3_url
+            return url_path  # Return local URL - proxy endpoint will load from S3
         else:
             # S3 is enabled but upload failed - this is an error condition
             # Don't fall back to local file system on Railway
@@ -554,12 +556,14 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     if _s3_ready():
         s3_url = upload_tts_audio(fpath, lang, fname, 'tts_sentences')
         if s3_url:
+            # Return local URL - proxy endpoint will load from S3
+            url_path = f"/media/tts_sentences/{lang}/{fname}"
             # Optionally remove local file to save space
             try:
                 os.remove(fpath)
             except Exception:
                 pass
-            return s3_url
+            return url_path
         else:
             # S3 is enabled but upload failed - this is an error condition
             # Don't fall back to local file system on Railway

@@ -1,5 +1,5 @@
 import os, json, sqlite3, io, csv
-from flask import Flask, request, jsonify, send_from_directory, Blueprint, g, Response
+from server.services.s3_storage import s3_storage
 from flask_cors import CORS
 from datetime import datetime, UTC
 
@@ -1770,12 +1770,52 @@ def static_passthrough(fname):
 
 @media_bp.get('/media/tts/<lang>/<fname>')
 def serve_tts_audio(lang, fname):
+    # Check if S3 is enabled and file exists in S3
+    if s3_storage.s3_client:
+        s3_key = f"media/tts/{lang}/{fname}"
+        try:
+            # Try to get file from S3
+            s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
+            return Response(
+                stream_with_context(s3_obj['Body'].iter_chunks()),
+                mimetype='audio/mpeg',
+                headers={
+                    'Content-Type': 'audio/mpeg',
+                    'Cache-Control': 'public, max-age=31536000',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        except Exception as e:
+            print(f"⚠️ Could not load {s3_key} from S3, falling back to local: {e}")
+            # Fall through to local file system
+    
+    # Fallback to local file system
     subdir = os.path.join(MEDIA_DIR, 'tts', lang)
     return send_from_directory(subdir, fname)
 
 # Add symmetric route for sentence TTS
 @media_bp.get('/media/tts_sentences/<lang>/<fname>')
 def serve_tts_sentence(lang, fname):
+    # Check if S3 is enabled and file exists in S3
+    if s3_storage.s3_client:
+        s3_key = f"media/tts_sentences/{lang}/{fname}"
+        try:
+            # Try to get file from S3
+            s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
+            return Response(
+                stream_with_context(s3_obj['Body'].iter_chunks()),
+                mimetype='audio/mpeg',
+                headers={
+                    'Content-Type': 'audio/mpeg',
+                    'Cache-Control': 'public, max-age=31536000',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        except Exception as e:
+            print(f"⚠️ Could not load {s3_key} from S3, falling back to local: {e}")
+            # Fall through to local file system
+    
+    # Fallback to local file system
     subdir = os.path.join(MEDIA_DIR, 'tts_sentences', lang)
     return send_from_directory(subdir, fname)
 
