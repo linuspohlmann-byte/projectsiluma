@@ -2292,25 +2292,44 @@ def api_create_custom_level_group():
         if not group_id:
             return jsonify({'success': False, 'error': 'Failed to create level group'}), 500
         
-        # Generate AI-powered levels
-        success = generate_custom_levels(
-            group_id=group_id,
-            language=language,
-            native_language=native_language,
-            context_description=context_description,
-            cefr_level=cefr_level,
-            num_levels=num_levels
-        )
-        
-        if not success:
-            # Clean up the group if level generation failed
-            delete_custom_level_group(group_id, user_id)
-            return jsonify({'success': False, 'error': 'Failed to generate levels'}), 500
+        # Generate AI-powered levels in background to avoid request 500s on slow/failed generation
+        try:
+            import threading
+            def _bg_generate():
+                try:
+                    generate_custom_levels(
+                        group_id=group_id,
+                        language=language,
+                        native_language=native_language,
+                        context_description=context_description,
+                        cefr_level=cefr_level,
+                        num_levels=num_levels
+                    )
+                except Exception as _e:
+                    try:
+                        print(f"Background generation failed for group {group_id}: {_e}")
+                    except Exception:
+                        pass
+            threading.Thread(target=_bg_generate, daemon=True).start()
+        except Exception:
+            # If background thread fails to start, fall back to inline generation (best effort)
+            try:
+                generate_custom_levels(
+                    group_id=group_id,
+                    language=language,
+                    native_language=native_language,
+                    context_description=context_description,
+                    cefr_level=cefr_level,
+                    num_levels=num_levels
+                )
+            except Exception:
+                # Keep the group even if generation failed; client can trigger manual generation
+                pass
         
         return jsonify({
             'success': True,
             'group_id': group_id,
-            'message': f'Custom level group "{group_name}" created successfully with {num_levels} levels'
+            'message': f'Custom level group "{group_name}" created. Levels are being generated in the background.'
         })
         
     except Exception as e:
