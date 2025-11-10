@@ -1831,8 +1831,15 @@ def api_word_tts():
         return jsonify({'success': True, 'audio_url': url_path})
     
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
         print(f"❌ TTS API error: {e}")
-        return jsonify({'success': False, 'error': f'TTS service error: {str(e)}'}), 500
+        print(f"❌ Traceback: {error_trace}")
+        return jsonify({
+            'success': False, 
+            'error': f'TTS service error: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
 
 
 @words_bp.post('/api/sentence/tts')

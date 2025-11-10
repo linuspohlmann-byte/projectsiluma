@@ -9,7 +9,7 @@ import os, json
 from datetime import datetime, UTC
 from typing import List, Dict
 from .llm import _http_binary, OPENAI_KEY, OPENAI_BASE
-from server.db import get_db
+from server.db_config import get_db_connection, execute_query
 from .cache import cached_tts
 from .s3_storage import upload_tts_audio, get_tts_audio_url, tts_audio_exists
 import concurrent.futures
@@ -312,12 +312,18 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             s3_url = get_tts_audio_url(lang, fname, 'tts')
             # Update DB with S3 URL
             try:
-                conn = get_db(); now = datetime.now(UTC).isoformat()
-                conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
-                             (s3_url, now, word, lang, lang))
-                conn.commit(); conn.close()
-            except Exception:
-                pass
+                conn = get_db_connection()
+                now = datetime.now(UTC).isoformat()
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
+                             (s3_url, now, word, lang, lang, ''))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"⚠️ Warning: Could not update DB with S3 URL: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
             return s3_url
     else:
         # Fallback to local file system
@@ -325,12 +331,18 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         if os.path.isfile(fpath):
             # Ensure DB points to the current-version file even if generated earlier
             try:
-                conn = get_db(); now = datetime.now(UTC).isoformat()
-                conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
-                             (url_path, now, word, lang, lang))
-                conn.commit(); conn.close()
-            except Exception:
-                pass
+                conn = get_db_connection()
+                now = datetime.now(UTC).isoformat()
+                execute_query(conn, 'UPDATE words SET audio_url=%s, updated_at=%s WHERE word=%s AND (language=%s OR %s=%s)',
+                             (url_path, now, word, lang, lang, ''))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"⚠️ Warning: Could not update DB with local URL: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
             return url_path
 
     # Determine instruction with correct precedence and always prefix with language reference.
@@ -380,12 +392,18 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             print(f"✅ S3 upload successful for '{word}': {s3_url}")
             # Update DB with S3 URL
             try:
-                conn = get_db(); now = datetime.now(UTC).isoformat()
-                conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
-                             (s3_url, now, word, lang, lang))
-                conn.commit(); conn.close()
-            except Exception:
-                pass
+                conn = get_db_connection()
+                now = datetime.now(UTC).isoformat()
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?=?)',
+                             (s3_url, now, word, lang, lang, ''))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print(f"⚠️ Warning: Could not update DB with S3 URL: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
             # Optionally remove local file to save space
             try:
                 os.remove(fpath)
@@ -406,12 +424,18 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     # Fallback to local file system (only if S3 is NOT enabled)
     url_path = f'/media/tts/{lang}/{fname}'
     try:
-        conn = get_db(); now = datetime.now(UTC).isoformat()
-        conn.execute('UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND (language=? OR ?="")',
-                     (url_path, now, word, lang, lang))
-        conn.commit(); conn.close()
-    except Exception:
-        pass
+        conn = get_db_connection()
+        now = datetime.now(UTC).isoformat()
+        execute_query(conn, 'UPDATE words SET audio_url=%s, updated_at=%s WHERE word=%s AND (language=%s OR %s=%s)',
+                     (url_path, now, word, lang, lang, ''))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Warning: Could not update DB with local URL: {e}")
+        try:
+            conn.close()
+        except:
+            pass
     return url_path
 
 def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3, sentence_contexts: Dict[str, str] = None) -> Dict[str, str]:
