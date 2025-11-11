@@ -423,17 +423,31 @@ async function applyLevelStates(){
     const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
     headers['X-Native-Language'] = nativeLanguage;
     
-    // Create levels parameter string
-    const fetchSet = new Set(levelNumbers);
-    for(const lvl of levelNumbers){
-      if(lvl > 1) fetchSet.add(lvl - 1);
-    }
-    const sortedLevels = Array.from(fetchSet).sort((a,b)=>a-b);
-    const levelsParam = sortedLevels.join(',');
+    let response;
     
-    const response = await fetch(`/api/levels/bulk-stats?levels=${levelsParam}&language=${encodeURIComponent(targetLang)}`, {
-      headers
-    });
+    // Check if we're using custom level groups (from PostgreSQL)
+    if (SELECTED_LEVEL_GROUP && SELECTED_LEVEL_GROUP.id) {
+      // Use custom level groups endpoint (from PostgreSQL)
+      response = await fetch(`/api/custom-levels/${SELECTED_LEVEL_GROUP.id}/bulk-stats`, {
+        headers
+      });
+    } else if (DISABLE_STANDARD_LEVEL_GROUPS) {
+      // Standard levels are disabled - skip API call
+      console.log('Standard level groups disabled, skipping bulk-stats API call');
+      return;
+    } else {
+      // Fallback to standard levels endpoint (for backwards compatibility)
+      const fetchSet = new Set(levelNumbers);
+      for(const lvl of levelNumbers){
+        if(lvl > 1) fetchSet.add(lvl - 1);
+      }
+      const sortedLevels = Array.from(fetchSet).sort((a,b)=>a-b);
+      const levelsParam = sortedLevels.join(',');
+      
+      response = await fetch(`/api/levels/bulk-stats?levels=${levelsParam}&language=${encodeURIComponent(targetLang)}`, {
+        headers
+      });
+    }
     
     if (response.ok) {
       const data = await response.json();
@@ -2400,6 +2414,79 @@ function positionLevelTip(anchor){
   tip.style.top = y + 'px';
 }
 
+// Cache for preloaded tooltip data
+const TOOLTIP_DATA_CACHE = new Map();
+
+// Preload tooltip data for a level (called when cards are rendered or on hover)
+async function preloadTooltipData(lvl) {
+  // Skip if already cached or loading
+  if (TOOLTIP_DATA_CACHE.has(lvl)) {
+    return TOOLTIP_DATA_CACHE.get(lvl);
+  }
+  
+  // Mark as loading
+  const loadingPromise = (async () => {
+    const levelElement = document.querySelector(`[data-level="${lvl}"]`);
+    const tooltipData = {
+      totalWords: 0,
+      completedWords: 0,
+      practiceAvailable: false,
+      loaded: false
+    };
+    
+    // Get level data from cached bulk data
+    let levelData = null;
+    if (levelElement && levelElement.dataset.bulkData) {
+      try {
+        levelData = JSON.parse(levelElement.dataset.bulkData);
+      } catch (error) {
+        if (window.DEBUG) console.log('Error parsing cached bulk data for tooltip preload:', error);
+      }
+    }
+    
+    // Extract word counts from bulk data if available
+    if (levelData) {
+      // Try to get word count from familiarity array
+      if (levelData.familiarity && Array.isArray(levelData.familiarity)) {
+        tooltipData.totalWords = levelData.familiarity.reduce((a, b) => a + (Number(b) || 0), 0);
+        tooltipData.completedWords = Number(levelData.familiarity[5] || 0);
+      } else if (levelData.fam_counts && typeof levelData.fam_counts === 'object') {
+        const counts = levelData.fam_counts;
+        tooltipData.totalWords = [0,1,2,3,4,5].reduce((sum, i) => sum + (Number(counts[i] ?? counts[String(i)] ?? 0)), 0);
+        tooltipData.completedWords = Number(counts[5] ?? counts['5'] ?? 0);
+      } else if (levelData.words_count) {
+        tooltipData.totalWords = Number(levelData.words_count) || 0;
+      }
+    }
+    
+    // Prefetch practice availability (non-blocking)
+    const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+    if (isUserAuthenticated) {
+      try {
+        const targetLang = document.getElementById('target-lang')?.value || 'en';
+        const pr = await fetch('/api/practice/start', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ level:lvl, peek:true, exclude_max:true, language: targetLang })
+        });
+        const pj = await pr.json();
+        if(pj && pj.success){ 
+          const remaining = Number(pj.remaining||pj.total||0); 
+          tooltipData.practiceAvailable = remaining > 0; 
+        }
+      } catch(_) {
+        // Ignore errors - practice availability is optional
+      }
+    }
+    
+    tooltipData.loaded = true;
+    return tooltipData;
+  })();
+  
+  TOOLTIP_DATA_CACHE.set(lvl, loadingPromise);
+  return loadingPromise;
+}
+
 async function updateLevelTipContent(lvl, isDone){
   // Get level data from cached bulk data
   const levelElement = document.querySelector(`[data-level="${lvl}"]`);
@@ -2409,7 +2496,7 @@ async function updateLevelTipContent(lvl, isDone){
     try {
       levelData = JSON.parse(levelElement.dataset.bulkData);
     } catch (error) {
-      console.log('Error parsing cached bulk data for tooltip:', error);
+      if (window.DEBUG) console.log('Error parsing cached bulk data for tooltip:', error);
     }
   }
   
@@ -2447,7 +2534,7 @@ async function updateLevelTipContent(lvl, isDone){
       try {
         prevLevelData = JSON.parse(prevLevelElement.dataset.bulkData);
       } catch (error) {
-        console.log('Error parsing cached bulk data for previous level tooltip:', error);
+        if (window.DEBUG) console.log('Error parsing cached bulk data for previous level tooltip:', error);
       }
     }
     
@@ -2493,60 +2580,31 @@ async function updateLevelTipContent(lvl, isDone){
     difficultyEl.textContent = difficulty;
   }
   
-  // Get words count from level JSON file
+  // Use preloaded tooltip data if available, otherwise try to get from bulk data
   let totalWords = 0;
-  try {
-    const targetLang = document.getElementById('target-lang')?.value || 'en';
-    const response = await fetch(`/api/level/${lvl}/words?language=${encodeURIComponent(targetLang)}`);
-    if(response.ok) {
-      const data = await response.json();
-      if(data.success && data.words) {
-        totalWords = data.words.length;
-      }
-    }
-  } catch(error) {
-    console.log('Error fetching level words:', error);
-  }
-  
-  // Get completed words count from the same source as the table (level stats)
   let completedWords = 0;
-  const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
   
-  // Only show completed words for authenticated users
-  if (isUserAuthenticated) {
-    try {
-      const targetLang = document.getElementById('target-lang')?.value || 'en';
-      
-      // Get auth headers
-      const headers = {};
-      if (window.authManager && window.authManager.isAuthenticated()) {
-        Object.assign(headers, window.authManager.getAuthHeaders());
-      }
-      
-      // Add native language header for unauthenticated users
-      const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
-      headers['X-Native-Language'] = nativeLanguage;
-      
-      const response = await fetch(`/api/level/stats?level=${lvl}&language=${encodeURIComponent(targetLang)}`, {
-        headers
-      });
-      
-      if(response.ok) {
-        const data = await response.json();
-        if(data.success && data.fam_counts) {
-          // Use the same data source as the table: fam_counts[5] for familiarity = 5
-          completedWords = Number(data.fam_counts['5'] || data.fam_counts[5] || 0);
-        }
-      }
-    } catch(error) {
-      console.log('Error fetching completed words count from level stats:', error);
+  // Check preloaded cache first
+  const cachedData = await preloadTooltipData(lvl).catch(() => null);
+  if (cachedData && cachedData.loaded) {
+    totalWords = cachedData.totalWords || 0;
+    completedWords = cachedData.completedWords || 0;
+  } else if (levelData) {
+    // Fallback to bulk data
+    if (levelData.familiarity && Array.isArray(levelData.familiarity)) {
+      totalWords = levelData.familiarity.reduce((a, b) => a + (Number(b) || 0), 0);
+      completedWords = Number(levelData.familiarity[5] || 0);
+    } else if (levelData.fam_counts && typeof levelData.fam_counts === 'object') {
+      const counts = levelData.fam_counts;
+      totalWords = [0,1,2,3,4,5].reduce((sum, i) => sum + (Number(counts[i] ?? counts[String(i)] ?? 0)), 0);
+      completedWords = Number(counts[5] ?? counts['5'] ?? 0);
+    } else if (levelData.words_count) {
+      totalWords = Number(levelData.words_count) || 0;
     }
-  } else {
-    // For unauthenticated users, always show 0 completed words
-    completedWords = 0;
   }
   
   // Get score from level data (user-specific if authenticated, 0 if not)
+  const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
   let levelScore = 0;
   if (isUserAuthenticated && levelData?.user_progress?.score !== undefined) {
     levelScore = Math.round((levelData.user_progress.score || 0) * 100);
@@ -2567,9 +2625,6 @@ async function updateLevelTipContent(lvl, isDone){
   // Update elements with correct data
   if(wordsCount) wordsCount.textContent = totalWords.toString();
   if(completedCount) completedCount.textContent = completedWords.toString();
-  
-  
-  
 }
 
 // updateLevelCardProgress function removed - now handled by _setLevelColorBasedOnLearnedWords
@@ -2768,46 +2823,55 @@ async function openLevelTip(anchor, lvl, isDone){
       }
     }
   }
+  // Use preloaded tooltip data for practice availability if available
   let practiceAvailable = true;
-  const currentLevelElement = document.querySelector(`[data-level="${lvl}"]`);
-  if (currentLevelElement && currentLevelElement.dataset.bulkData) {
-    try {
-      const sj = JSON.parse(currentLevelElement.dataset.bulkData);
-      let famArr = null;
+  const cachedTooltipData = await preloadTooltipData(lvl).catch(() => null);
+  if (cachedTooltipData && cachedTooltipData.loaded) {
+    practiceAvailable = cachedTooltipData.practiceAvailable;
+  } else {
+    // Fallback to checking bulk data
+    const currentLevelElement = document.querySelector(`[data-level="${lvl}"]`);
+    if (currentLevelElement && currentLevelElement.dataset.bulkData) {
+      try {
+        const sj = JSON.parse(currentLevelElement.dataset.bulkData);
+        let famArr = null;
 
-      if (Array.isArray(sj?.familiarity)) {
-        famArr = sj.familiarity;
-      } else if (Array.isArray(sj?.data?.familiarity)) {
-        famArr = sj.data.familiarity;
-      } else if (Array.isArray(sj?.dist)) {
-        famArr = sj.dist;
-      } else if (sj?.familiarity && typeof sj.familiarity === 'object') {
-        famArr = [0,1,2,3,4,5].map(i => Number(sj.familiarity[i] ?? sj.familiarity[String(i)] ?? 0));
-      } else if (sj?.counts && typeof sj.counts === 'object') {
-        famArr = [0,1,2,3,4,5].map(i => Number(sj.counts[i] ?? sj.counts[String(i)] ?? 0));
-      } else if (sj?.data && typeof sj.data === 'object') {
-        famArr = [0,1,2,3,4,5].map(i => Number(sj.data[i] ?? sj.data[String(i)] ?? 0));
-      }
+        if (Array.isArray(sj?.familiarity)) {
+          famArr = sj.familiarity;
+        } else if (Array.isArray(sj?.data?.familiarity)) {
+          famArr = sj.data.familiarity;
+        } else if (Array.isArray(sj?.dist)) {
+          famArr = sj.dist;
+        } else if (sj?.familiarity && typeof sj.familiarity === 'object') {
+          famArr = [0,1,2,3,4,5].map(i => Number(sj.familiarity[i] ?? sj.familiarity[String(i)] ?? 0));
+        } else if (sj?.counts && typeof sj.counts === 'object') {
+          famArr = [0,1,2,3,4,5].map(i => Number(sj.counts[i] ?? sj.counts[String(i)] ?? 0));
+        } else if (sj?.data && typeof sj.data === 'object') {
+          famArr = [0,1,2,3,4,5].map(i => Number(sj.data[i] ?? sj.data[String(i)] ?? 0));
+        }
 
-      if (Array.isArray(famArr) && famArr.length) {
-        const remaining = famArr.slice(0, 5).reduce((a, b) => a + (Number(b) || 0), 0);
-        practiceAvailable = remaining > 0;
+        if (Array.isArray(famArr) && famArr.length) {
+          const remaining = famArr.slice(0, 5).reduce((a, b) => a + (Number(b) || 0), 0);
+          practiceAvailable = remaining > 0;
+        }
+      } catch(e) {
+        if (window.DEBUG) console.warn('Failed to parse cached level stats', e);
       }
-    } catch(e) {
-      console.warn('Failed to parse cached level stats', e);
+    }
+    
+    // If still not determined and user is authenticated, fetch practice availability
+    if (practiceAvailable === true && window.authManager && window.authManager.isAuthenticated()) {
+      try{
+        const pr = await fetch('/api/practice/start', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ level:lvl, peek:true, exclude_max:true, language: currentTargetLang() })
+        });
+        const pj = await pr.json();
+        if(pj && pj.success){ const remaining = Number(pj.remaining||pj.total||0); practiceAvailable = remaining > 0; }
+      }catch(_){}
     }
   }
-  try{
-    if(practiceAvailable === true){
-      const pr = await fetch('/api/practice/start', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ level:lvl, peek:true, exclude_max:true, language: currentTargetLang() })
-      });
-      const pj = await pr.json();
-      if(pj && pj.success){ const remaining = Number(pj.remaining||pj.total||0); practiceAvailable = remaining > 0; }
-    }
-  }catch(_){}
   const title = document.getElementById('lt-title');
   // title.textContent = `Level ${lvl}`; // already set above
   // Only add score chip if title is not fixed
@@ -3232,6 +3296,26 @@ export async function renderLevels(){
     }
 
     host.appendChild(node);
+    
+    // Preload tooltip data in background (non-blocking)
+    preloadTooltipData(levelNumber).catch(() => {});
+    
+    // Prefetch on hover for instant tooltip display
+    let hoverTimeout = null;
+    node.addEventListener('mouseenter', () => {
+      // Clear any existing timeout
+      if (hoverTimeout) clearTimeout(hoverTimeout);
+      // Prefetch after a short delay (100ms) to avoid unnecessary requests on quick mouse movements
+      hoverTimeout = setTimeout(() => {
+        preloadTooltipData(levelNumber).catch(() => {});
+      }, 100);
+    });
+    node.addEventListener('mouseleave', () => {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+        hoverTimeout = null;
+      }
+    });
   }
 
   try{ await debouncedApplyLevelStates(); }catch(_){ }
