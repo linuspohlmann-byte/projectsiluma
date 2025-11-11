@@ -2757,110 +2757,109 @@ async function openLevelTip(anchor, lvl, isDone){
   }
   
   // bevorzugt: per-Level-Stats des VORHERIGEN Levels
-    if(lvl>1){
-      const prevLevelElement = document.querySelector(`[data-level="${lvl - 1}"]`);
-      if (prevLevelElement && prevLevelElement.dataset.bulkData) {
+  if(lvl>1){
+    const prevLevelElement = document.querySelector(`[data-level="${lvl - 1}"]`);
+    if (prevLevelElement && prevLevelElement.dataset.bulkData) {
       try{
-          const prevJs = JSON.parse(prevLevelElement.dataset.bulkData);
+        const prevJs = JSON.parse(prevLevelElement.dataset.bulkData);
         prevOk = !!(prevJs && Number(prevJs.last_score||0) > 0.6);
-        } catch (error) {
-          console.log('Error parsing cached bulk data for previous level:', error);
-        }
+      } catch (error) {
+        console.log('Error parsing cached bulk data for previous level:', error);
       }
     }
-    let practiceAvailable = true;
-    const currentLevelElement = document.querySelector(`[data-level="${lvl}"]`);
-    if (currentLevelElement && currentLevelElement.dataset.bulkData) {
-      try {
-        const sj = JSON.parse(currentLevelElement.dataset.bulkData);
-        let famArr = null;
+  }
+  let practiceAvailable = true;
+  const currentLevelElement = document.querySelector(`[data-level="${lvl}"]`);
+  if (currentLevelElement && currentLevelElement.dataset.bulkData) {
+    try {
+      const sj = JSON.parse(currentLevelElement.dataset.bulkData);
+      let famArr = null;
 
-        if (Array.isArray(sj?.familiarity)) {
-          famArr = sj.familiarity;
-        } else if (Array.isArray(sj?.data?.familiarity)) {
-          famArr = sj.data.familiarity;
-        } else if (Array.isArray(sj?.dist)) {
-          famArr = sj.dist;
-        } else if (sj?.familiarity && typeof sj.familiarity === 'object') {
-          famArr = [0,1,2,3,4,5].map(i => Number(sj.familiarity[i] ?? sj.familiarity[String(i)] ?? 0));
-        } else if (sj?.counts && typeof sj.counts === 'object') {
-          famArr = [0,1,2,3,4,5].map(i => Number(sj.counts[i] ?? sj.counts[String(i)] ?? 0));
-        } else if (sj?.data && typeof sj.data === 'object') {
-          famArr = [0,1,2,3,4,5].map(i => Number(sj.data[i] ?? sj.data[String(i)] ?? 0));
-        }
+      if (Array.isArray(sj?.familiarity)) {
+        famArr = sj.familiarity;
+      } else if (Array.isArray(sj?.data?.familiarity)) {
+        famArr = sj.data.familiarity;
+      } else if (Array.isArray(sj?.dist)) {
+        famArr = sj.dist;
+      } else if (sj?.familiarity && typeof sj.familiarity === 'object') {
+        famArr = [0,1,2,3,4,5].map(i => Number(sj.familiarity[i] ?? sj.familiarity[String(i)] ?? 0));
+      } else if (sj?.counts && typeof sj.counts === 'object') {
+        famArr = [0,1,2,3,4,5].map(i => Number(sj.counts[i] ?? sj.counts[String(i)] ?? 0));
+      } else if (sj?.data && typeof sj.data === 'object') {
+        famArr = [0,1,2,3,4,5].map(i => Number(sj.data[i] ?? sj.data[String(i)] ?? 0));
+      }
 
-        if (Array.isArray(famArr) && famArr.length) {
-          const remaining = famArr.slice(0, 5).reduce((a, b) => a + (Number(b) || 0), 0);
-          practiceAvailable = remaining > 0;
-        }
-      } catch(e) {
-        console.warn('Failed to parse cached level stats', e);
+      if (Array.isArray(famArr) && famArr.length) {
+        const remaining = famArr.slice(0, 5).reduce((a, b) => a + (Number(b) || 0), 0);
+        practiceAvailable = remaining > 0;
       }
+    } catch(e) {
+      console.warn('Failed to parse cached level stats', e);
     }
-    try{
-      if(practiceAvailable === true){
-        const pr = await fetch('/api/practice/start', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ level:lvl, peek:true, exclude_max:true, language: currentTargetLang() })
-        });
-        const pj = await pr.json();
-        if(pj && pj.success){ const remaining = Number(pj.remaining||pj.total||0); practiceAvailable = remaining > 0; }
-      }
-    }catch(_){}
-    const title = document.getElementById('lt-title');
-    // title.textContent = `Level ${lvl}`; // already set above
-    // Only add score chip if title is not fixed
-    if(isCompleted && typeof score === 'number' && !title?.getAttribute('data-fixed-title')){
-      const chip = document.createElement('span'); chip.className='pill ok'; chip.style.marginLeft='8px'; chip.textContent = `Score ${score.toFixed(2)}`; title.appendChild(chip);
+  }
+  try{
+    if(practiceAvailable === true){
+      const pr = await fetch('/api/practice/start', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ level:lvl, peek:true, exclude_max:true, language: currentTargetLang() })
+      });
+      const pj = await pr.json();
+      if(pj && pj.success){ const remaining = Number(pj.remaining||pj.total||0); practiceAvailable = remaining > 0; }
     }
-    if(typeof words === 'number' && !title?.getAttribute('data-fixed-title')){
-      const chip2 = document.createElement('span'); chip2.className='pill'; chip2.style.marginLeft='8px'; chip2.textContent = `Wörter ${words}`; title.appendChild(chip2);
-    }
-    // Buttons removed - no longer needed
-    // if(isCompleted){ document.getElementById('lt-start').style.display='none'; document.getElementById('lt-repeat').style.display=''; }
-    // Buttons removed - no longer needed
-    // const rep = document.getElementById('lt-repeat');
-    // let pbtn = document.getElementById('lt-practice');
-    // if(rep && !pbtn){
-    //   pbtn = document.createElement('button');
-    //   pbtn.id = 'lt-practice';
-    //   pbtn.className = rep.className;
-    //   pbtn.style.marginLeft = '8px';
-    //   pbtn.textContent = window.t ? window.t('buttons.practice', 'Üben') : 'Üben';
-    //   rep.parentNode.insertBefore(pbtn, rep.nextSibling);
-    // }
-    // Buttons removed - no longer needed
-    // if(pbtn){
-    //   pbtn.style.display = isCompleted ? '' : 'none';
-    //  const gatePrev = (!prevOk && lvl>1);
-    //  const gateItems = !practiceAvailable;
-    //  pbtn.disabled = gatePrev || gateItems;
-    //  if(gatePrev) pbtn.title = 'Vorheriges Level mit > 0,6 abschließen';
-    //  else if(gateItems) pbtn.title = window.t ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)') : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
-    //  else pbtn.title = '';
-    //   pbtn.onclick = ()=>{
-    //     const t = (document.getElementById('lt-topic')?.value||'').trim();
-    //     saveLevelTopic(lvl, t);
-    //     document.getElementById('level-tip').style.display='none';
-    //     if(typeof window.startPracticeForLevel === 'function'){
-    //       window.startPracticeForLevel(lvl);
-    //     } else {
-    //       try{ window.showTab && window.showTab('practice'); }catch(_){}
-    //     }
-    //   };
-    // }
-    // Buttons removed - no longer needed
-    // const startBtn = document.getElementById('lt-start');
-    // const repBtn   = document.getElementById('lt-repeat');
-    // if(!prevOk && lvl>1 && !(anchor && anchor.dataset && anchor.dataset.allowStart==='true')){
-    //   if(startBtn){ startBtn.disabled = true; startBtn.title = 'Vorheriges Level mit > 0,6 abschließen'; }
-    //   if(repBtn){   repBtn.disabled   = true; repBtn.title   = 'Vorheriges Level mit > 0,6 abschließen'; }
-    // } else {
-    //   if(startBtn){ startBtn.disabled = false; startBtn.title = ''; }
-    //   if(repBtn){   repBtn.disabled   = false; repBtn.title   = ''; }
-    // }
-  }).catch(()=>{});
+  }catch(_){}
+  const title = document.getElementById('lt-title');
+  // title.textContent = `Level ${lvl}`; // already set above
+  // Only add score chip if title is not fixed
+  if(isCompleted && typeof score === 'number' && !title?.getAttribute('data-fixed-title')){
+    const chip = document.createElement('span'); chip.className='pill ok'; chip.style.marginLeft='8px'; chip.textContent = `Score ${score.toFixed(2)}`; title.appendChild(chip);
+  }
+  if(typeof words === 'number' && !title?.getAttribute('data-fixed-title')){
+    const chip2 = document.createElement('span'); chip2.className='pill'; chip2.style.marginLeft='8px'; chip2.textContent = `Wörter ${words}`; title.appendChild(chip2);
+  }
+  // Buttons removed - no longer needed
+  // if(isCompleted){ document.getElementById('lt-start').style.display='none'; document.getElementById('lt-repeat').style.display=''; }
+  // Buttons removed - no longer needed
+  // const rep = document.getElementById('lt-repeat');
+  // let pbtn = document.getElementById('lt-practice');
+  // if(rep && !pbtn){
+  //   pbtn = document.createElement('button');
+  //   pbtn.id = 'lt-practice';
+  //   pbtn.className = rep.className;
+  //   pbtn.style.marginLeft = '8px';
+  //   pbtn.textContent = window.t ? window.t('buttons.practice', 'Üben') : 'Üben';
+  //   rep.parentNode.insertBefore(pbtn, rep.nextSibling);
+  // }
+  // Buttons removed - no longer needed
+  // if(pbtn){
+  //   pbtn.style.display = isCompleted ? '' : 'none';
+  //  const gatePrev = (!prevOk && lvl>1);
+  //  const gateItems = !practiceAvailable;
+  //  pbtn.disabled = gatePrev || gateItems;
+  //  if(gatePrev) pbtn.title = 'Vorheriges Level mit > 0,6 abschließen';
+  //  else if(gateItems) pbtn.title = window.t ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)') : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
+  //  else pbtn.title = '';
+  //   pbtn.onclick = ()=>{
+  //     const t = (document.getElementById('lt-topic')?.value||'').trim();
+  //     saveLevelTopic(lvl, t);
+  //     document.getElementById('level-tip').style.display='none';
+  //     if(typeof window.startPracticeForLevel === 'function'){
+  //       window.startPracticeForLevel(lvl);
+  //     } else {
+  //       try{ window.showTab && window.showTab('practice'); }catch(_){}
+  //     }
+  //   };
+  // }
+  // Buttons removed - no longer needed
+  // const startBtn = document.getElementById('lt-start');
+  // const repBtn   = document.getElementById('lt-repeat');
+  // if(!prevOk && lvl>1 && !(anchor && anchor.dataset && anchor.dataset.allowStart==='true')){
+  //   if(startBtn){ startBtn.disabled = true; startBtn.title = 'Vorheriges Level mit > 0,6 abschließen'; }
+  //   if(repBtn){   repBtn.disabled   = true; repBtn.title   = 'Vorheriges Level mit > 0,6 abschließen'; }
+  // } else {
+  //   if(startBtn){ startBtn.disabled = false; startBtn.title = ''; }
+  //   if(repBtn){   repBtn.disabled   = false; repBtn.title   = ''; }
+  // }
   // Buttons removed - no longer needed
   // document.getElementById('lt-repeat').onclick = ()=>{
   //   const t = (document.getElementById('topic')?.value||'').trim();
