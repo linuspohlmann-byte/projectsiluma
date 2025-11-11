@@ -1206,6 +1206,12 @@ async function ensureLevelSummary(force = false){
     LEVEL_SUMMARY_LANG = null;
     return LEVEL_SUMMARY_CACHE;
   }
+  // Standard levels are disabled - return empty cache
+  if (DISABLE_STANDARD_LEVEL_GROUPS) {
+    LEVEL_SUMMARY_CACHE = { byLevel: new Map(), raw: null, header: null };
+    LEVEL_SUMMARY_LANG = lang;
+    return LEVEL_SUMMARY_CACHE;
+  }
   if(force || !LEVEL_SUMMARY_CACHE || LEVEL_SUMMARY_LANG !== lang){
     try{
       const response = await fetch(`/api/levels/summary?language=${encodeURIComponent(lang)}`);
@@ -1242,6 +1248,10 @@ function mergeBulkLevels(lang, responseLevels){
 async function ensureBulkDataForLevels(levels){
   const lang = currentTargetLang();
   if(!lang || !Array.isArray(levels) || !levels.length){
+    return LATEST_BULK_RESULT;
+  }
+  // Standard levels are disabled - return empty result
+  if (DISABLE_STANDARD_LEVEL_GROUPS) {
     return LATEST_BULK_RESULT;
   }
   const pending = [];
@@ -2725,17 +2735,28 @@ async function openLevelTip(anchor, lvl, isDone){
   }
   
   
-  fetch(`/api/levels/summary?language=${encodeURIComponent(currentTargetLang())}`).then(r=>r.json()).then(async (js)=>{
-    let prevOk = (lvl===1);
-    let score = null; let words = null;
-    if(js && js.success){
-      const byLevel = new Map((js.levels||[]).map(x=>[x.level, x]));
-      const cur = byLevel.get(lvl);
-      if(cur && (cur.status==='completed' || cur.score != null)){
-        score = (cur.last_score!=null?cur.last_score:cur.score); words = cur.words_count;
+  // Standard levels disabled - skip API call and use default values
+  let prevOk = (lvl===1);
+  let score = null; let words = null;
+  
+  if (!DISABLE_STANDARD_LEVEL_GROUPS) {
+    // Only fetch if standard levels are enabled (they're not, but keeping for completeness)
+    try {
+      const response = await fetch(`/api/levels/summary?language=${encodeURIComponent(currentTargetLang())}`);
+      const js = await response.json();
+      if(js && js.success){
+        const byLevel = new Map((js.levels||[]).map(x=>[x.level, x]));
+        const cur = byLevel.get(lvl);
+        if(cur && (cur.status==='completed' || cur.score != null)){
+          score = (cur.last_score!=null?cur.last_score:cur.score); words = cur.words_count;
+        }
       }
+    } catch(err) {
+      // API endpoint removed - ignore error
     }
-    // bevorzugt: per-Level-Stats des VORHERIGEN Levels
+  }
+  
+  // bevorzugt: per-Level-Stats des VORHERIGEN Levels
     if(lvl>1){
       const prevLevelElement = document.querySelector(`[data-level="${lvl - 1}"]`);
       if (prevLevelElement && prevLevelElement.dataset.bulkData) {

@@ -1,4 +1,5 @@
 // Main bootstrapping for ES modules
+import './debug.js'; // Load debug utilities first
 import { setupTooltipSaveClose, observeTooltipClose } from './ui/tooltip.js';
 import { setNativeDropdownVisible, showTab, observeLevelsVisible, observeEvaluationVisible, ensureLtPractice, renderLevels, showLoader, hideLoader } from './ui/levels.js';
 import { initLesson } from './ui/lesson.js';
@@ -50,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   observeEvaluationVisible();
   ensureLtPractice();
   
-  console.log('🎯 Calling renderLevels...');
+  if (window.DEBUG) console.log('🎯 Calling renderLevels...');
   try {
     renderLevels();
   } catch (error) {
@@ -64,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     const { applyI18n } = await import('./i18n.js');
     applyI18n();
-    console.log('✅ Localization applied');
+    if (window.DEBUG) console.log('✅ Localization applied');
   } catch (error) {
     console.warn('⚠️ Could not apply localization:', error);
   }

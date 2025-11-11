@@ -33,7 +33,23 @@ def _http_binary(url, payload, headers):
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             return resp.read()
-    except Exception:
+    except urllib.error.HTTPError as e:
+        error_body = None
+        try:
+            error_body = e.read().decode('utf-8')
+        except:
+            pass
+        print(f"❌ HTTP Error in _http_binary: {e.code} - {e.reason}")
+        if error_body:
+            print(f"❌ Error response body: {error_body[:500]}")
+        return None
+    except urllib.error.URLError as e:
+        print(f"❌ URL Error in _http_binary: {e.reason}")
+        return None
+    except Exception as e:
+        print(f"❌ Unexpected error in _http_binary: {type(e).__name__}: {e}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
         return None
 
 def llm_generate_sentences(target_lang, native_lang, n=15, topic='daily life', cefr='A2-B1', level_title=''):
@@ -1132,36 +1148,59 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
     enriched_count = 0
     word_hashes = {}
     
+    # OPTIMIZATION: Batch store words instead of individual calls
+    words_to_store_multi_user = []
+    words_to_upsert_old_db = []
+    
     for word, enrichment_data in enriched_results.items():
         if enrichment_data:
-            try:
-                # Store in Multi-User-DB first (primary storage)
-                from server.multi_user_db import db_manager
-                word_hash = db_manager.add_word_to_global(word, language, native_language, enrichment_data)
-                if word_hash:
-                    word_hashes[word] = word_hash
-                    print(f"✅ Stored enriched word '{word}' in Multi-User-DB")
-                
-                # Also store in old DB for backward compatibility
-                from server.db import upsert_word_row
-                upsert_word_row({
-                    'word': word,
-                    'language': language,
-                    'native_language': native_language,
-                    'translation': enrichment_data.get('translation', ''),
-                    'pos': enrichment_data.get('pos', ''),
-                    'ipa': enrichment_data.get('ipa', ''),
-                    'example': enrichment_data.get('example', ''),
-                    'example_native': enrichment_data.get('example_native', ''),
-                    'synonyms': enrichment_data.get('synonyms', []),
-                    'collocations': enrichment_data.get('collocations', []),
-                    'gender': enrichment_data.get('gender', 'none'),
-                    'familiarity': 0
-                })
-                enriched_count += 1
-                
-            except Exception as e:
-                print(f"❌ Error storing enriched word '{word}': {e}")
+            words_to_store_multi_user.append((word, enrichment_data))
+            words_to_upsert_old_db.append({
+                'word': word,
+                'language': language,
+                'native_language': native_language,
+                'translation': enrichment_data.get('translation', ''),
+                'pos': enrichment_data.get('pos', ''),
+                'ipa': enrichment_data.get('ipa', ''),
+                'example': enrichment_data.get('example', ''),
+                'example_native': enrichment_data.get('example_native', ''),
+                'synonyms': enrichment_data.get('synonyms', []),
+                'collocations': enrichment_data.get('collocations', []),
+                'gender': enrichment_data.get('gender', 'none'),
+                'familiarity': 0
+            })
+    
+    # Batch store in Multi-User-DB
+    if words_to_store_multi_user:
+        try:
+            from server.multi_user_db import db_manager
+            for word, enrichment_data in words_to_store_multi_user:
+                try:
+                    word_hash = db_manager.add_word_to_global(word, language, native_language, enrichment_data)
+                    if word_hash:
+                        word_hashes[word] = word_hash
+                        enriched_count += 1
+                        print(f"✅ Stored enriched word '{word}' in Multi-User-DB")
+                except Exception as e:
+                    print(f"❌ Error storing '{word}' in Multi-User-DB: {e}")
+        except Exception as e:
+            print(f"❌ Error in Multi-User-DB batch storage: {e}")
+    
+    # OPTIMIZATION: Batch insert into old DB
+    if words_to_upsert_old_db:
+        try:
+            from server.db import batch_upsert_word_rows
+            batch_upsert_word_rows(words_to_upsert_old_db)
+            print(f"✅ Batch inserted {len(words_to_upsert_old_db)} words into old DB")
+        except Exception as e:
+            print(f"⚠️ Warning: Batch insert failed, falling back to individual inserts: {e}")
+            # Fallback to individual inserts
+            from server.db import upsert_word_row
+            for word_data in words_to_upsert_old_db:
+                try:
+                    upsert_word_row(word_data)
+                except Exception as e2:
+                    print(f"❌ Error inserting word '{word_data.get('word')}': {e2}")
     
     print(f"📚 Batch word enrichment complete: {enriched_count} words enriched and stored in both DB systems")
     

@@ -465,21 +465,122 @@ export async function playOrGenAudio(word, sentenceContext = null){
   }
 
   try{
-    // Prepare request payload with optional sentence context
-    const payload = { word: w, language: lang };
-    if (sentenceContext && sentenceContext.trim()) {
-      payload.sentence = sentenceContext.trim();
+    // First check if we have audio URL in cache (from word enrichment)
+    let audioUrl = null;
+    if (window.cacheGet) {
+      const cached = window.cacheGet(w, lang);
+      if (cached && cached.audio_url && cached.audio_url.trim()) {
+        audioUrl = cached.audio_url.trim();
+      }
     }
     
-    const r = await fetch('/api/word/tts', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    const js = await r.json();
-    if(js?.success && js.audio_url){
-      a.src = js.audio_url; a.style.display='block';
+    // If no cached URL, fetch from API
+    if (!audioUrl) {
+      const payload = { word: w, language: lang };
+      if (sentenceContext && sentenceContext.trim()) {
+        payload.sentence = sentenceContext.trim();
+      }
+      
+      const r = await fetch('/api/word/tts', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const js = await r.json();
+      if(js?.success && js.audio_url){
+        audioUrl = js.audio_url;
+      }
+    }
+    
+    if (audioUrl) {
+      // Check if audio is preloaded for instant playback
+      if (window.audioPreloadCache && window.audioPreloadCache.has(audioUrl)) {
+        const preloaded = window.audioPreloadCache.get(audioUrl);
+        if (preloaded && preloaded !== 'loading' && preloaded !== null) {
+          // Use preloaded audio element for instant playback
+          try {
+            preloaded.currentTime = 0;
+            await preloaded.play();
+            return;
+          } catch (e) {
+            // Fall through to regular playback if preloaded fails
+            if (window.DEBUG) console.warn('Preloaded audio play failed, falling back:', e);
+          }
+        }
+      }
+      
+      // Regular playback - ensure audio is loaded before playing
+      // Create a new audio element to avoid conflicts
+      const audioEl = new Audio();
+      audioEl.preload = 'auto';
+      audioEl.src = audioUrl;
+      a.src = audioUrl; // Also set on the tooltip element for compatibility
+      a.style.display='block';
       if(a.dataset) a.dataset.word = w;
-      try{ await a.play(); }catch(_){}
+      
+      // Wait for audio to be ready before playing
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            if (window.DEBUG) console.error('❌ Audio load timeout:', audioUrl);
+            reject(new Error('Audio load timeout'));
+          }, 5000);
+          audioEl.addEventListener('canplaythrough', () => {
+            clearTimeout(timeout);
+            resolve();
+          }, { once: true });
+          audioEl.addEventListener('loadeddata', () => {
+            clearTimeout(timeout);
+            resolve();
+          }, { once: true });
+          audioEl.addEventListener('error', (e) => {
+            clearTimeout(timeout);
+            const error = audioEl.error;
+            let errorMsg = 'Unknown error';
+            if (error) {
+              switch(error.code) {
+                case error.MEDIA_ERR_ABORTED:
+                  errorMsg = 'MEDIA_ERR_ABORTED - User aborted';
+                  break;
+                case error.MEDIA_ERR_NETWORK:
+                  errorMsg = 'MEDIA_ERR_NETWORK - Network error (possibly CORS)';
+                  break;
+                case error.MEDIA_ERR_DECODE:
+                  errorMsg = 'MEDIA_ERR_DECODE - Decode error (corrupted file)';
+                  break;
+                case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                  errorMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED - Format not supported or CORS blocked';
+                  break;
+                default:
+                  errorMsg = `Error code ${error.code}`;
+              }
+            }
+            if (window.DEBUG) console.error('❌ Audio load error:', errorMsg, 'URL:', audioUrl, 'Error details:', error);
+            reject(new Error(errorMsg));
+          }, { once: true });
+        });
+        audioEl.currentTime = 0;
+        await audioEl.play();
+        if (window.DEBUG) console.log('✅ Word audio playing:', audioUrl);
+      } catch (e) {
+        if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
+          if (window.DEBUG) console.log('🔇 Audio play blocked by browser policy, waiting for user interaction');
+          // User interaction required - audio will play on next click
+          const playOnClick = () => {
+            document.removeEventListener('click', playOnClick, true);
+            if (audioEl && audioEl.src === audioUrl) {
+              audioEl.currentTime = 0;
+              audioEl.play().then(() => {
+                if (window.DEBUG) console.log('✅ Word audio playing after user interaction');
+              }).catch(err => {
+                if (window.DEBUG) console.error('❌ Audio play failed after user interaction:', err);
+              });
+            }
+          };
+          document.addEventListener('click', playOnClick, { once: true, capture: true });
+        } else {
+          if (window.DEBUG) console.error('❌ Audio play failed:', e, 'URL:', audioUrl, 'Error name:', e.name, 'Error message:', e.message);
+        }
+      }
     }
   }catch(_){};
 }

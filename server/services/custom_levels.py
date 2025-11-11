@@ -681,8 +681,13 @@ def get_custom_level(group_id: int, level_number: int, user_id: int = None) -> O
     finally:
         conn.close()
 
-def get_custom_levels_for_group(group_id: int) -> List[Dict[str, Any]]:
-    """Get all levels for a custom level group with optimized word hash handling"""
+def get_custom_levels_for_group(group_id: int, group_info: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Get all levels for a custom level group with optimized word hash handling
+    
+    Args:
+        group_id: The custom level group ID
+        group_info: Optional pre-fetched group info to avoid redundant query
+    """
     conn = get_db()
     try:
         cursor = conn.execute('''
@@ -693,8 +698,9 @@ def get_custom_levels_for_group(group_id: int) -> List[Dict[str, Any]]:
         
         levels = []
         
-        # Get group info for language/native_language
-        group_info = get_custom_level_group(group_id, None)
+        # OPTIMIZATION: Only fetch group info if not provided
+        if group_info is None:
+            group_info = get_custom_level_group(group_id, None)
         
         description = getattr(cursor, 'description', None)
         for row in cursor.fetchall():
@@ -860,6 +866,9 @@ def batch_enrich_words_for_custom_levels(words: List[str], language: str, native
         new_word_hashes = {}
         enriched_count = 0
         
+        # OPTIMIZATION: Collect all words to batch insert into old DB
+        words_to_upsert = []
+        
         for word, enrichment_data in enriched_results.items():
             if enrichment_data and enrichment_data.get('translation'):
                 try:
@@ -870,9 +879,8 @@ def batch_enrich_words_for_custom_levels(words: List[str], language: str, native
                         enriched_count += 1
                         print(f"✅ Stored enriched word '{word}' in Multi-User-DB")
                     
-                    # Also store in old DB for backward compatibility
-                    from server.db import upsert_word_row
-                    upsert_word_row({
+                    # Collect for batch insert into old DB (backward compatibility)
+                    words_to_upsert.append({
                         'word': word,
                         'language': language,
                         'native_language': native_language,
@@ -889,6 +897,22 @@ def batch_enrich_words_for_custom_levels(words: List[str], language: str, native
                     
                 except Exception as e:
                     print(f"❌ Error storing enriched word '{word}' in Multi-User-DB: {e}")
+        
+        # OPTIMIZATION: Batch insert all words into old DB at once
+        if words_to_upsert:
+            try:
+                from server.db import batch_upsert_word_rows
+                batch_upsert_word_rows(words_to_upsert)
+                print(f"✅ Batch inserted {len(words_to_upsert)} words into old DB")
+            except Exception as e:
+                print(f"⚠️ Warning: Batch insert failed, falling back to individual inserts: {e}")
+                # Fallback to individual inserts if batch fails
+                from server.db import upsert_word_row
+                for word_data in words_to_upsert:
+                    try:
+                        upsert_word_row(word_data)
+                    except Exception as e2:
+                        print(f"❌ Error inserting word '{word_data.get('word')}': {e2}")
         
         # Combine existing and new word hashes
         all_word_hashes = {**existing_word_hashes, **new_word_hashes}
@@ -1551,6 +1575,9 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
             if sentences:
                 # Process sentences into items
                 items = []
+                sentences_needing_translation = []
+                sentence_indices_needing_translation = []
+                
                 for idx, sentence_data in enumerate(sentences, 1):
                     if isinstance(sentence_data, dict):
                         text_target = sentence_data.get('sentence', '')
@@ -1561,23 +1588,33 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
                         text_native_ref = ""
                         words = text_target.split()
                     
-                    # Generate translation if missing
+                    # Collect sentences that need translation for batch processing
                     if not text_native_ref and text_target:
-                        try:
-                            from server.services.llm import llm_translate_batch
-                            translations = llm_translate_batch([text_target], native_language, language)
-                            if translations and len(translations) > 0:
-                                text_native_ref = translations[0]
-                        except Exception as e:
-                            print(f"Error generating translation for '{text_target}': {e}")
+                        sentences_needing_translation.append(text_target)
+                        sentence_indices_needing_translation.append(len(items))
                     
                     item = {
                         "idx": idx,
                         "text_target": text_target,
-                        "text_native_ref": text_native_ref,
+                        "text_native_ref": text_native_ref,  # Will be filled in batch below
                         "words": words
                     }
                     items.append(item)
+                
+                # OPTIMIZATION: Batch translate all missing translations at once
+                if sentences_needing_translation:
+                    try:
+                        from server.services.llm import llm_translate_batch
+                        translations = llm_translate_batch(sentences_needing_translation, native_language, language)
+                        if translations and len(translations) == len(sentences_needing_translation):
+                            # Update items with translations
+                            for i, translation in enumerate(translations):
+                                item_idx = sentence_indices_needing_translation[i]
+                                items[item_idx]['text_native_ref'] = translation
+                        else:
+                            print(f"⚠️ Translation batch returned {len(translations) if translations else 0} results, expected {len(sentences_needing_translation)}")
+                    except Exception as e:
+                        print(f"Error generating batch translations: {e}")
                 
                 # Update content with generated sentences
                 content['items'] = items

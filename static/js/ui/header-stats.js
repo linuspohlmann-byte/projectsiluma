@@ -75,7 +75,7 @@ export function initHeaderStats() {
     if (targetLangSelect && targetLangSelect.value) {
       currentLanguage = targetLangSelect.value;
     }
-    console.log('📊 Initial header stats update - language:', currentLanguage, 'authenticated:', isUserAuthenticated);
+    if (window.DEBUG) console.log('📊 Initial header stats update - language:', currentLanguage, 'authenticated:', isUserAuthenticated);
     updateStats(true); // Force update on initialization
   }, 100);
 }
@@ -89,21 +89,23 @@ export async function updateStats(force = false) {
   // Update authentication state before proceeding
   if (window.authManager) {
     isUserAuthenticated = window.authManager.isAuthenticated();
-    console.log('🔍 UpdateStats auth debug - sessionToken:', !!window.authManager.sessionToken);
-    console.log('🔍 UpdateStats auth debug - currentUser:', !!window.authManager.currentUser);
-    console.log('🔍 UpdateStats auth debug - isAuthenticated result:', isUserAuthenticated);
+    if (window.DEBUG) {
+      console.log('🔍 UpdateStats auth debug - sessionToken:', !!window.authManager.sessionToken);
+      console.log('🔍 UpdateStats auth debug - currentUser:', !!window.authManager.currentUser);
+      console.log('🔍 UpdateStats auth debug - isAuthenticated result:', isUserAuthenticated);
+    }
   }
   
   // Batch multiple update requests
   if (!force && statsUpdatePending) {
-    console.log('📊 Stats update batched - combining with pending update');
+    if (window.DEBUG) console.log('📊 Stats update batched - combining with pending update');
     return;
   }
   
   // Throttle updates to prevent excessive API calls
   const now = Date.now();
   if (!force && (now - lastStatsUpdate) < STATS_UPDATE_THROTTLE) {
-    console.log('📊 Stats update throttled - too frequent');
+    if (window.DEBUG) console.log('📊 Stats update throttled - too frequent');
     return;
   }
   

@@ -11,13 +11,12 @@ from typing import List, Dict
 from .llm import _http_binary, OPENAI_KEY, OPENAI_BASE
 from server.db_config import get_db_connection, execute_query
 from .cache import cached_tts
-from .s3_storage import upload_tts_audio, get_tts_audio_url, tts_audio_exists
+from .s3_storage import upload_tts_audio, upload_tts_audio_bytes, get_tts_audio_url, tts_audio_exists
 import concurrent.futures
 import threading
 
-APP_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MEDIA_DIR = os.path.join(APP_ROOT, 'media')
-os.makedirs(os.path.join(MEDIA_DIR, 'tts'), exist_ok=True)
+# S3 is required - no local disk storage
+# All audio files must be stored in S3
 
 # Per-language TTS configuration via environment overrides
 # Prefer OPENAI_TTS_MODEL_<LANG> and OPENAI_TTS_VOICE_<LANG> if set, else fall back to global defaults
@@ -268,12 +267,7 @@ def _s3_ready() -> bool:
 def _slug(s: str) -> str:
     return ''.join(c.lower() if c.isalnum() else '-' for c in s).strip('-') or 'word'
 
-def _audio_url_to_path(url_path: str) -> str | None:
-    if not url_path or not url_path.startswith('/media/tts/'): return None
-    parts = url_path.strip('/').split('/')
-    if len(parts) != 4: return None
-    lang, fname = parts[2], parts[3]
-    return os.path.join(MEDIA_DIR, 'tts', lang, fname)
+# Removed _audio_url_to_path - no local disk storage
 
 @cached_tts(ttl=86400)  # Cache for 24 hours (audio files don't change)
 def ensure_tts_for_word(word: str, language: str, instructions: str | None = None, context: str = 'word', sentence_context: str | None = None) -> str | None:
@@ -296,14 +290,17 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     if not _openai_ready():
         print(f"⚠️ OpenAI not ready - TTS unavailable for '{word}'")
         return None
+    
+    # S3 is REQUIRED - fail if not available
+    if not _s3_ready():
+        print(f"❌ S3 is not configured - TTS requires S3 storage. Cannot generate audio for '{word}'")
+        return None
+    
     lang = (language or 'en').lower()
-    subdir = os.path.join(MEDIA_DIR, 'tts', lang)
-    os.makedirs(subdir, exist_ok=True)
     model, voice, has_lang_voice = _pick_tts_config(lang)
-    import hashlib as _hl
-    sig = _hl.sha1(f"openai:{model}:{voice}".encode('utf-8')).hexdigest()[:6]
+    import hashlib
+    sig = hashlib.sha1(f"openai:{model}:{voice}".encode('utf-8')).hexdigest()[:6]
     fname = f"{_slug(word)}__{sig}.mp3"
-    fpath = os.path.join(subdir, fname)
     url_path = f'/media/tts/{lang}/{fname}'
     
     # First, check if audio_url already exists in database for this word
@@ -322,8 +319,80 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             if existing_url and existing_url.strip():
                 existing_url = existing_url.strip()
                 conn.close()
-                print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
-                return existing_url
+                # If URL is already an S3 URL, return it directly
+                if existing_url.startswith('https://') and 's3' in existing_url:
+                    print(f"✅ Found existing S3 audio_url in DB for '{word}' ({lang}): {existing_url}")
+                    return existing_url
+                # If S3 is enabled and URL is local path, try to convert to S3 URL
+                if _s3_ready() and existing_url.startswith('/media/tts/'):
+                    parts = existing_url.strip('/').split('/')
+                    if len(parts) == 4:
+                        lang_part, fname = parts[2], parts[3]
+                        # Check if file exists in S3
+                        if tts_audio_exists(lang_part, fname, 'tts'):
+                            s3_url = get_tts_audio_url(lang_part, fname, 'tts')
+                            print(f"✅ Found existing audio_url in DB for '{word}' ({lang}), converted to S3 URL: {s3_url}")
+                            # Update DB with S3 URL for future use
+                            try:
+                                conn = get_db_connection()
+                                now = datetime.now(UTC).isoformat()
+                                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                                             (s3_url, now, word, lang))
+                                conn.commit()
+                                conn.close()
+                            except Exception as e:
+                                print(f"⚠️ Warning: Could not update DB with S3 URL: {e}")
+                                try:
+                                    conn.close()
+                                except:
+                                    pass
+                            return s3_url
+                        else:
+                            # File with exact name doesn't exist - try to find any file for this word
+                            # The filename format is: {slug(word)}__{hash}.mp3
+                            # Try to find files matching the word slug (hash might be different)
+                            word_slug = _slug(word)
+                            try:
+                                from .s3_storage import s3_storage
+                                s3_prefix = f"media/tts/{lang_part}/"
+                                # List objects with this prefix
+                                response = s3_storage.s3_client.list_objects_v2(
+                                    Bucket=s3_storage.bucket_name,
+                                    Prefix=s3_prefix
+                                )
+                                if 'Contents' in response:
+                                    for obj in response['Contents']:
+                                        obj_key = obj['Key']
+                                        obj_fname = obj_key.split('/')[-1]
+                                        # Check if filename starts with word slug
+                                        if obj_fname.startswith(f"{word_slug}__") and obj_fname.endswith('.mp3'):
+                                            # Found a matching file - use it
+                                            s3_url = s3_storage.get_public_url(obj_key)
+                                            print(f"✅ Found audio file in S3 for '{word}' ({lang}) with different hash: {obj_fname} -> {s3_url}")
+                                            # Update DB with correct S3 URL
+                                            try:
+                                                conn = get_db_connection()
+                                                now = datetime.now(UTC).isoformat()
+                                                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                                                             (s3_url, now, word, lang))
+                                                conn.commit()
+                                                conn.close()
+                                            except Exception as e:
+                                                print(f"⚠️ Warning: Could not update DB with S3 URL: {e}")
+                                                try:
+                                                    conn.close()
+                                                except:
+                                                    pass
+                                            return s3_url
+                            except Exception as e:
+                                print(f"⚠️ Warning: Could not search S3 for audio file: {e}")
+                            
+                            print(f"⚠️ Audio file '{fname}' not found in S3 for '{word}' ({lang}), will regenerate")
+                            # File doesn't exist in S3, fall through to regenerate
+                else:
+                    # Not an S3 URL and not a local path - return as-is (might be external URL)
+                    print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
+                    return existing_url
         conn.close()
     except Exception as e:
         print(f"⚠️ Warning: Could not check DB for existing audio_url: {e}")
@@ -332,45 +401,26 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         except:
             pass
     
-    # Check if S3 is enabled
-    if _s3_ready():
-        # Check if file exists in S3 first
-        if tts_audio_exists(lang, fname, 'tts'):
-            # Return local URL - proxy endpoint will load from S3
-            # Update DB with local URL
+    # Check if file exists in S3
+    if tts_audio_exists(lang, fname, 'tts'):
+        # Return direct S3 URL for faster access (CDN)
+        s3_url = get_tts_audio_url(lang, fname, 'tts')
+        # Update DB with local URL path for compatibility (but return S3 URL)
+        try:
+            conn = get_db_connection()
+            now = datetime.now(UTC).isoformat()
+            execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                         (url_path, now, word, lang))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"⚠️ Warning: Could not update DB with URL: {e}")
             try:
-                conn = get_db_connection()
-                now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                             (url_path, now, word, lang))
-                conn.commit()
                 conn.close()
-            except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with URL: {e}")
-                try:
-                    conn.close()
-                except:
-                    pass
-            return url_path
-    else:
-        # Fallback to local file system
-        url_path = f'/media/tts/{lang}/{fname}'
-        if os.path.isfile(fpath):
-            # Ensure DB points to the current-version file even if generated earlier
-            try:
-                conn = get_db_connection()
-                now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                             (url_path, now, word, lang))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with local URL: {e}")
-                try:
-                    conn.close()
-                except:
-                    pass
-            return url_path
+            except:
+                pass
+        print(f"✅ Found audio in S3 for '{word}' ({lang}), returning direct S3 URL")
+        return s3_url
 
     # Determine instruction with correct precedence and always prefix with language reference.
     instr = _pick_tts_instructions(lang, context)
@@ -389,13 +439,22 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         instr = f"{instr} {context_instruction}"
 
     headers = {'Content-Type':'application/json','Authorization': f'Bearer {OPENAI_KEY}'}
-    payload = {'model': model, 'voice': voice, 'input': word, 'format': 'mp3', 'language': lang}
+    # OpenAI TTS API may not support all language codes
+    # For unsupported languages like Georgian (ka), omit the language parameter
+    # and rely on instructions to guide pronunciation
+    supported_languages = {'en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'sv', 'ru', 'tr', 'pl', 'ar', 'hi', 'zh', 'ja', 'ko', 'th', 'vi', 'id', 'bn', 'ur', 'fa', 'he', 'uk', 'cs', 'sk', 'hu', 'ro', 'bg', 'hr', 'sr', 'sl', 'et', 'lv', 'lt', 'fi', 'no', 'da', 'is', 'sw', 'am', 'yo', 'zu', 'af'}
+    payload = {'model': model, 'voice': voice, 'input': word, 'format': 'mp3'}
+    if lang in supported_languages:
+        payload['language'] = lang
+    # Always include instructions for better pronunciation, especially for unsupported languages
     if _supports_instructions(model) and instr:
         payload['instructions'] = instr
         # For alphabet context, make instructions even more explicit
         if context == 'alphabet':
             payload['instructions'] = f"CRITICAL: You MUST speak in {lang.upper()} language only. {instr}"
             print(f"[TTS DEBUG] Alphabet audio for '{word}' in {lang}: {payload['instructions'][:200]}...")
+    if lang not in supported_languages:
+        print(f"[TTS] Language '{lang}' not in OpenAI's supported list - using instructions only for pronunciation guidance")
     if lang != 'en' and not has_lang_voice:
         try:
             print(f"[TTS] No per-language OpenAI voice for '{lang}'. Using OpenAI default '{voice}'. Accent may be wrong.")
@@ -406,65 +465,52 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         if not audio: 
             print(f"❌ OpenAI TTS API returned no audio for '{word}'")
             return None
+        
+        # Validate that we received valid MP3 data
+        # MP3 files start with either ID3 tag (0x49 0x44 0x33) or MPEG frame sync (0xFF 0xFB or 0xFF 0xF3)
+        if len(audio) < 3:
+            print(f"❌ Audio data too short for '{word}' ({len(audio)} bytes)")
+            return None
+        
+        # Check for MP3 header signatures
+        is_id3 = audio[0:3] == b'ID3'
+        is_mpeg = audio[0:2] == b'\xFF\xFB' or audio[0:2] == b'\xFF\xF3' or audio[0:2] == b'\xFF\xF2'
+        
+        if not (is_id3 or is_mpeg):
+            print(f"⚠️ Warning: Audio data for '{word}' doesn't appear to be valid MP3 (first bytes: {audio[0:10].hex()})")
+            # Still try to upload - might be valid but with different header
+        else:
+            print(f"✅ Validated MP3 data for '{word}' ({len(audio)} bytes)")
     except Exception as e:
         print(f"❌ OpenAI TTS API error for '{word}': {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return None
-    with open(fpath,'wb') as f: f.write(audio)
     
-    # Upload to S3 if enabled, otherwise use local URL
-    if _s3_ready():
-        print(f"🔵 Uploading TTS audio for '{word}' to S3...")
-        s3_url = upload_tts_audio(fpath, lang, fname, 'tts')
-        if s3_url:
-            print(f"✅ S3 upload successful for '{word}': {s3_url}")
-            # Update DB with local URL (proxy endpoint will load from S3)
-            url_path = f'/media/tts/{lang}/{fname}'
-            try:
-                conn = get_db_connection()
-                now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                             (url_path, now, word, lang))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with URL: {e}")
-                try:
-                    conn.close()
-                except:
-                    pass
-            # Optionally remove local file to save space
-            try:
-                os.remove(fpath)
-            except Exception:
-                pass
-            return url_path  # Return local URL - proxy endpoint will load from S3
-        else:
-            # S3 is enabled but upload failed - this is an error condition
-            # Don't fall back to local file system on Railway
-            print(f"❌ S3 upload failed for '{word}' - S3 is enabled but upload failed. Cannot use local file system.")
-            # Try to clean up local file
-            try:
-                os.remove(fpath)
-            except Exception:
-                pass
-            return None
-    
-    # Fallback to local file system (only if S3 is NOT enabled)
-    url_path = f'/media/tts/{lang}/{fname}'
-    try:
-        conn = get_db_connection()
-        now = datetime.now(UTC).isoformat()
-        execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                     (url_path, now, word, lang))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"⚠️ Warning: Could not update DB with local URL: {e}")
+    # Upload directly to S3 (S3 is required - no local disk)
+    print(f"🔵 Uploading TTS audio for '{word}' directly to S3 (from memory)...")
+    s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts')
+    if s3_url:
+        print(f"✅ S3 upload successful for '{word}': {s3_url}")
+        # Update DB with local URL path for compatibility (but return S3 URL for faster access)
+        url_path = f'/media/tts/{lang}/{fname}'
         try:
+            conn = get_db_connection()
+            now = datetime.now(UTC).isoformat()
+            execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                         (url_path, now, word, lang))
+            conn.commit()
             conn.close()
-        except:
-            pass
-    return url_path
+        except Exception as e:
+            print(f"⚠️ Warning: Could not update DB with URL: {e}")
+            try:
+                conn.close()
+            except:
+                pass
+        return s3_url  # Return direct S3 URL for faster CDN access
+    else:
+        print(f"❌ S3 upload failed for '{word}' - S3 is required but upload failed.")
+        return None
 
 def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3, sentence_contexts: Dict[str, str] = None) -> Dict[str, str]:
     """
@@ -531,24 +577,21 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     if not _openai_ready():
         print(f"⚠️ OpenAI not ready - TTS unavailable for sentence")
         return None
+    
+    # S3 is REQUIRED - fail if not available
+    if not _s3_ready():
+        print(f"❌ S3 is not configured - TTS requires S3 storage. Cannot generate audio for sentence")
+        return None
+    
     lang = (language or 'en').lower()
-    subdir = os.path.join(MEDIA_DIR, 'tts_sentences', lang)
-    os.makedirs(subdir, exist_ok=True)
     h = _sha1(f"{lang}:{text}".encode('utf-8')).hexdigest()
     fname = f"{h}.mp3"
-    fpath = os.path.join(subdir, fname)
     
-    # Check if S3 is enabled
-    if _s3_ready():
-        # Check if file exists in S3 first
-        if tts_audio_exists(lang, fname, 'tts_sentences'):
-            s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
-            return s3_url
-    else:
-        # Fallback to local file system
-        url_path = f"/media/tts_sentences/{lang}/{fname}"
-        if os.path.isfile(fpath):
-            return url_path
+    # Check if file exists in S3
+    if tts_audio_exists(lang, fname, 'tts_sentences'):
+        s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
+        print(f"✅ Found sentence audio in S3, returning direct S3 URL")
+        return s3_url
     model, voice, has_lang_voice = _pick_tts_config(lang)
     instr = _pick_tts_instructions(lang, context)
     if isinstance(instructions, str) and instructions.strip():
@@ -560,9 +603,18 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     else:
         instr = f"{langref} {instr}"
     headers = {'Content-Type':'application/json','Authorization': f'Bearer {OPENAI_KEY}'}
-    payload = {'model': model, 'voice': voice, 'input': text, 'format': 'mp3', 'language': lang}
+    # OpenAI TTS API may not support all language codes
+    # For unsupported languages like Georgian (ka), omit the language parameter
+    # and rely on instructions to guide pronunciation
+    supported_languages = {'en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'sv', 'ru', 'tr', 'pl', 'ar', 'hi', 'zh', 'ja', 'ko', 'th', 'vi', 'id', 'bn', 'ur', 'fa', 'he', 'uk', 'cs', 'sk', 'hu', 'ro', 'bg', 'hr', 'sr', 'sl', 'et', 'lv', 'lt', 'fi', 'no', 'da', 'is', 'sw', 'am', 'yo', 'zu', 'af'}
+    payload = {'model': model, 'voice': voice, 'input': text, 'format': 'mp3'}
+    if lang in supported_languages:
+        payload['language'] = lang
+    # Always include instructions for better pronunciation, especially for unsupported languages
     if _supports_instructions(model) and instr:
         payload['instructions'] = instr
+    if lang not in supported_languages:
+        print(f"[TTS] Language '{lang}' not in OpenAI's supported list - using instructions only for pronunciation guidance")
     if lang != 'en' and not has_lang_voice:
         try:
             print(f"[TTS] No per-language OpenAI voice for '{lang}'. Using OpenAI default '{voice}'. Accent may be wrong.")
@@ -570,40 +622,38 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
             pass
     try:
         audio = _http_binary(f'{OPENAI_BASE}/audio/speech', payload, headers)
-        if not audio:
+        if not audio: 
             print(f"❌ OpenAI TTS API returned no audio for sentence")
             return None
+        
+        # Validate that we received valid MP3 data
+        if len(audio) < 3:
+            print(f"❌ Audio data too short for sentence ({len(audio)} bytes)")
+            return None
+        
+        # Check for MP3 header signatures
+        is_id3 = audio[0:3] == b'ID3'
+        is_mpeg = audio[0:2] == b'\xFF\xFB' or audio[0:2] == b'\xFF\xF3' or audio[0:2] == b'\xFF\xF2'
+        
+        if not (is_id3 or is_mpeg):
+            print(f"⚠️ Warning: Audio data for sentence doesn't appear to be valid MP3 (first bytes: {audio[0:10].hex()})")
+        else:
+            print(f"✅ Validated MP3 data for sentence ({len(audio)} bytes)")
     except Exception as e:
         print(f"❌ OpenAI TTS API error for sentence: {e}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return None
-    with open(fpath, 'wb') as f: f.write(audio)
     
-    # Upload to S3 if enabled, otherwise use local URL
-    if _s3_ready():
-        s3_url = upload_tts_audio(fpath, lang, fname, 'tts_sentences')
-        if s3_url:
-            # Return local URL - proxy endpoint will load from S3
-            url_path = f"/media/tts_sentences/{lang}/{fname}"
-            # Optionally remove local file to save space
-            try:
-                os.remove(fpath)
-            except Exception:
-                pass
-            return url_path
-        else:
-            # S3 is enabled but upload failed - this is an error condition
-            # Don't fall back to local file system on Railway
-            print(f"❌ S3 upload failed for sentence - S3 is enabled but upload failed. Cannot use local file system.")
-            # Try to clean up local file
-            try:
-                os.remove(fpath)
-            except Exception:
-                pass
-            return None
-    
-    # Fallback to local file system (only if S3 is NOT enabled)
-    url_path = f"/media/tts_sentences/{lang}/{fname}"
-    return url_path
+    # Upload directly to S3 (S3 is required - no local disk)
+    print(f"🔵 Uploading sentence TTS audio directly to S3 (from memory)...")
+    s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts_sentences')
+    if s3_url:
+        print(f"✅ Sentence audio uploaded to S3, returning direct S3 URL")
+        return s3_url
+    else:
+        print(f"❌ S3 upload failed for sentence - S3 is required but upload failed")
+        return None
 
 def ensure_tts_for_alphabet_letter(letter: str, language: str, instructions: str | None = None) -> str | None:
     """
@@ -631,18 +681,20 @@ def batch_ensure_tts_for_sentences(sentences: List[str], language: str, instruct
     results = {}
     lang = (language or 'en').lower()
     
-    # Check which sentences already have audio
+    # S3 is REQUIRED - fail if not available
+    if not _s3_ready():
+        print(f"❌ S3 is not configured - batch TTS requires S3 storage")
+        return {}
+    
+    # Check which sentences already have audio in S3
     existing_audio = {}
     for sentence in sentences:
         if sentence and sentence.strip():
             h = _sha1(f"{lang}:{sentence}".encode('utf-8')).hexdigest()
             fname = f"{h}.mp3"
-            subdir = os.path.join(MEDIA_DIR, 'tts_sentences', lang)
-            fpath = os.path.join(subdir, fname)
-            url_path = f"/media/tts_sentences/{lang}/{fname}"
             
-            if os.path.isfile(fpath):
-                existing_audio[sentence] = url_path
+            if tts_audio_exists(lang, fname, 'tts_sentences'):
+                existing_audio[sentence] = get_tts_audio_url(lang, fname, 'tts_sentences')
             else:
                 existing_audio[sentence] = None
     
@@ -686,25 +738,28 @@ def batch_ensure_tts_for_words(words: List[str], language: str, sentence_context
     if not _openai_ready() or not words:
         return {}
     
+    # S3 is REQUIRED - fail if not available
+    if not _s3_ready():
+        print(f"❌ S3 is not configured - batch TTS requires S3 storage")
+        return {}
+    
     results = {}
     lang = (language or 'en').lower()
-    subdir = os.path.join(MEDIA_DIR, 'tts', lang)
-    os.makedirs(subdir, exist_ok=True)
     
+    import hashlib
     model, voice, has_lang_voice = _pick_tts_config(lang)
-    sig = _hl.sha1(f"openai:{model}:{voice}".encode('utf-8')).hexdigest()[:6]
+    sig = hashlib.sha1(f"openai:{model}:{voice}".encode('utf-8')).hexdigest()[:6]
     
-    # Check which words already have audio
+    # Check which words already have audio in S3
     existing_audio = {}
     for word in words:
         if word and word.strip():
             word = word.strip()
             fname = f"{_slug(word)}__{sig}.mp3"
-            fpath = os.path.join(subdir, fname)
             url_path = f'/media/tts/{lang}/{fname}'
             
-            if os.path.isfile(fpath):
-                existing_audio[word] = url_path
+            if tts_audio_exists(lang, fname, 'tts'):
+                existing_audio[word] = get_tts_audio_url(lang, fname, 'tts')
             else:
                 existing_audio[word] = None
     
@@ -724,6 +779,7 @@ def batch_ensure_tts_for_words(words: List[str], language: str, sentence_context
                 if sentence_contexts and word in sentence_contexts:
                     sentence_context = sentence_contexts[word]
                 
+                print(f"🎵 Generating audio for word: '{word}' (lang: {language})")
                 audio_url = ensure_tts_for_word(
                     word, 
                     language, 
@@ -732,13 +788,14 @@ def batch_ensure_tts_for_words(words: List[str], language: str, sentence_context
                     sentence_context=sentence_context
                 )
                 if audio_url:
-                    print(f"✅ Generated word audio: {word}")
+                    print(f"✅ Generated word audio: '{word}' -> {audio_url}")
+                else:
+                    print(f"❌ Failed to generate audio for '{word}' - ensure_tts_for_word returned None")
                 return word, audio_url
             except Exception as e:
-                print(f"⚠️ Failed to generate word audio for '{word}': {e}")
-                # Railway fallback: try to generate on-demand or return None gracefully
-                if os.environ.get('RAILWAY_ENVIRONMENT'):
-                    print(f"Railway environment detected - using fallback for '{word}'")
+                print(f"❌ Exception generating word audio for '{word}': {type(e).__name__}: {e}")
+                import traceback
+                print(f"❌ Traceback: {traceback.format_exc()}")
                 return word, None
         
         # Use ThreadPoolExecutor for concurrent TTS generation

@@ -264,6 +264,15 @@ function waitAudioEndOrTimeout(ms=1400){
 // --------- TTS Prefetching helpers for seamless sequential playback ----------
 async function ttsUrlFor(word){
   const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
+  
+  // First check cache
+  if (window.cacheGet) {
+    const cached = window.cacheGet(word, lang);
+    if (cached && cached.audio_url && cached.audio_url.trim()) {
+      return cached.audio_url.trim();
+    }
+  }
+  
   try{
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
@@ -271,8 +280,10 @@ async function ttsUrlFor(word){
     }
     const r = await fetch('/api/word/tts', { method:'POST', headers, body: JSON.stringify({ word, language: lang }) });
     const js = await r.json();
-    if(js && js.success && js.audio_url) return js.audio_url;
-  }catch(_){ }
+    if(js && js.success && js.audio_url) return js.audio_url.trim();
+  }catch(e){
+    if (window.DEBUG) console.warn('ttsUrlFor failed:', e);
+  }
   return '';
 }
 
@@ -330,29 +341,142 @@ async function speakSentenceOnce(text){
   const myGen = ++SPEAK_GEN; // cancelt vorherige Sequenz
   const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
   if(!text || !text.trim()) return;
-  try{
-    const headers = { 'Content-Type': 'application/json' };
-    if (window.authManager && window.authManager.isAuthenticated()) {
-      Object.assign(headers, window.authManager.getAuthHeaders());
-    }
-    const r = await fetch('/api/sentence/tts', {
-      method:'POST', headers,
-      body: JSON.stringify({ text, language: lang })
-    });
-    const js = await r.json();
-    if(js && js.success && js.audio_url && myGen===SPEAK_GEN){
-      let a = window._sentenceAudio;
-      if(!a){ a = new Audio(); a.preload='auto'; window._sentenceAudio = a; }
-      a.src = js.audio_url; a.muted = false; a.currentTime = 0;
-      try{ await a.play(); }
-      catch(e){
-        if(e && (e.name==='NotAllowedError' || e.name==='AbortError')){
-          const once = ()=>{ document.removeEventListener('pointerdown', once, true); a.currentTime=0; a.play().catch(()=>{}); };
-          document.addEventListener('pointerdown', once, true);
+  
+  const cacheKey = `${lang}:${text.trim()}`;
+  let audioUrl = sentenceAudioCache.get(cacheKey);
+  
+  // If not cached, fetch it
+  if (!audioUrl) {
+    try{
+      const headers = { 'Content-Type': 'application/json' };
+      if (window.authManager && window.authManager.isAuthenticated()) {
+        Object.assign(headers, window.authManager.getAuthHeaders());
+      } else {
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
         }
       }
+      const r = await fetch('/api/sentence/tts', {
+        method:'POST', headers,
+        body: JSON.stringify({ text, language: lang })
+      });
+      const js = await r.json();
+      if(js && js.success && js.audio_url) {
+        audioUrl = js.audio_url.trim();
+        sentenceAudioCache.set(cacheKey, audioUrl);
+      } else {
+        return; // Failed to get audio URL
+      }
+    }catch(e){
+      if (window.DEBUG) console.warn('Sentence TTS fetch failed:', e);
+      return;
     }
-  }catch(_){}
+  }
+  
+  if (!audioUrl || myGen !== SPEAK_GEN) return;
+  
+  // Check if audio is preloaded for instant playback
+  let audio = null;
+  if (audioPreloadCache.has(audioUrl)) {
+    const preloaded = audioPreloadCache.get(audioUrl);
+    if (preloaded && preloaded !== 'loading' && preloaded !== null) {
+      audio = preloaded;
+      // Clone the preloaded audio to avoid conflicts
+      try {
+        audio.currentTime = 0;
+        await audio.play();
+        if (window.DEBUG) console.log('✅ Sentence audio playing (preloaded):', audioUrl);
+        return;
+      } catch (e) {
+        if (window.DEBUG) console.warn('Preloaded audio play failed, creating new element:', e);
+        // Fall through to create new audio element
+      }
+    }
+  }
+  
+  // If not preloaded or preloaded failed, create new audio element
+  audio = new Audio();
+  audio.preload = 'auto';
+  audio.muted = false;
+  audio.src = audioUrl;
+  
+  // Wait for audio to be ready before playing
+  try {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (window.DEBUG) console.error('❌ Audio load timeout:', audioUrl);
+        reject(new Error('Audio load timeout'));
+      }, 5000);
+      audio.addEventListener('canplaythrough', () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      audio.addEventListener('error', (e) => {
+        clearTimeout(timeout);
+        const error = audio.error;
+        let errorMsg = 'Unknown error';
+        if (error) {
+          switch(error.code) {
+            case error.MEDIA_ERR_ABORTED:
+              errorMsg = 'MEDIA_ERR_ABORTED - User aborted';
+              break;
+            case error.MEDIA_ERR_NETWORK:
+              errorMsg = 'MEDIA_ERR_NETWORK - Network error (possibly CORS)';
+              break;
+            case error.MEDIA_ERR_DECODE:
+              errorMsg = 'MEDIA_ERR_DECODE - Decode error (corrupted file)';
+              break;
+            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+              errorMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED - Format not supported or CORS blocked';
+              break;
+            default:
+              errorMsg = `Error code ${error.code}`;
+          }
+        }
+        if (window.DEBUG) console.error('❌ Audio load error:', errorMsg, 'URL:', audioUrl, 'Error details:', error);
+        reject(new Error(errorMsg));
+      }, { once: true });
+      // Also listen for loadeddata as a fallback
+      audio.addEventListener('loadeddata', () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+    });
+  } catch (e) {
+    if (window.DEBUG) console.error('❌ Audio load failed:', e, 'URL:', audioUrl);
+    return;
+  }
+  
+  // Play the audio
+  if (myGen === SPEAK_GEN && audio) {
+    try{ 
+      audio.currentTime = 0;
+      await audio.play();
+      if (window.DEBUG) console.log('✅ Sentence audio playing:', audioUrl);
+    }
+    catch(e){
+      if(e && (e.name==='NotAllowedError' || e.name==='AbortError')){
+        if (window.DEBUG) console.log('🔇 Audio play blocked by browser policy, waiting for user interaction');
+        const once = ()=>{ 
+          document.removeEventListener('pointerdown', once, true); 
+          document.removeEventListener('click', once, true);
+          if (audio && myGen === SPEAK_GEN) {
+            audio.currentTime=0; 
+            audio.play().then(() => {
+              if (window.DEBUG) console.log('✅ Sentence audio playing after user interaction');
+            }).catch(err => {
+              if (window.DEBUG) console.error('❌ Audio play failed after user interaction:', err);
+            }); 
+          }
+        };
+        document.addEventListener('pointerdown', once, true);
+        document.addEventListener('click', once, true);
+      } else {
+        if (window.DEBUG) console.error('❌ Audio play failed:', e, 'URL:', audioUrl, 'Error name:', e.name, 'Error message:', e.message);
+      }
+    }
+  }
 }
 
 function setProgress(curr,total){
@@ -562,24 +686,50 @@ async function prefetchWordsForCurrent(it){
   }catch(_){}
 }
 
+// Sentence audio cache
+const sentenceAudioCache = new Map();
+
 async function prewarmSentenceTTS(text){
   const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
   if(!text || !text.trim()) return;
+  
+  const cacheKey = `${lang}:${text.trim()}`;
+  if (sentenceAudioCache.has(cacheKey)) {
+    // Already generated, preload it
+    const audioUrl = sentenceAudioCache.get(cacheKey);
+    if (audioUrl) {
+      preloadAudio(audioUrl).catch(() => {});
+    }
+    return;
+  }
+  
   try{
     const headers = { 'Content-Type': 'application/json' };
     
     // Add authentication header if session token exists
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      Object.assign(headers, window.authManager.getAuthHeaders());
+    } else {
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
     }
     
     const r = await fetch('/api/sentence/tts', {
       method:'POST', headers,
       body: JSON.stringify({ text, language: lang })
     });
-    try{ await r.json(); }catch(_){ }
-  }catch(_){ }
+    const js = await r.json();
+    if(js && js.success && js.audio_url) {
+      const audioUrl = js.audio_url.trim();
+      sentenceAudioCache.set(cacheKey, audioUrl);
+      // Preload for instant playback
+      preloadAudio(audioUrl).catch(() => {});
+    }
+  }catch(e){
+    if (window.DEBUG) console.warn('Sentence TTS prewarm failed:', e);
+  }
 }
 
 function collectWords(it){ return uniqWords(it?.words||[]); }
@@ -682,6 +832,64 @@ async function batchEnrichWords(words, lang, nat, sentence_context, sentence_nat
   }
 }
 
+// Audio preloading cache (exposed globally for tooltip use)
+window.audioPreloadCache = new Map();
+const audioPreloadCache = window.audioPreloadCache;
+
+// Preload audio for instant playback
+async function preloadAudio(audioUrl) {
+  if (!audioUrl || typeof audioUrl !== 'string' || !audioUrl.trim()) return;
+  const trimmedUrl = audioUrl.trim();
+  if (audioPreloadCache.has(trimmedUrl)) return; // Already preloading/preloaded
+  
+  audioPreloadCache.set(trimmedUrl, 'loading');
+  
+  try {
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = trimmedUrl;
+    
+    // Preload the audio file
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Audio preload timeout')), 5000);
+      audio.addEventListener('canplaythrough', () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      audio.addEventListener('error', (e) => {
+        clearTimeout(timeout);
+        reject(e);
+      }, { once: true });
+    });
+    
+    audioPreloadCache.set(trimmedUrl, audio);
+    if (window.DEBUG) console.log(`✅ Audio preloaded: ${trimmedUrl}`);
+  } catch (error) {
+    audioPreloadCache.set(trimmedUrl, null);
+    if (window.DEBUG) console.warn(`⚠️ Audio preload failed: ${trimmedUrl}`, error);
+  }
+}
+
+// Preload audio for multiple words in parallel
+async function preloadWordsAudio(words, lang) {
+  if (!words || words.length === 0) return;
+  
+  const audioUrls = [];
+  for (const word of words) {
+    const cached = cacheGet(word, lang);
+    if (cached && cached.audio_url && cached.audio_url.trim()) {
+      audioUrls.push(cached.audio_url.trim());
+    }
+  }
+  
+  // Preload up to 10 audio files in parallel
+  const batchSize = 10;
+  for (let i = 0; i < audioUrls.length; i += batchSize) {
+    const batch = audioUrls.slice(i, i + batchSize);
+    await Promise.allSettled(batch.map(url => preloadAudio(url)));
+  }
+}
+
 // Enrich only the words for a single item, with smart caching
 async function preEnrichItemBlocking(it){
   try{
@@ -728,8 +936,16 @@ async function preEnrichItemBlocking(it){
       await batchGetWords(needEnrichment, lang);
     }
 
-    // 3) Sicherstellen, dass das Satz-Audio fertig ist
+    // 3) Preload audio for instant playback (non-blocking)
+    preloadWordsAudio(words, lang).catch(() => {});
+
+    // 4) Sicherstellen, dass das Satz-Audio fertig ist und preload it
     await ttsPromise;
+    // Preload sentence audio for instant replay button clicks
+    const sentenceText = String(it?.text_target || '');
+    if (sentenceText.trim()) {
+      prewarmSentenceTTS(sentenceText).catch(() => {});
+    }
   }catch(_){}
 }
 
@@ -757,6 +973,12 @@ async function preEnrichRestBackground(items, excludeIdx){
     items.forEach((it,idx)=>{ if(idx!==excludeIdx){ for(const w of collectWords(it)) set.add(w); } });
     const words = Array.from(set);
     if(!words.length) return;
+    
+    // Preload audio for all words in background (non-blocking)
+    batchGetWords(words, lang).then(() => {
+      preloadWordsAudio(words, lang).catch(() => {});
+    }).catch(() => {});
+    
     const CONC = Math.min(50, Math.max(8, Math.ceil(words.length/8)));
     const queue = words.slice();
     const worker = async ()=>{

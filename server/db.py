@@ -1,6 +1,6 @@
 
 # --- Level run helpers ---
-import os, sqlite3, json, csv, threading
+import os, sqlite3, json, threading
 import random
 import re
 from datetime import datetime, UTC
@@ -305,37 +305,87 @@ def latest_run_id_for_level(level: int) -> int | None:
 
 
 def ensure_words_exist(words: list[str], target_lang: str, native_lang: str) -> None:
+    """Ensure words exist in database - optimized with batch operations"""
     if not words:
         return
     config = get_database_config()
     conn = get_db_connection()
     try:
         now = datetime.now(UTC).isoformat()
+        
+        # Normalize words first
+        normalized_words = []
         for w in words:
-            # Normalize word: trim and remove trailing punctuation/symbols
             if isinstance(w, str):
                 w = re.sub(r'[.!?,;:—–-]+$', '', w.strip())
             else:
                 continue
-            if not w:
-                continue
-            if config['type'] == 'postgresql':
-                # PostgreSQL syntax
-                result = execute_query(conn, 'SELECT 1 FROM words WHERE word=%s AND (language=%s OR %s=\'\')', (w, target_lang, target_lang))
-                if not result.fetchone():
-                    execute_query(conn, '''
-                        INSERT INTO words (word, language, native_language, created_at, updated_at) 
-                        VALUES (%s, %s, %s, %s, %s)
-                    ''', (w, target_lang, native_lang, now, now))
-            else:
-                # SQLite syntax
-                cur = conn.cursor()
-                cur.execute('SELECT 1 FROM words WHERE word=? AND (language=? OR ?="")', (w, target_lang, target_lang))
-                if not cur.fetchone():
+            if w:
+                normalized_words.append(w)
+        
+        if not normalized_words:
+            return
+        
+        if config['type'] == 'postgresql':
+            # Batch check which words already exist
+            cur = conn.cursor()
+            try:
+                # Build query to check all words at once
+                placeholders = ', '.join(['%s'] * len(normalized_words))
+                cur.execute(f'''
+                    SELECT word FROM words 
+                    WHERE word IN ({placeholders}) 
+                    AND (language = %s OR %s = '')
+                ''', normalized_words + [target_lang, target_lang])
+                
+                existing_words = {row[0] if isinstance(row, (list, tuple)) else row.get('word') for row in cur.fetchall()}
+                
+                # Insert only words that don't exist
+                words_to_insert = [w for w in normalized_words if w not in existing_words]
+                
+                if words_to_insert:
+                    # Batch insert using VALUES clause
+                    if len(words_to_insert) == 1:
+                        cur.execute('''
+                            INSERT INTO words (word, language, native_language, created_at, updated_at) 
+                            VALUES (%s, %s, %s, %s, %s)
+                        ''', (words_to_insert[0], target_lang, native_lang, now, now))
+                    else:
+                        # Build bulk INSERT
+                        values_placeholders = ', '.join(['(%s, %s, %s, %s, %s)'] * len(words_to_insert))
+                        params = []
+                        for w in words_to_insert:
+                            params.extend([w, target_lang, native_lang, now, now])
+                        
+                        cur.execute(f'''
+                            INSERT INTO words (word, language, native_language, created_at, updated_at) 
+                            VALUES {values_placeholders}
+                        ''', params)
+            finally:
+                cur.close()
+        else:
+            # SQLite - batch operations
+            cur = conn.cursor()
+            try:
+                placeholders = ', '.join(['?'] * len(normalized_words))
+                existing = cur.execute(f'SELECT word FROM words WHERE word IN ({placeholders}) AND (language=? OR ?="")', normalized_words + [target_lang, target_lang]).fetchall()
+                existing_words = {row[0] for row in existing}
+                words_to_insert = [w for w in normalized_words if w not in existing_words]
+                
+                # OPTIMIZATION: Batch insert instead of individual inserts
+                if words_to_insert:
+                    # Build batch insert query
+                    values_placeholders = ', '.join(['(?,?,?,?,?)'] * len(words_to_insert))
+                    params = []
+                    for w in words_to_insert:
+                        params.extend([w, target_lang, native_lang, now, now])
+                    
                     cur.execute(
-                        'INSERT INTO words (word, language, native_language, created_at, updated_at) VALUES (?,?,?,?,?)',
-                        (w, target_lang, native_lang, now, now)
+                        f'INSERT INTO words (word, language, native_language, created_at, updated_at) VALUES {values_placeholders}',
+                        params
                     )
+            finally:
+                cur.close()
         conn.commit()
     finally:
         conn.close()
@@ -1268,16 +1318,18 @@ def init_db():
         """)
         conn.commit()
         print("init_db: ensured localization table", flush=True)
-        try:
-            execute_query(conn, "ALTER TABLE localization ADD COLUMN IF NOT EXISTS description TEXT;")
-        except Exception as e:
-            print(f"Note: description column migration skipped: {e}")
+        # Skip description column check - it's optional and may cause locks
+        # The column will be added automatically if needed during inserts
+        print("init_db: skipping description column check (optional)", flush=True)
+        print("init_db: committing localization table changes", flush=True)
         conn.commit()
-        print("init_db: about to ensure core localization entries", flush=True)
+        print("init_db: commit complete, about to ensure core localization entries", flush=True)
         ensure_core_localization_entries(conn)
+        print("init_db: ensure_core_localization_entries returned", flush=True)
         conn.commit()
-        trigger_localization_seed_if_needed()
-        print("init_db: localization seed triggered", flush=True)
+        # CSV sync disabled - using PostgreSQL only
+        # trigger_localization_seed_if_needed()
+        print("init_db: core localization entries done (CSV sync disabled)", flush=True)
         
         # Custom level groups table
         execute_query(conn, """
@@ -1677,6 +1729,148 @@ def delete_words_by_ids(ids_int: list[int]) -> int:
     return int(n)
 
 
+def batch_upsert_word_rows(payloads: list[dict]) -> None:
+    """
+    Batch upsert multiple words efficiently.
+    Much faster than calling upsert_word_row individually.
+    """
+    if not payloads:
+        return
+    
+    from datetime import datetime, UTC
+    import json as _json
+    from .db_config import get_database_config, get_db_connection, execute_query
+    
+    config = get_database_config()
+    conn = get_db_connection()
+    now = datetime.now(UTC).isoformat()
+    
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL batch upsert using VALUES and ON CONFLICT
+            values_list = []
+            for payload in payloads:
+                word = (payload.get('word') or '').strip()
+                language = (payload.get('language') or '').strip()
+                native_language = (payload.get('native_language') or '').strip()
+                translation = (payload.get('translation') or '').strip()
+                example = (payload.get('example') or '').strip()
+                example_native = (payload.get('example_native') or '').strip()
+                lemma = (payload.get('lemma') or '').strip()
+                pos = (payload.get('pos') or '').strip()
+                ipa = (payload.get('ipa') or '').strip()
+                audio_url = (payload.get('audio_url') or '').strip()
+                gender = (payload.get('gender') or '').strip()
+                plural = (payload.get('plural') or '').strip()
+                conj = payload.get('conj')
+                comp = payload.get('comp')
+                synonyms = payload.get('synonyms')
+                collocations = payload.get('collocations')
+                cefr = (payload.get('cefr') or '').strip()
+                freq_rank = payload.get('freq_rank')
+                tags = payload.get('tags')
+                note = (payload.get('note') or '').strip()
+                info = payload.get('info')
+                
+                info_json = _json.dumps(info) if isinstance(info, (dict, list)) else (str(info) if info else None)
+                conj_json = _json.dumps(conj, ensure_ascii=False) if isinstance(conj, dict) else (None if conj is None else str(conj))
+                comp_json = _json.dumps(comp, ensure_ascii=False) if isinstance(comp, dict) else (None if comp is None else str(comp))
+                syn_json = _json.dumps(synonyms, ensure_ascii=False) if isinstance(synonyms, list) else (None if synonyms is None else str(synonyms))
+                coll_json = _json.dumps(collocations, ensure_ascii=False) if isinstance(collocations, list) else (None if collocations is None else str(collocations))
+                tags_json = _json.dumps(tags, ensure_ascii=False) if isinstance(tags, list) else (None if tags is None else str(tags))
+                
+                try:
+                    freq_rank = int(freq_rank) if (freq_rank is not None and str(freq_rank).strip()!='') else None
+                except Exception:
+                    freq_rank = None
+                
+                values_list.append((
+                    word, language or None, native_language or None, translation or None, example or None,
+                    example_native or None, lemma or None, pos or None, ipa or None, audio_url or None,
+                    gender or None, plural or None, conj_json, comp_json, syn_json, coll_json,
+                    cefr or None, freq_rank, tags_json, note or None, info_json, now, now
+                ))
+            
+            if values_list:
+                # Use pg8000-compatible batch insert with multiple VALUES clauses
+                cur = conn.cursor()
+                try:
+                    if len(values_list) == 1:
+                        # Single insert
+                        cur.execute('''
+                            INSERT INTO words (
+                                word, language, native_language, translation, example, example_native,
+                                lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                                collocations, cefr, freq_rank, tags, note, info, created_at, updated_at
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (word, language, native_language) 
+                            DO UPDATE SET
+                                translation = COALESCE(EXCLUDED.translation, words.translation),
+                                example = COALESCE(EXCLUDED.example, words.example),
+                                example_native = COALESCE(EXCLUDED.example_native, words.example_native),
+                                lemma = COALESCE(EXCLUDED.lemma, words.lemma),
+                                pos = COALESCE(EXCLUDED.pos, words.pos),
+                                ipa = COALESCE(EXCLUDED.ipa, words.ipa),
+                                audio_url = COALESCE(EXCLUDED.audio_url, words.audio_url),
+                                gender = COALESCE(EXCLUDED.gender, words.gender),
+                                plural = COALESCE(EXCLUDED.plural, words.plural),
+                                conj = COALESCE(EXCLUDED.conj, words.conj),
+                                comp = COALESCE(EXCLUDED.comp, words.comp),
+                                synonyms = COALESCE(EXCLUDED.synonyms, words.synonyms),
+                                collocations = COALESCE(EXCLUDED.collocations, words.collocations),
+                                cefr = COALESCE(EXCLUDED.cefr, words.cefr),
+                                freq_rank = COALESCE(EXCLUDED.freq_rank, words.freq_rank),
+                                tags = COALESCE(EXCLUDED.tags, words.tags),
+                                note = COALESCE(EXCLUDED.note, words.note),
+                                info = COALESCE(EXCLUDED.info, words.info),
+                                updated_at = EXCLUDED.updated_at
+                        ''', values_list[0])
+                    else:
+                        # Batch insert - build VALUES clause with multiple tuples
+                        values_placeholders = ', '.join(['(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'] * len(values_list))
+                        params = []
+                        for val_tuple in values_list:
+                            params.extend(val_tuple)
+                        
+                        cur.execute(f'''
+                            INSERT INTO words (
+                                word, language, native_language, translation, example, example_native,
+                                lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                                collocations, cefr, freq_rank, tags, note, info, created_at, updated_at
+                            ) VALUES {values_placeholders}
+                            ON CONFLICT (word, language, native_language) 
+                            DO UPDATE SET
+                                translation = COALESCE(EXCLUDED.translation, words.translation),
+                                example = COALESCE(EXCLUDED.example, words.example),
+                                example_native = COALESCE(EXCLUDED.example_native, words.example_native),
+                                lemma = COALESCE(EXCLUDED.lemma, words.lemma),
+                                pos = COALESCE(EXCLUDED.pos, words.pos),
+                                ipa = COALESCE(EXCLUDED.ipa, words.ipa),
+                                audio_url = COALESCE(EXCLUDED.audio_url, words.audio_url),
+                                gender = COALESCE(EXCLUDED.gender, words.gender),
+                                plural = COALESCE(EXCLUDED.plural, words.plural),
+                                conj = COALESCE(EXCLUDED.conj, words.conj),
+                                comp = COALESCE(EXCLUDED.comp, words.comp),
+                                synonyms = COALESCE(EXCLUDED.synonyms, words.synonyms),
+                                collocations = COALESCE(EXCLUDED.collocations, words.collocations),
+                                cefr = COALESCE(EXCLUDED.cefr, words.cefr),
+                                freq_rank = COALESCE(EXCLUDED.freq_rank, words.freq_rank),
+                                tags = COALESCE(EXCLUDED.tags, words.tags),
+                                note = COALESCE(EXCLUDED.note, words.note),
+                                info = COALESCE(EXCLUDED.info, words.info),
+                                updated_at = EXCLUDED.updated_at
+                        ''', params)
+                finally:
+                    cur.close()
+        else:
+            # SQLite - fallback to individual inserts (SQLite doesn't support efficient batch upsert)
+            for payload in payloads:
+                upsert_word_row(payload)
+        
+        conn.commit()
+    finally:
+        conn.close()
+
 def upsert_word_row(payload: dict) -> None:
     word = (payload.get('word') or '').strip()
     language = (payload.get('language') or '').strip()
@@ -1823,229 +2017,17 @@ def _pg_aggregate_localization_rows(rows: list[Dict[str, Any]]) -> Dict[str, Dic
 
 
 def seed_postgres_localization_from_csv(conn, csv_path=None) -> None:
-    """Populate PostgreSQL localization table from CSV if empty."""
-    if csv_path is not None:
-        csv_path = os.fspath(csv_path)
-    else:
-        csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
-    if not os.path.exists(csv_path):
-        print("Localization CSV not found, skipping PostgreSQL import.")
-        return
-    
-    try:
-        cur = execute_query(conn, "SELECT COUNT(*) AS count FROM localization")
-        row = cur.fetchone()
-        cur.close()
-        existing = 0
-        if row is not None:
-            if isinstance(row, dict):
-                existing = row.get('count') or row.get('COUNT') or 0
-            else:
-                existing = row[0]
-        if existing:
-            print(f"Localization table already contains {existing} entries, running CSV sync to backfill missing data.")
-    except Exception as exc:
-        print(f"Could not determine localization row count: {exc}")
-        existing = None
-    
-    def normalize_existing_languages():
-        """Ensure stored language identifiers use normalized codes (e.g., en, de)."""
-        cur_existing = None
-        try:
-            cur_existing = conn.cursor()
-            cur_existing.execute("SELECT id, key, language, value, description FROM localization")
-            rows = cur_existing.fetchall()
-        except Exception as exc:
-            print(f"Warning: Could not inspect existing localization rows: {exc}")
-            return
-        finally:
-            if cur_existing is not None:
-                cur_existing.close()
-        if not rows:
-            return
-        rows_to_fix: list[tuple[str, str, Any, Any, Any]] = []
-        for row in rows:
-            if isinstance(row, dict):
-                row_id = row.get('id')
-                reference_key = row.get('key')
-                language = row.get('language')
-                value = row.get('value')
-                description = row.get('description')
-            else:
-                row_id = row[0] if len(row) > 0 else None
-                reference_key = row[1] if len(row) > 1 else None
-                language = row[2] if len(row) > 2 else None
-                value = row[3] if len(row) > 3 else None
-                description = row[4] if len(row) > 4 else None
-            normalized_lang = normalize_language_identifier(language)
-            if not normalized_lang or normalized_lang == language or not reference_key:
-                continue
-            rows_to_fix.append((reference_key, normalized_lang, value, description, row_id))
-        if not rows_to_fix:
-            return
-        now_str = datetime.now(UTC).isoformat()
-        upsert_values = [(key, lang, val, desc, now_str, now_str) for key, lang, val, desc, _ in rows_to_fix]
-        try:
-            if POSTGRES_EXECUTE_VALUES:
-                cur_upsert = conn.cursor()
-                try:
-                    POSTGRES_EXECUTE_VALUES(cur_upsert, """
-                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
-                        VALUES %s
-                        ON CONFLICT (key, language) DO UPDATE SET
-                            value = COALESCE(EXCLUDED.value, localization.value),
-                            description = COALESCE(EXCLUDED.description, localization.description),
-                            updated_at = EXCLUDED.updated_at
-                    """, upsert_values, template="(%s, %s, %s, %s, %s, %s)")
-                finally:
-                    cur_upsert.close()
-            else:
-                for key, lang, val, desc, _ in rows_to_fix:
-                    cur_upsert = conn.cursor()
-                    try:
-                        cur_upsert.execute("""
-                            INSERT INTO localization (key, language, value, description, created_at, updated_at)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (key, language) DO UPDATE SET
-                                value = COALESCE(EXCLUDED.value, localization.value),
-                                description = COALESCE(EXCLUDED.description, localization.description),
-                                updated_at = EXCLUDED.updated_at
-                        """, (key, lang, val, desc, now_str, now_str))
-                    finally:
-                        cur_upsert.close()
-        except Exception as exc:
-            print(f"Warning: Failed to normalize localization entries: {exc}")
-            conn.rollback()
-            return
-        ids_to_delete = [row_id for _, _, _, _, row_id in rows_to_fix if isinstance(row_id, int)]
-        if ids_to_delete:
-            try:
-                for row_id in ids_to_delete:
-                    execute_query(conn, "DELETE FROM localization WHERE id = ?", (row_id,))
-            except Exception as exc:
-                print(f"Warning: Could not remove legacy localization rows: {exc}")
-                conn.rollback()
-                return
-        conn.commit()
-        print(f"Normalized {len(rows_to_fix)} localization rows to standard language codes.")
-    
-    normalize_existing_languages()
-
-    with open(csv_path, 'r', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        if reader.fieldnames:
-            cleaned_fieldnames = []
-            for name in reader.fieldnames:
-                if not name:
-                    cleaned_fieldnames.append('')
-                    continue
-                cleaned = name.replace('\ufeff', '').strip()
-                cleaned_fieldnames.append(cleaned)
-            reader.fieldnames = cleaned_fieldnames
-            reader._fieldnames = cleaned_fieldnames
-
-        batch: list[tuple[str, str, str, str | None]] = []
-        batch_size = 1000
-        processed_keys: set[str] = set()
-        total_translations = 0
-
-        def flush_batch():
-            nonlocal batch, total_translations
-            if not batch:
-                return
-            if POSTGRES_EXECUTE_VALUES:
-                now_str = datetime.now(UTC).isoformat()
-                values = [(key, lang, value, desc, now_str, now_str) for key, lang, value, desc in batch]
-                with conn.cursor() as cur:
-                    POSTGRES_EXECUTE_VALUES(cur, """
-                        INSERT INTO localization (key, language, value, description, created_at, updated_at)
-                        VALUES %s
-                        ON CONFLICT (key, language) DO UPDATE SET
-                            value = EXCLUDED.value,
-                            description = COALESCE(EXCLUDED.description, localization.description),
-                            updated_at = EXCLUDED.updated_at
-                    """, values, template="(%s, %s, %s, %s, %s, %s)")
-                total_translations += len(batch)
-                batch.clear()
-            else:
-                for key, lang, value, desc in batch:
-                    payload = {'reference_key': key, lang: value, 'description': desc}
-                    upsert_localization_entry(payload, conn=conn)
-                    total_translations += 1
-                batch.clear()
-            conn.commit()
-            print(f"Synchronized {total_translations} localization translations so far...")
-
-        for csv_row in reader:
-            if not csv_row:
-                continue
-            reference_key = (
-                csv_row.get('KEY') or
-                csv_row.get('key') or
-                csv_row.get('Key') or
-                csv_row.get('REFERENCE_KEY') or
-                csv_row.get('reference_key') or
-                csv_row.get('Reference_key') or
-                ''
-            )
-            if reference_key is None:
-                reference_key = ''
-            reference_key = reference_key.replace('\ufeff', '').strip()
-            if not reference_key:
-                continue
-            description = (csv_row.get('DESCRIPTION') or csv_row.get('description') or '').strip()
-            translations_added = False
-            for column, value in csv_row.items():
-                if not column:
-                    continue
-                column_clean = column.replace('\ufeff', '').strip()
-                if not column_clean or column_clean.upper() in {'KEY', 'DESCRIPTION'}:
-                    continue
-                lang_code = normalize_language_identifier(column_clean)
-                if not lang_code:
-                    continue
-                text_value = (value or '').strip()
-                if not text_value or text_value in LOCALIZATION_INVALID_VALUES:
-                    continue
-                batch.append((reference_key, lang_code, text_value, description or None))
-                translations_added = True
-                if len(batch) >= batch_size:
-                    flush_batch()
-            if translations_added:
-                processed_keys.add(reference_key)
-
-        flush_batch()
-        conn.commit()
-        print(f"Imported {len(processed_keys)} localization keys from CSV into PostgreSQL (upserted {total_translations} translations).")
+    """DEPRECATED: CSV sync removed - using PostgreSQL only.
+    This function is kept for reference but is no longer called."""
+    print("Warning: seed_postgres_localization_from_csv is deprecated. CSV sync disabled - using PostgreSQL only.")
+    return
 
 
 def trigger_localization_seed_if_needed():
-    """Kick off localization CSV sync in a background thread"""
-    global LOCALIZATION_SEED_STARTED
-    if not using_postgresql():
-        return
-    with LOCALIZATION_SEED_LOCK:
-        if LOCALIZATION_SEED_STARTED:
-            return
-        LOCALIZATION_SEED_STARTED = True
-
-    def _worker():
-        conn = None
-        try:
-            print("Starting asynchronous localization CSV synchronization...")
-            conn = get_db_connection()
-            seed_postgres_localization_from_csv(conn)
-        except Exception as exc:
-            print(f"Localization CSV sync failed: {exc}")
-            with LOCALIZATION_SEED_LOCK:
-                # allow retry on next init
-                global LOCALIZATION_SEED_STARTED
-                LOCALIZATION_SEED_STARTED = False
-        finally:
-            if conn:
-                conn.close()
-
-    threading.Thread(target=_worker, name="LocalizationSeeder", daemon=True).start()
+    """DEPRECATED: CSV sync removed - using PostgreSQL only.
+    This function is kept for reference but is no longer called."""
+    # CSV sync disabled - using PostgreSQL only
+    return
 
 
 CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
@@ -2233,30 +2215,153 @@ CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
 
 
 def ensure_core_localization_entries(conn=None):
-    """Ensure critical localization keys exist with defaults"""
+    """Ensure critical localization keys exist with defaults - optimized with batch operations"""
+    print("ensure_core_localization_entries: starting", flush=True)
     managed_connection = False
     if conn is None:
+        print("ensure_core_localization_entries: creating new connection", flush=True)
         config = get_database_config()
         if config['type'] == 'postgresql':
             conn = get_db_connection()
         else:
             conn = get_db()
         managed_connection = True
+    else:
+        print("ensure_core_localization_entries: using provided connection", flush=True)
 
-    for entry in CORE_LOCALIZATION_ENTRIES:
-        ref = entry.get('reference_key')
-        print(f"init_db: upserting core localization '{ref}'", flush=True)
-        try:
-            upsert_localization_entry(entry, conn=conn)
-            print(f"init_db: upserted '{ref}'", flush=True)
-        except Exception as exc:
-            print(f"Warning: failed to upsert localization entry {entry.get('reference_key')}: {exc}")
+    try:
+        config = get_database_config()
+        print(f"ensure_core_localization_entries: database type = {config['type']}", flush=True)
+        now = datetime.now(UTC).isoformat()
+        
+        if config['type'] == 'postgresql':
+            # Batch insert/update for PostgreSQL - optimized with single bulk INSERT
+            print("init_db: batch upserting core localization entries", flush=True)
+            
+            # Prepare all values for bulk insert
+            values_to_insert = []
+            print(f"ensure_core_localization_entries: processing {len(CORE_LOCALIZATION_ENTRIES)} entries", flush=True)
+            for entry in CORE_LOCALIZATION_ENTRIES:
+                reference_key = (entry.get('reference_key') or entry.get('key') or '').strip()
+                if not reference_key:
+                    continue
+                    
+                description = (entry.get('description') or '').strip() or None
+                
+                # Extract translations
+                explicit_language = normalize_language_identifier(entry.get('language'))
+                explicit_text = entry.get('text') or entry.get('value')
+                if explicit_language and explicit_text:
+                    text_value = str(explicit_text).strip()
+                    if text_value and text_value not in LOCALIZATION_INVALID_VALUES:
+                        values_to_insert.append((reference_key, explicit_language, text_value, description, now, now))
+                
+                for key, value in entry.items():
+                    if key in {'reference_key', 'key', 'description', 'language', 'text', 'value'}:
+                        continue
+                    if value is None:
+                        continue
+                    lang_code = normalize_language_identifier(key)
+                    if not lang_code:
+                        continue
+                    text_value = str(value).strip()
+                    if text_value and text_value not in LOCALIZATION_INVALID_VALUES:
+                        values_to_insert.append((reference_key, lang_code, text_value, description, now, now))
+            
+            print(f"ensure_core_localization_entries: prepared {len(values_to_insert)} values to insert", flush=True)
+            
+            # Use batch inserts - optimized approach
+            # TODO: Further optimize with larger batches once we verify it works
+            if values_to_insert:
+                print("ensure_core_localization_entries: starting batch inserts", flush=True)
+                total_inserted = 0
+                cur = conn.cursor()
+                try:
+                    # Use smaller batches (10 at a time) to avoid issues
+                    batch_size = 10
+                    for i in range(0, len(values_to_insert), batch_size):
+                        batch = values_to_insert[i:i + batch_size]
+                        
+                        # Build VALUES clause for this batch
+                        if len(batch) == 1:
+                            # Single insert
+                            ref_key, lang_code, text_value, desc, created, updated = batch[0]
+                            cur.execute("""
+                                INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (key, language) DO UPDATE SET
+                                    value = EXCLUDED.value,
+                                    description = COALESCE(EXCLUDED.description, localization.description),
+                                    updated_at = EXCLUDED.updated_at
+                            """, (ref_key, lang_code, text_value, desc, created, updated))
+                        else:
+                            # Bulk insert for batch
+                            values_placeholders = ', '.join(['(%s, %s, %s, %s, %s, %s)'] * len(batch))
+                            params = []
+                            for ref_key, lang_code, text_value, desc, created, updated in batch:
+                                params.extend([ref_key, lang_code, text_value, desc, created, updated])
+                            
+                            cur.execute(f"""
+                                INSERT INTO localization (key, language, value, description, created_at, updated_at)
+                                VALUES {values_placeholders}
+                                ON CONFLICT (key, language) DO UPDATE SET
+                                    value = EXCLUDED.value,
+                                    description = COALESCE(EXCLUDED.description, localization.description),
+                                    updated_at = EXCLUDED.updated_at
+                            """, params)
+                        
+                        total_inserted += len(batch)
+                        if (i + batch_size) % 20 == 0 or i + batch_size >= len(values_to_insert):
+                            print(f"ensure_core_localization_entries: inserted {min(i + batch_size, len(values_to_insert))}/{len(values_to_insert)} entries", flush=True)
+                finally:
+                    cur.close()
+                
+                print(f"init_db: batch upserted {total_inserted} core localization entries", flush=True)
+            else:
+                print("init_db: no core localization entries to upsert", flush=True)
+        else:
+            # SQLite - batch operations
+            print("init_db: batch upserting core localization entries", flush=True)
+            cur = conn.cursor()
+            
+            for entry in CORE_LOCALIZATION_ENTRIES:
+                reference_key = (entry.get('reference_key') or entry.get('key') or '').strip()
+                if not reference_key:
+                    continue
+                    
+                description = (entry.get('description') or '').strip() or None
+                german = (entry.get('german') or entry.get('de') or '').strip() or None
+                english = (entry.get('english') or entry.get('en') or '').strip() or None
+                french = (entry.get('french') or entry.get('fr') or '').strip() or None
+                italian = (entry.get('italian') or entry.get('it') or '').strip() or None
+                spanish = (entry.get('spanish') or entry.get('es') or '').strip() or None
+                portuguese = (entry.get('portuguese') or entry.get('pt') or '').strip() or None
+                russian = (entry.get('russian') or entry.get('ru') or '').strip() or None
+                turkish = (entry.get('turkish') or entry.get('tr') or '').strip() or None
+                georgian = (entry.get('georgian') or entry.get('ka') or '').strip() or None
+                
+                cur.execute(
+                    'UPDATE localization SET description=COALESCE(?, description), german=COALESCE(?, german), english=COALESCE(?, english), french=COALESCE(?, french), italian=COALESCE(?, italian), spanish=COALESCE(?, spanish), portuguese=COALESCE(?, portuguese), russian=COALESCE(?, russian), turkish=COALESCE(?, turkish), georgian=COALESCE(?, georgian), updated_at=? WHERE reference_key=?',
+                    (description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, now, reference_key)
+                )
+                if cur.rowcount == 0:
+                    cur.execute(
+                        'INSERT INTO localization (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        (reference_key, description, german, english, french, italian, spanish, portuguese, russian, turkish, georgian, now, now)
+                    )
+            
+            print(f"init_db: batch upserted {len(CORE_LOCALIZATION_ENTRIES)} core localization entries", flush=True)
 
-    print("init_db: core localization entries done", flush=True)
-    if managed_connection:
-        try:
+        print("init_db: core localization entries done", flush=True)
+        if managed_connection:
             conn.commit()
-        finally:
+    except Exception as exc:
+        print(f"Warning: failed to batch upsert core localization entries: {exc}", flush=True)
+        if managed_connection:
+            conn.rollback()
+        raise
+    finally:
+        if managed_connection:
             conn.close()
 
 
@@ -2416,157 +2521,37 @@ def get_all_localization_entries():
         conn.close()
 
 def get_localization_for_language(language_code: str):
-    """Get all localization entries for a specific language"""
+    """Get all localization entries for a specific language - PostgreSQL only"""
     config = get_database_config()
     lang_code = normalize_language_identifier(language_code)
     if not lang_code:
         return {}
     
-    if config['type'] == 'postgresql':
-        conn = get_db_connection()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                'SELECT key, value FROM localization WHERE language = %s ORDER BY key',
-                (lang_code,)
-            )
-            rows = cur.fetchall()
-            translations = {}
-            for row in rows:
-                if isinstance(row, dict):
-                    key = row.get('key')
-                    value = row.get('value')
-                else:
-                    key, value = row
-                if not key or value is None:
-                    continue
-                text_value = str(value).strip()
-                if text_value in LOCALIZATION_INVALID_VALUES:
-                    continue
-                translations[key] = text_value
-            return translations
-        finally:
-            conn.close()
-    else:
-        import os
-        
-        # Language code to database column mapping
-        lang_mapping = {
-            'en': 'english', 'de': 'german', 'fr': 'french', 'es': 'spanish', 'it': 'italian',
-            'pt': 'portuguese', 'ru': 'russian', 'zh': 'chinese', 'ja': 'japanese', 'ko': 'korean',
-            'ar': 'arabic', 'hi': 'hindi', 'tr': 'turkish', 'pl': 'polish', 'nl': 'dutch',
-            'sv': 'swedish', 'da': 'danish', 'no': 'norwegian', 'fi': 'finnish', 'he': 'hebrew',
-            'th': 'thai', 'my': 'burmese', 'km': 'khmer', 'lo': 'lao', 'ka': 'georgian',
-            'hy': 'armenian', 'az': 'azerbaijani', 'kk': 'kazakh', 'ky': 'kyrgyz', 'uz': 'uzbek',
-            'tg': 'tajik', 'mn': 'mongolian', 'bo': 'tibetan', 'ne': 'nepali', 'si': 'sinhala',
-            'ml': 'malayalam', 'kn': 'kannada', 'pa': 'punjabi', 'or': 'oriya', 'as': 'assamese',
-            'dv': 'dhivehi', 'ps': 'pashto', 'sd': 'sindhi', 'ks': 'kashmiri', 'cs': 'czech',
-            'sk': 'slovak', 'sl': 'slovenian', 'hr': 'croatian', 'sr': 'serbian', 'bs': 'bosnian',
-            'mk': 'macedonian', 'bg': 'bulgarian', 'sq': 'albanian', 'el': 'greek', 'mt': 'maltese',
-            'cy': 'welsh', 'ga': 'irish', 'gd': 'scottish_gaelic', 'gv': 'manx', 'br': 'breton',
-            'co': 'corsican', 'ca': 'catalan', 'gl': 'galician', 'eu': 'basque', 'is': 'icelandic',
-            'fo': 'faroese', 'lb': 'luxembourgish', 'li': 'limburgish', 'fy': 'western_frisian',
-            'af': 'afrikaans', 'et': 'estonian', 'lv': 'latvian', 'lt': 'lithuanian', 'ha': 'hausa',
-            'yo': 'yoruba', 'ig': 'igbo', 'ff': 'fulfulde', 'am': 'amharic', 'om': 'oromo',
-            'ti': 'tigrinya', 'so': 'somali', 'zu': 'zulu', 'xh': 'xhosa', 'st': 'sotho',
-            'tn': 'tswana', 'ss': 'swati', 'nr': 'ndebele', 've': 'venda', 'ts': 'tsonga',
-            'sn': 'shona', 'ny': 'chichewa', 'rw': 'kinyarwanda', 'rn': 'kirundi', 'lg': 'luganda',
-            'mg': 'malagasy', 'wo': 'wolof', 'ms': 'malay', 'tl': 'filipino', 'jv': 'javanese',
-            'su': 'sundanese', 'qu': 'quechua', 'gn': 'guarani', 'ay': 'aymara', 'sm': 'samoan',
-            'to': 'tongan', 'ty': 'tahitian', 'mi': 'maori', 'fj': 'fijian', 'bi': 'bislama',
-            'eo': 'esperanto', 'ia': 'interlingua', 'ie': 'interlingue', 'io': 'ido', 'vo': 'volapuk',
-            'la': 'latin', 'cu': 'old_church_slavonic', 'pi': 'pali', 'sa': 'sanskrit', 'id': 'indonesian'
-        }
-        
-        language_code = lang_code
-        result = {}
-        
-        # Always use CSV file first for complete translations (legacy SQLite behaviour)
-        try:
-            csv_path = os.path.join(os.path.dirname(__file__), '..', 'localization_complete.csv')
-            
-            # Read CSV without pandas
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            
-            if not lines:
-                raise Exception("CSV file is empty")
-            
-            # Parse header
-            header_line = lines[0].strip().replace('\ufeff', '')
-            headers = [col.strip() for col in header_line.split(',')]
-            
-            # Find target language column
-            target_col = language_code.lower()
-            if target_col not in headers:
-                print(f"Language {target_col} not found in CSV headers: {headers[:10]}...")
-                raise Exception(f"Language {target_col} not found in CSV")
-            
-            target_index = headers.index(target_col)
-            # Handle BOM in KEY column
-            key_index = 0
-            for i, header in enumerate(headers):
-                if 'KEY' in header.upper():
-                    key_index = i
-                    break
-            
-            # Parse data rows with better CSV parsing
-            from io import StringIO
-            
-            # Join lines and create CSV reader
-            csv_content = ''.join(lines)
-            csv_reader = csv.reader(StringIO(csv_content))
-            
-            # Skip header
-            next(csv_reader)
-            
-            # Process all rows
-            for row in csv_reader:
-                if len(row) <= max(key_index, target_index):
-                    continue
-                    
-                key = row[key_index].strip() if key_index < len(row) else ''
-                translation = row[target_index].strip() if target_index < len(row) else ''
-                
-                if key and translation and translation not in ['___', '#VALUE!', '']:
-                    result[key] = translation
-            
-            print(f"Found {len(result)} translations in CSV for {language_code}")
-            return result
-        except Exception as e:
-            print(f"Error reading CSV for language {language_code}: {e}")
-        
-        # Fallback to database if CSV fails
-        try:
-            conn = get_db()
-            cur = conn.cursor()
-            db_column = lang_mapping.get(language_code.lower(), language_code.lower())
-            
-            cur.execute(f'''
-                SELECT reference_key, {db_column} 
-                FROM localization 
-                WHERE {db_column} IS NOT NULL 
-                AND {db_column} != '' 
-                AND {db_column} != '#VALUE!'
-            ''')
-            
-            rows = cur.fetchall()
-            for row in rows:
-                key, translation = row
-                if key and translation and str(translation).strip():
-                    result[key] = str(translation).strip()
-            
-            conn.close()
-            
-            # If we found translations in database, return them
-            if result:
-                print(f"Found {len(result)} translations in database for {language_code}")
-                return result
-                
-        except Exception as e:
-            print(f"Error reading from database for language {language_code}: {e}")
-        
-        return {}
+    # Use PostgreSQL directly - no CSV fallback
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT key, value FROM localization WHERE language = %s ORDER BY key',
+            (lang_code,)
+        )
+        rows = cur.fetchall()
+        translations = {}
+        for row in rows:
+            if isinstance(row, dict):
+                key = row.get('key')
+                value = row.get('value')
+            else:
+                key, value = row
+            if not key or value is None:
+                continue
+            text_value = str(value).strip()
+            if text_value in LOCALIZATION_INVALID_VALUES:
+                continue
+            translations[key] = text_value
+        return translations
+    finally:
+        conn.close()
 
 def get_missing_translations(language_code: str):
     """Get localization entries that are missing translations for a specific language"""
@@ -3056,6 +3041,125 @@ def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, na
             row = _coerce_row_to_dict(row, getattr(cur, 'description', None))
         
         return row
+    finally:
+        conn.close()
+
+def batch_ensure_user_word_familiarity(user_id: int, words: list[str], language: str, native_language: str, default_familiarity: int = 0):
+    """Batch ensure words exist in user's familiarity database with default familiarity.
+    This is much faster than calling update_user_word_familiarity_by_word for each word individually.
+    """
+    if not words or not user_id:
+        return
+    
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    import re
+    
+    # Normalize words (remove trailing punctuation)
+    normalized_words = [re.sub(r'[.!?,;:—–-]+$', '', (w or '').strip().lower()) for w in words if w and w.strip()]
+    if not normalized_words:
+        return
+    
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        if config['type'] == 'postgresql':
+            # Get all word IDs in one query - use a simpler approach with multiple OR conditions
+            # This is still much faster than individual queries
+            conditions = []
+            params = []
+            for word in normalized_words:
+                conditions.append('(LOWER(word) = LOWER(%s) AND language = %s AND native_language = %s)')
+                params.extend([word, language, native_language])
+            
+            word_ids_query = f'''
+                SELECT id, LOWER(word) as word_lower
+                FROM words 
+                WHERE {' OR '.join(conditions)}
+            '''
+            
+            result = execute_query(conn, word_ids_query, params)
+            word_map = {}
+            for row in result.fetchall():
+                row_dict = _coerce_row_to_dict(row, getattr(result, 'description', None))
+                if row_dict:
+                    word_map[row_dict.get('word_lower', '').lower()] = row_dict['id']
+            
+            if not word_map:
+                print(f"⚠️ No words found in database for batch familiarity update")
+                return
+            
+            # Get existing familiarity records
+            word_ids = list(word_map.values())
+            placeholders = ','.join(['%s'] * len(word_ids))
+            existing_query = f'''
+                SELECT word_id FROM user_word_familiarity 
+                WHERE user_id = %s AND word_id IN ({placeholders})
+            '''
+            existing_result = execute_query(conn, existing_query, [user_id] + word_ids)
+            existing_word_ids = {row['word_id'] if isinstance(row, dict) else row[0] for row in existing_result.fetchall()}
+            
+            # Insert only new records
+            new_word_ids = [wid for wid in word_map.values() if wid not in existing_word_ids]
+            if new_word_ids:
+                insert_values = ','.join([f'(%s, %s, %s, %s, %s, %s)' for _ in new_word_ids])
+                insert_params = []
+                for word_id in new_word_ids:
+                    insert_params.extend([user_id, word_id, default_familiarity, 0, 0, ''])
+                
+                insert_query = f'''
+                    INSERT INTO user_word_familiarity (user_id, word_id, familiarity, seen_count, correct_count, user_comment)
+                    VALUES {insert_values}
+                    ON CONFLICT (user_id, word_id) DO NOTHING
+                '''
+                execute_query(conn, insert_query, insert_params)
+                conn.commit()
+                print(f"✅ Batch inserted {len(new_word_ids)} familiarity records")
+        else:
+            # SQLite batch insert
+            cur = conn.cursor()
+            # Get word IDs
+            placeholders = ','.join(['?'] * len(normalized_words))
+            word_ids_query = f'''
+                SELECT id, word FROM words 
+                WHERE word IN ({placeholders}) AND language = ? AND native_language = ?
+            '''
+            result = cur.execute(word_ids_query, normalized_words + [language, native_language])
+            word_map = {}
+            for row in result.fetchall():
+                row_dict = _coerce_row_to_dict(row, getattr(cur, 'description', None))
+                if row_dict:
+                    word_map[row_dict['word'].lower()] = row_dict['id']
+            
+            if not word_map:
+                print(f"⚠️ No words found in database for batch familiarity update")
+                return
+            
+            # Get existing records
+            word_ids = list(word_map.values())
+            placeholders = ','.join(['?'] * len(word_ids))
+            existing_result = cur.execute(f'''
+                SELECT word_id FROM user_word_familiarity 
+                WHERE user_id = ? AND word_id IN ({placeholders})
+            ''', [user_id] + word_ids)
+            existing_word_ids = {row[0] if isinstance(row, (list, tuple)) else row['word_id'] for row in existing_result.fetchall()}
+            
+            # Insert new records
+            new_word_ids = [wid for wid in word_map.values() if wid not in existing_word_ids]
+            if new_word_ids:
+                for word_id in new_word_ids:
+                    cur.execute('''
+                        INSERT OR IGNORE INTO user_word_familiarity 
+                        (user_id, word_id, familiarity, seen_count, correct_count, user_comment)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (user_id, word_id, default_familiarity, 0, 0, ''))
+                conn.commit()
+                print(f"✅ Batch inserted {len(new_word_ids)} familiarity records")
+    except Exception as e:
+        print(f"❌ Error in batch familiarity update: {e}")
+        import traceback
+        traceback.print_exc()
+        conn.rollback()
     finally:
         conn.close()
 

@@ -376,10 +376,14 @@ class SettingsManager {
         }
         
         // Debug: Log theme application
-        console.log('🎨 Theme applied:', theme, 'Classes:', body.className);
+        if (window.DEBUG) console.log('🎨 Theme applied:', theme, 'Classes:', body.className);
     }
     
     forceApplyBackgroundColors(theme) {
+        // Prevent duplicate calls
+        if (this._applyingBackground) return;
+        this._applyingBackground = true;
+        
         // Get the correct background color for the theme
         let bgColor;
         if (theme === 'dark') {
@@ -392,7 +396,7 @@ class SettingsManager {
             bgColor = '#f8fafc'; // light theme
         }
         
-        // Only apply background to root elements and empty areas
+        // Only apply background to root elements - much faster than querying all divs
         const rootElements = [
             document.documentElement,
             document.body
@@ -419,50 +423,15 @@ class SettingsManager {
             mainContent.style.setProperty('background', bgColor, 'important');
         }
         
-        // Apply to any divs that are likely empty containers
-        const allDivs = document.querySelectorAll('div');
-        allDivs.forEach(div => {
-            // Only apply to divs that don't have specific background classes or styles
-            if (!div.classList.contains('card') && 
-                !div.classList.contains('modal') && 
-                !div.classList.contains('modal-content') &&
-                !div.classList.contains('modal-header') &&
-                !div.classList.contains('modal-body') &&
-                !div.classList.contains('modal-footer') &&
-                !div.classList.contains('tooltip') && 
-                !div.classList.contains('level-card') && 
-                !div.classList.contains('onboarding-container') &&
-                !div.classList.contains('onboarding-modal') &&
-                !div.classList.contains('pill') &&
-                !div.classList.contains('button') &&
-                !div.classList.contains('btn') &&
-                !div.classList.contains('nav') &&
-                !div.classList.contains('topbar') &&
-                !div.classList.contains('config') &&
-                !div.classList.contains('lesson') &&
-                !div.classList.contains('practice') &&
-                !div.classList.contains('evaluation') &&
-                !div.classList.contains('alphabet') &&
-                !div.classList.contains('words') &&
-                !div.classList.contains('settings') &&
-                !div.classList.contains('auth') &&
-                !div.classList.contains('level') &&
-                !div.classList.contains('row') &&
-                !div.classList.contains('col') &&
-                !div.classList.contains('field') &&
-                !div.classList.contains('input') &&
-                !div.classList.contains('select') &&
-                !div.classList.contains('textarea') &&
-                !div.style.backgroundColor &&
-                !div.style.background &&
-                !div.style.backgroundImage &&
-                !div.style.backgroundSize &&
-                !div.style.backgroundPosition) {
-                div.style.setProperty('background-color', 'transparent', 'important');
-            }
-        });
+        // Use CSS custom property instead of querying ALL divs (major performance improvement)
+        document.documentElement.style.setProperty('--theme-bg-color', bgColor);
         
-        console.log('🎨 Force applied background color:', bgColor);
+        // Reset flag after a short delay to allow for rapid theme changes
+        setTimeout(() => {
+            this._applyingBackground = false;
+        }, 100);
+        
+        if (window.DEBUG) console.log('🎨 Force applied background color:', bgColor);
     }
     
     setupSystemThemeListener() {
@@ -519,13 +488,13 @@ class SettingsManager {
         }
         
         // Debug: Log language application
-        console.log('🌍 Native language applied:', nativeLang);
+        if (window.DEBUG) console.log('🌍 Native language applied:', nativeLang);
         
         // Trigger localization update and wait for it to complete
         if (window.setLocale) {
             // Check if we're already processing this language to prevent loops
             if (this.processingLanguage === nativeLang) {
-                console.log('🌍 Already processing language change for:', nativeLang);
+                if (window.DEBUG) console.log('🌍 Already processing language change for:', nativeLang);
                 return;
             }
             
@@ -984,7 +953,7 @@ class SettingsManager {
     body.style.setProperty('background-color', bgColor, 'important');
     body.style.setProperty('background', bgColor, 'important');
     
-    console.log('🎨 Theme applied immediately on load:', savedTheme);
+    if (window.DEBUG) console.log('🎨 Theme applied immediately on load:', savedTheme);
 })();
 
 // Add missing function to SettingsManager class

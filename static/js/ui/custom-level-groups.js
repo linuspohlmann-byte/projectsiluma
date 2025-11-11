@@ -1624,7 +1624,7 @@ function showNotification(message, type = 'info') {
 }
 
 // Render custom levels in the levels tab
-function renderCustomLevels(groupId, levels) {
+async function renderCustomLevels(groupId, levels) {
     console.log('🎨 Rendering custom levels for group:', groupId);
     
     // Find the levels container - same as standard levels
@@ -1632,6 +1632,14 @@ function renderCustomLevels(groupId, levels) {
     if (!levelsContainer) {
         console.error('❌ Levels container not found');
         return;
+    }
+    
+    // Load cached progress data BEFORE rendering (performance optimization)
+    // This ensures all progress data is available when cards are rendered
+    if (window.authManager && window.authManager.isAuthenticated()) {
+        if (!window.cachedGroupProgress || Object.keys(window.cachedGroupProgress).length === 0) {
+            await loadCachedGroupProgress(groupId);
+        }
     }
     
     // Clear existing content
@@ -1865,14 +1873,18 @@ function renderCustomLevels(groupId, levels) {
             });
         }
         
-        // Apply progress and colors after rendering
-        setTimeout(() => {
-            applyCustomLevelProgress(card, levelNumber, groupId);
-        }, 100);
-        
-        // Store cached progress data if available
+        // Apply progress data from cache (already loaded by applyCustomLevelProgressionBulk)
+        // This avoids making individual API calls for each level
         if (window.cachedGroupProgress && window.cachedGroupProgress[levelNumber]) {
-            card.dataset.cachedProgressData = JSON.stringify(window.cachedGroupProgress[levelNumber]);
+            const cachedData = window.cachedGroupProgress[levelNumber];
+            card.dataset.cachedProgressData = JSON.stringify(cachedData);
+            // Apply progress data directly from cache for immediate UI update
+            applyCustomLevelProgressData(card, cachedData);
+        } else {
+            // Only make individual API call if cache is missing (shouldn't happen normally)
+            setTimeout(() => {
+                applyCustomLevelProgress(card, levelNumber, groupId);
+            }, 100);
         }
         
         // Note: Click handlers are already set via HTML onclick attributes
@@ -2143,24 +2155,36 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
         
         let normalized = null;
 
-        // Apply cached data first so UI updates immediately
+        // Priority 1: Use cached data from window.cachedGroupProgress (fastest, already loaded)
+        if (window.cachedGroupProgress && window.cachedGroupProgress[levelNumber]) {
+            const cachedData = window.cachedGroupProgress[levelNumber];
+            normalized = applyCustomLevelProgressData(levelElement, cachedData);
+            levelElement.dataset.cachedProgressData = JSON.stringify(cachedData);
+            if (window.DEBUG) console.log(`✅ Applied cached progress for level ${levelNumber} from window.cachedGroupProgress`);
+            return; // Early return - no need for API call if cache exists
+        }
+
+        // Priority 2: Use cached data from dataset (from previous render)
         if (levelElement.dataset.cachedProgressData) {
             try {
                 const cachedData = JSON.parse(levelElement.dataset.cachedProgressData);
                 normalized = applyCustomLevelProgressData(levelElement, cachedData);
+                if (window.DEBUG) console.log(`✅ Applied cached progress for level ${levelNumber} from dataset`);
+                return; // Early return - no need for API call if dataset cache exists
             } catch (error) {
                 console.log('⚠️ Error parsing cached progress data:', error);
                 normalized = null;
             }
         }
 
+        // Priority 3: Only make API call if no cache exists (fallback)
         try {
             const headers = {};
             if (window.authManager && window.authManager.isAuthenticated()) {
                 Object.assign(headers, window.authManager.getAuthHeaders());
             }
 
-            console.log('🔧 Fetching custom level progress:', groupId, levelNumber);
+            if (window.DEBUG) console.log('🔧 Fetching custom level progress (no cache):', groupId, levelNumber);
             const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress`, {
                 headers
             });
@@ -2171,7 +2195,11 @@ async function applyCustomLevelProgress(levelElement, levelNumber, groupId) {
                     const refreshed = applyCustomLevelProgressData(levelElement, progressData);
                     if (refreshed) {
                         normalized = refreshed;
-                        console.log('✅ Custom level progress loaded:', normalized);
+                        // Update cache for future use
+                        if (!window.cachedGroupProgress) window.cachedGroupProgress = {};
+                        window.cachedGroupProgress[levelNumber] = refreshed;
+                        levelElement.dataset.cachedProgressData = JSON.stringify(refreshed);
+                        if (window.DEBUG) console.log('✅ Custom level progress loaded from API:', normalized);
                     }
                 } else {
                     console.log('⚠️ Progress API returned error:', progressData.error);

@@ -127,11 +127,12 @@ export function tNested(key, fallback = '') {
     // Try nested keys
     const keys = key.split('.');
     if (keys.length > 1) {
-      // Try to find in different categories
+      const lastKey = keys[keys.length - 1];
+      // OPTIMIZATION: Cache categories array and use early return
       const categories = ['labels', 'buttons', 'dropdowns', 'status', 'sections', 'themes', 'topics', 'cefr_levels', 'word_types', 'familiarity_levels', 'tooltips', 'messages', 'navigation'];
       
       for (const category of categories) {
-        const nested = resolveTranslation(`${category}.${keys[keys.length - 1]}`, { quiet: true });
+        const nested = resolveTranslation(`${category}.${lastKey}`, { quiet: true });
         if (nested.value !== undefined) return nested.value;
       }
     }
@@ -201,7 +202,7 @@ export function setLocale(locale) {
 function performLocaleChange(locale) {
   // Prevent multiple simultaneous calls
   if (localeSettingInProgress) {
-    console.log('🌍 Locale setting already in progress, skipping...');
+    if (window.DEBUG) console.log('🌍 Locale setting already in progress, skipping...');
     return;
   }
   
@@ -219,8 +220,10 @@ function performLocaleChange(locale) {
   
   // First try to load from API (with caching), then fallback to default translations
   loadTranslations(currentLocale).then(() => {
-    console.log('🌍 Locale set to (API):', currentLocale);
-    console.log('📋 Loaded API translations:', Object.keys(translations).length, 'keys');
+    if (window.DEBUG) {
+      console.log('🌍 Locale set to (API):', currentLocale);
+      console.log('📋 Loaded API translations:', Object.keys(translations).length, 'keys');
+    }
     
     // Ensure translations are available globally
     window.translations = translations;
@@ -234,8 +237,10 @@ function performLocaleChange(locale) {
   }).catch(() => {
     // Final fallback to default translations
     translations = defaultTranslations[currentLocale] || defaultTranslations['en'] || {};
-    console.log('🌍 Locale set to (fallback):', currentLocale);
-    console.log('📋 Using fallback translations:', Object.keys(translations).length, 'keys');
+    if (window.DEBUG) {
+      console.log('🌍 Locale set to (fallback):', currentLocale);
+      console.log('📋 Using fallback translations:', Object.keys(translations).length, 'keys');
+    }
     
     // Trigger a custom event when translations are loaded
     if (typeof window !== 'undefined') {
