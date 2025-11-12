@@ -878,7 +878,7 @@ async function publishCustomGroup(groupId) {
         // Get current group data
         const group = customLevelGroups.find(g => g.id === groupId);
         if (!group) {
-            showNotification('Gruppe nicht gefunden.', 'error');
+            showNotification('Story nicht gefunden.', 'error');
             return;
         }
         
