@@ -231,6 +231,12 @@ user_bp = Blueprint('user', __name__)
 custom_levels_bp = Blueprint('custom_levels', __name__)
 
 init_db()  # Initialize database tables
+  # Also initialize marketplace notification tables
+  try:
+    from server.marketplace_notifications import create_marketplace_tables
+    create_marketplace_tables()
+  except Exception as e:
+    print(f"⚠️ Warning: Could not initialize marketplace tables: {e}")
 
 
 
@@ -3385,6 +3391,131 @@ def api_get_marketplace_group_ratings(group_id):
         print(f"Error fetching marketplace group ratings: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# --- Marketplace Notifications API ---
+
+@custom_levels_bp.get('/api/notifications')
+@require_auth()
+def api_get_notifications():
+    """Get notifications for the current user"""
+    try:
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        from server.marketplace_notifications import (
+            get_user_notifications,
+            create_marketplace_tables
+        )
+        
+        # Ensure tables exist
+        try:
+            create_marketplace_tables()
+        except Exception as e:
+            print(f"⚠️ Warning: Could not ensure marketplace tables exist: {e}")
+        
+        unread_only = request.args.get('unread_only', 'false').lower() == 'true'
+        limit = int(request.args.get('limit', 50))
+        
+        notifications = get_user_notifications(user_id, unread_only=unread_only, limit=limit)
+        
+        return jsonify({
+            'success': True,
+            'notifications': notifications
+        })
+        
+    except Exception as e:
+        print(f"Error getting notifications: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.get('/api/notifications/unread-count')
+@require_auth()
+def api_get_unread_notification_count():
+    """Get count of unread notifications for the current user"""
+    try:
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        from server.marketplace_notifications import (
+            get_unread_notification_count,
+            create_marketplace_tables
+        )
+        
+        # Ensure tables exist
+        try:
+            create_marketplace_tables()
+        except Exception as e:
+            print(f"⚠️ Warning: Could not ensure marketplace tables exist: {e}")
+        
+        count = get_unread_notification_count(user_id)
+        
+        return jsonify({
+            'success': True,
+            'count': count
+        })
+        
+    except Exception as e:
+        print(f"Error getting unread notification count: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.post('/api/notifications/<int:notification_id>/read')
+@require_auth()
+def api_mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    try:
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        from server.marketplace_notifications import mark_notification_read
+        
+        success = mark_notification_read(notification_id, user_id)
+        
+        if not success:
+            return jsonify({'success': False, 'error': 'Notification not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'message': 'Notification marked as read'
+        })
+        
+    except Exception as e:
+        print(f"Error marking notification as read: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.post('/api/notifications/read-all')
+@require_auth()
+def api_mark_all_notifications_read():
+    """Mark all notifications as read for the current user"""
+    try:
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        from server.marketplace_notifications import mark_all_notifications_read
+        
+        success = mark_all_notifications_read(user_id)
+        
+        if not success:
+            return jsonify({'success': False, 'error': 'Failed to mark notifications as read'}), 500
+        
+        return jsonify({
+            'success': True,
+            'message': 'All notifications marked as read'
+        })
+        
+    except Exception as e:
+        print(f"Error marking all notifications as read: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @custom_levels_bp.post('/api/marketplace/custom-level-groups/<int:group_id>/import')
 @require_auth()
 def api_import_marketplace_custom_level_group(group_id):
@@ -3396,6 +3527,18 @@ def api_import_marketplace_custom_level_group(group_id):
         
         if not user_id:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        # Track this download
+        from server.marketplace_notifications import (
+            track_marketplace_download,
+            create_marketplace_tables
+        )
+        try:
+            create_marketplace_tables()
+            track_marketplace_download(group_id, user_id)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not track download: {e}")
+            # Continue even if tracking fails
         
         # Get the published group
         conn = get_db()

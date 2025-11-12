@@ -727,17 +727,59 @@ def get_custom_levels_for_group(group_id: int, group_info: Optional[Dict[str, An
         conn.close()
 
 def delete_custom_level_group(group_id: int, user_id: int) -> bool:
-    """Delete a custom level group and all its levels"""
+    """Delete a custom level group and all its levels.
+    Automatically unpublishes from marketplace and notifies downloaders if published.
+    """
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    from server.marketplace_notifications import (
+        notify_content_removed,
+        create_marketplace_tables
+    )
+    
+    # Ensure tables exist
+    try:
+        create_marketplace_tables()
+    except Exception as e:
+        print(f"⚠️ Warning: Could not ensure marketplace tables exist: {e}")
+    
     conn = get_db()
     try:
-        # Verify ownership
+        # Verify ownership and get group info
         cursor = conn.execute('''
-            SELECT id FROM custom_level_groups 
+            SELECT id, status, group_name FROM custom_level_groups 
             WHERE id = ? AND user_id = ?
         ''', (group_id, user_id))
         
-        if not cursor.fetchone():
+        row = cursor.fetchone()
+        if not row:
             return False
+        
+        # Extract group info
+        description = getattr(cursor, 'description', None)
+        group_dict = _coerce_row_to_dict(row, description)
+        
+        if group_dict:
+            group_status = group_dict.get('status', 'active')
+            group_name = group_dict.get('group_name', 'Unknown')
+        else:
+            # Fallback for tuple format
+            group_status = row[1] if len(row) > 1 else 'active'
+            group_name = row[2] if len(row) > 2 else 'Unknown'
+        
+        # If published, automatically unpublish and notify downloaders
+        if group_status == 'published':
+            print(f"📢 Group {group_id} is published, unpublishing and notifying downloaders...")
+            
+            # First, unpublish the group
+            update_custom_level_group(group_id, user_id, status='active')
+            
+            # Notify all users who downloaded this content
+            try:
+                notify_count = notify_content_removed(group_id, group_name)
+                print(f"✅ Notified {notify_count} users about content removal")
+            except Exception as e:
+                print(f"⚠️ Warning: Could not notify users: {e}")
+                # Continue with deletion even if notification fails
         
         # Delete group (levels will be deleted by CASCADE)
         conn.execute('''
