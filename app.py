@@ -1444,13 +1444,21 @@ def api_logout():
 
 @auth_bp.get('/api/auth/me')
 def api_get_current_user():
-    """Get current user information"""
+    """Get current user information - optimized to return only essential fields"""
     try:
         session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
         
         user = get_current_user(session_token)
         if user:
-            return jsonify({'success': True, 'user': user})
+            # Return only essential fields for better performance
+            lightweight_user = {
+                'id': user.get('id'),
+                'username': user.get('username'),
+                'email': user.get('email'),
+                'native_language': user.get('native_language', 'en'),
+                'created_at': user.get('created_at')
+            }
+            return jsonify({'success': True, 'user': lightweight_user})
         else:
             # Return success with no user instead of 401 to prevent console errors
             return jsonify({'success': True, 'user': None})
@@ -2151,6 +2159,102 @@ def api_create_custom_level_group():
             'error': str(e),
             'error_type': type(e).__name__
         }), 500
+
+@custom_levels_bp.get('/api/custom-levels/groups/summary')
+@require_auth(optional=True)
+def api_custom_levels_groups_summary():
+    """Return lightweight summary of all groups for current user - optimized for performance"""
+    try:
+        user_context = get_user_context()
+        user_id = user_context.get('user_id')
+        
+        if not user_id:
+            return jsonify({'success': True, 'groups': []})
+        
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            # Single optimized query with JOINs for efficiency
+            if config['type'] == 'postgresql':
+                result = execute_query(conn, '''
+                    SELECT 
+                        clg.id,
+                        clg.name,
+                        clg.language,
+                        clg.native_language,
+                        COUNT(DISTINCT cl.id) as level_count,
+                        COALESCE(SUM(cl.word_count), 0) as total_words,
+                        COUNT(DISTINCT CASE WHEN clp.status = 'completed' THEN cl.id END) as completed_levels
+                    FROM custom_level_groups clg
+                    LEFT JOIN custom_levels cl ON cl.group_id = clg.id
+                    LEFT JOIN custom_level_progress clp ON 
+                        clp.group_id = clg.id AND 
+                        clp.level_number = cl.level_number AND
+                        clp.user_id = %s
+                    WHERE clg.user_id = %s
+                    GROUP BY clg.id, clg.name, clg.language, clg.native_language
+                    ORDER BY clg.created_at DESC
+                ''', (user_id, user_id))
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                cur.execute('''
+                    SELECT 
+                        clg.id,
+                        clg.name,
+                        clg.language,
+                        clg.native_language,
+                        COUNT(DISTINCT cl.id) as level_count,
+                        COALESCE(SUM(cl.word_count), 0) as total_words,
+                        COUNT(DISTINCT CASE WHEN clp.status = 'completed' THEN cl.id END) as completed_levels
+                    FROM custom_level_groups clg
+                    LEFT JOIN custom_levels cl ON cl.group_id = clg.id
+                    LEFT JOIN custom_level_progress clp ON 
+                        clp.group_id = clg.id AND 
+                        clp.level_number = cl.level_number AND
+                        clp.user_id = ?
+                    WHERE clg.user_id = ?
+                    GROUP BY clg.id, clg.name, clg.language, clg.native_language
+                    ORDER BY clg.created_at DESC
+                ''', (user_id, user_id))
+                result = cur
+            
+            groups = []
+            for row in result.fetchall():
+                if isinstance(row, dict):
+                    groups.append({
+                        'id': row.get('id'),
+                        'name': row.get('name'),
+                        'language': row.get('language'),
+                        'native_language': row.get('native_language'),
+                        'level_count': row.get('level_count') or 0,
+                        'total_words': row.get('total_words') or 0,
+                        'completed_levels': row.get('completed_levels') or 0
+                    })
+                else:
+                    # Handle tuple/list results
+                    groups.append({
+                        'id': row[0],
+                        'name': row[1],
+                        'language': row[2],
+                        'native_language': row[3],
+                        'level_count': row[4] or 0,
+                        'total_words': row[5] or 0,
+                        'completed_levels': row[6] or 0
+                    })
+            
+            return jsonify({'success': True, 'groups': groups})
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error in api_custom_levels_groups_summary: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @custom_levels_bp.get('/api/custom-level-groups')
 @require_auth()

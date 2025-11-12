@@ -16,6 +16,44 @@ function _langBadgeText(kind){
 // Tooltip state
 const TT = { el: null, word: '', anchor: null, isSaving: false };
 
+// Word data cache for performance optimization
+const wordDataCache = new Map();
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function getCacheKey(word, language, nativeLanguage) {
+    return `${word}:${language}:${nativeLanguage}`;
+}
+
+function getCachedWordData(word, language, nativeLanguage) {
+    const cacheKey = getCacheKey(word, language, nativeLanguage);
+    const cached = wordDataCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+    }
+    
+    // Remove expired entry
+    if (cached) {
+        wordDataCache.delete(cacheKey);
+    }
+    
+    return null;
+}
+
+function setCachedWordData(word, language, nativeLanguage, data) {
+    const cacheKey = getCacheKey(word, language, nativeLanguage);
+    wordDataCache.set(cacheKey, {
+        data: data,
+        timestamp: Date.now()
+    });
+    
+    // Limit cache size to prevent memory issues (keep last 500 entries)
+    if (wordDataCache.size > 500) {
+        const firstKey = wordDataCache.keys().next().value;
+        wordDataCache.delete(firstKey);
+    }
+}
+
 // --- Save current tooltip fields ------------------------------------------------
 export async function ttSave(){
   // Prevent multiple simultaneous saves
@@ -362,18 +400,32 @@ export async function openTooltip(anchor, word){
     if (!js1) {
       console.log('🔧 Fetching word data for:', w);
       
-      // Add authentication headers for user-specific data
-      const headers = {};
-      const sessionToken = localStorage.getItem('session_token');
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
+      // Check cache first
+      const cachedData = getCachedWordData(w, lang, nat);
+      if (cachedData) {
+        console.log('🔧 Using cached word data for:', w);
+        js1 = cachedData;
+      } else {
+        // Add authentication headers for user-specific data
+        const headers = {};
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
+        
+        const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+          headers
+        });
+        const js = await r1.json();
+        console.log('🔧 Fetched word data:', js);
+        
+        // Cache the word data
+        if (js && js.word) {
+          setCachedWordData(w, lang, nat, js);
+        }
+        
+        js1 = js;
       }
-      
-      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
-        headers
-      });
-      js1 = await r1.json();
-      console.log('🔧 Fetched word data:', js1);
     }
     
     // Ensure the word in the data matches the requested word
