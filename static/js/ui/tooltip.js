@@ -1128,8 +1128,20 @@ function renderWordDetailsPanel(panel, word, data) {
   const userComment = data.user_comment || '';
   const audioUrl = data.audio_url || '';
   
-  // Format synonym list
-  const synonymList = synonyms ? synonyms.split(',').map(s => s.trim()).filter(Boolean).join(', ') : '';
+  // Format synonym list - handle both array and string formats
+  let synonymList = '';
+  if (synonyms) {
+    if (Array.isArray(synonyms)) {
+      // Already an array - join with commas
+      synonymList = synonyms.map(s => String(s).trim()).filter(Boolean).join(', ');
+    } else if (typeof synonyms === 'string') {
+      // String format - split by comma
+      synonymList = synonyms.split(',').map(s => s.trim()).filter(Boolean).join(', ');
+    } else {
+      // Try to convert to string
+      synonymList = String(synonyms).trim();
+    }
+  }
   
   panel.innerHTML = `
     <div class="word-details-panel-header">
