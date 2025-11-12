@@ -923,6 +923,19 @@ async function createCustomGroup() {
             body: JSON.stringify(data)
         });
         
+        // Check if response is ok before parsing JSON
+        if (!response.ok) {
+            let errorMessage = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                // If response is not JSON, use status text
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -989,7 +1002,19 @@ async function createCustomGroup() {
             renderCustomLevelGroups();
         }
         
-        showNotification('Fehler beim Erstellen der Level-Gruppe', 'error');
+        // Provide more specific error message
+        let errorMessage = 'Fehler beim Erstellen der Level-Gruppe';
+        if (error.message) {
+            if (error.message.includes('Failed to fetch') || error.message.includes('Load failed')) {
+                errorMessage = 'Netzwerkfehler: Bitte überprüfe deine Internetverbindung und versuche es erneut.';
+            } else if (error.message.includes('HTTP error')) {
+                errorMessage = `Serverfehler: ${error.message}`;
+            } else {
+                errorMessage = error.message;
+            }
+        }
+        
+        showNotification(errorMessage, 'error');
     } finally {
         createBtn.textContent = originalText;
         createBtn.disabled = false;
@@ -1020,7 +1045,17 @@ function startStatusPolling(groupId, placeholderId) {
                 return;
             }
             
-            const statusData = await response.json();
+            let statusData;
+            try {
+                statusData = await response.json();
+            } catch (e) {
+                console.error('Error parsing status response:', e);
+                if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    handleGenerationComplete(groupId, placeholderId, false, 'Fehler beim Abrufen des Status');
+                }
+                return;
+            }
             
             if (statusData.success) {
                 const status = statusData.status;
@@ -1058,9 +1093,14 @@ function startStatusPolling(groupId, placeholderId) {
             }
         } catch (error) {
             console.error('Error polling generation status:', error);
+            // Only fail after max polls to allow for temporary network issues
             if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
-                handleGenerationComplete(groupId, placeholderId, false, 'Fehler beim Abrufen des Status');
+                let errorMsg = 'Fehler beim Abrufen des Status';
+                if (error.message && error.message.includes('Failed to fetch')) {
+                    errorMsg = 'Netzwerkfehler beim Abrufen des Status. Die Story wird möglicherweise trotzdem erstellt.';
+                }
+                handleGenerationComplete(groupId, placeholderId, false, errorMsg);
             }
         }
         
