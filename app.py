@@ -2469,20 +2469,20 @@ def api_get_custom_level_bulk_stats(group_id):
                             'score': 0.0
                         }
                     }
-                except Exception as e:
-                    print(f"Error getting user familiarity data for custom level {level_num}: {e}")
-                    # Fallback to default values
-                    levels_data[level_num] = {
-                        'success': True,
-                        'status': 'not_started',
-                        'last_score': 0.0,
+            except Exception as e:
+                print(f"Error getting user familiarity data for custom level {level_num}: {e}")
+                # Fallback to default values
+                levels_data[level_num] = {
+                    'success': True,
+                    'status': 'not_started',
+                    'last_score': 0.0,
                     'fam_counts': {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
                     'total_words': 0,
-                        'user_progress': {
-                            'status': 'not_started',
-                            'score': 0.0
-                        }
+                    'user_progress': {
+                        'status': 'not_started',
+                        'score': 0.0
                     }
+                }
         
         return jsonify({
             'success': True,
