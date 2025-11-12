@@ -566,6 +566,133 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
     except Exception:
         return (allowed[0] if allowed else 'Alltag')
 
+def enrich_story_context(group_name: str, context_description: str, target_lang: str, native_lang: str, cefr: str = 'A1') -> dict:
+    """Enrich and polish user input for story creation using AI before passing to story generation.
+    
+    This function takes raw user input and enhances it to create better stories:
+    - Polishes the group name to be more engaging
+    - Expands and structures the context description for better AI understanding
+    - Ensures the input is in the correct format for story generation
+    
+    Returns:
+        dict: {
+            'group_name': str,  # Polished group name
+            'context_description': str  # Enhanced and structured context description
+        }
+    """
+    if not OPENAI_KEY:
+        # Fallback: return original input
+        return {
+            'group_name': group_name,
+            'context_description': context_description
+        }
+    
+    try:
+        # Map language codes to proper names
+        language_names = {
+            'ka': 'Georgian', 'de': 'German', 'en': 'English', 'fr': 'French',
+            'es': 'Spanish', 'it': 'Italian', 'pt': 'Portuguese', 'ru': 'Russian',
+            'tr': 'Turkish', 'pl': 'Polish', 'ar': 'Arabic', 'hi': 'Hindi',
+            'zh': 'Chinese', 'ja': 'Japanese', 'ko': 'Korean', 'th': 'Thai', 'vi': 'Vietnamese'
+        }
+        
+        target_lang_name = language_names.get(target_lang.lower(), target_lang)
+        native_lang_name = language_names.get(native_lang.lower(), native_lang)
+        
+        sys_msg = {
+            'role': 'system',
+            'content': (
+                'You are an expert language learning content creator. Your task is to enrich and polish user input '
+                'for creating engaging language learning stories. Return ONLY a valid JSON object with "group_name" '
+                'and "context_description" fields. Do not include any explanations or additional text.'
+            )
+        }
+        
+        user_msg = {
+            'role': 'user',
+            'content': (
+                f"Enrich and polish the following input for creating a language learning story:\n\n"
+                f"Original Title: {group_name}\n"
+                f"Original Context: {context_description}\n\n"
+                f"Target Language: {target_lang_name}\n"
+                f"Native Language: {native_lang_name}\n"
+                f"CEFR Level: {cefr}\n\n"
+                f"Your task:\n"
+                f"1. Polish the title to be more engaging and descriptive (keep it concise, max 8 words)\n"
+                f"2. Expand and structure the context description to be detailed, specific, and well-organized\n"
+                f"3. Ensure the context includes:\n"
+                f"   - Clear learning objectives\n"
+                f"   - Specific situations or scenarios\n"
+                f"   - Key vocabulary themes\n"
+                f"   - Story progression ideas\n"
+                f"   - Cultural context if relevant\n"
+                f"4. Make it suitable for generating {cefr}-level content\n"
+                f"5. Write everything in {native_lang_name} (the learner's native language) so they understand it\n\n"
+                f"Return a JSON object with this structure:\n"
+                f'{{"group_name": "polished title", "context_description": "enhanced and detailed context"}}'
+            )
+        }
+        
+        payload = {
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'messages': [sys_msg, user_msg],
+            'temperature': 0.7
+        }
+        
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
+        data = _http_json(f'{OPENAI_BASE}/chat/completions', payload, headers)
+        
+        if not data:
+            print("⚠️ Failed to enrich story context, using original input")
+            return {
+                'group_name': group_name,
+                'context_description': context_description
+            }
+        
+        try:
+            text = data['choices'][0]['message']['content']
+            # Clean JSON response
+            import re
+            cleaned = re.sub(r"^```[a-zA-Z]*|```$", "", text.strip())
+            if '{' in cleaned and '}' in cleaned:
+                cleaned = cleaned[cleaned.index('{'): cleaned.rindex('}')+1]
+            
+            result = json.loads(cleaned)
+            
+            # Validate and use enriched data
+            enriched_name = result.get('group_name', group_name).strip()
+            enriched_context = result.get('context_description', context_description).strip()
+            
+            if not enriched_name:
+                enriched_name = group_name
+            if not enriched_context:
+                enriched_context = context_description
+            
+            print(f"✨ Enriched story context:")
+            print(f"   Title: {group_name} → {enriched_name}")
+            print(f"   Context: {len(context_description)} → {len(enriched_context)} chars")
+            
+            return {
+                'group_name': enriched_name,
+                'context_description': enriched_context
+            }
+            
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            print(f"⚠️ Error parsing enriched context: {e}, using original input")
+            return {
+                'group_name': group_name,
+                'context_description': context_description
+            }
+            
+    except Exception as e:
+        print(f"⚠️ Error enriching story context: {e}, using original input")
+        import traceback
+        traceback.print_exc()
+        return {
+            'group_name': group_name,
+            'context_description': context_description
+        }
+
 def suggest_level_title(target_lang: str, native_lang: str, topic: str, level: int, cefr: str = 'A1', context_description: str = '', all_topics: list = None, previous_titles: list = None) -> str:
     """Generate a coherent, story-based level title that fits into a narrative progression."""
     if not OPENAI_KEY:

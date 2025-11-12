@@ -2120,13 +2120,32 @@ def api_create_custom_level_group():
         if num_levels < 1 or num_levels > 20:
             return jsonify({'success': False, 'error': 'Number of levels must be between 1 and 20'}), 400
         
-        # Create the level group
+        # Step 1: Enrich user input with AI before creating the story
+        print("✨ Enriching user input with AI for better story generation...")
+        from server.services.llm import enrich_story_context
+        enriched_input = enrich_story_context(
+            group_name=group_name,
+            context_description=context_description,
+            target_lang=language,
+            native_lang=native_language,
+            cefr=cefr_level
+        )
+        
+        # Use enriched input for story generation
+        enriched_group_name = enriched_input.get('group_name', group_name)
+        enriched_context_description = enriched_input.get('context_description', context_description)
+        
+        print(f"📝 Using enriched input for story creation:")
+        print(f"   Title: {enriched_group_name}")
+        print(f"   Context length: {len(enriched_context_description)} characters")
+        
+        # Create the level group with enriched input
         group_id = create_custom_level_group(
             user_id=user_id,
             language=language,
             native_language=native_language,
-            group_name=group_name,
-            context_description=context_description,
+            group_name=enriched_group_name,
+            context_description=enriched_context_description,
             cefr_level=cefr_level,
             num_levels=num_levels
         )
@@ -2134,12 +2153,12 @@ def api_create_custom_level_group():
         if not group_id:
             return jsonify({'success': False, 'error': 'Failed to create level group'}), 500
         
-        # Generate AI-powered levels
+        # Generate AI-powered levels using enriched context
         success = generate_custom_levels(
             group_id=group_id,
             language=language,
             native_language=native_language,
-            context_description=context_description,
+            context_description=enriched_context_description,
             cefr_level=cefr_level,
             num_levels=num_levels
         )
