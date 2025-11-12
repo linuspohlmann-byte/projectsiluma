@@ -1758,8 +1758,8 @@ def serve_tts_audio(lang, fname):
     
         s3_key = f"media/tts/{lang}/{fname}"
         try:
-        print(f"🔵 Fetching audio from S3: {s3_key}")
-        # Get file from S3
+            print(f"🔵 Fetching audio from S3: {s3_key}")
+            # Get file from S3
             s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
         
         # Read the entire file into memory for more reliable serving
