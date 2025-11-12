@@ -2395,11 +2395,11 @@ def api_get_custom_level_bulk_stats(group_id):
                 
                 # Get familiarity counts for this level's words (batch processed)
                 level_words = all_level_words.get(level_num, [])
-                    if level_words:
-                        user_fam_counts = get_user_familiarity_counts_for_words(
-                            user_id, level_words, language, native_language
-                        )
-                        if user_fam_counts:
+                if level_words:
+                    user_fam_counts = get_user_familiarity_counts_for_words(
+                        user_id, level_words, language, native_language
+                    )
+                    if user_fam_counts:
                             fam_counts = user_fam_counts
                             
                             # Calculate level score based on familiarity distribution
