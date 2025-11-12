@@ -305,28 +305,38 @@ function renderCustomLevelGroups() {
         return;
     }
     
-    if (customLevelGroups.length === 0) {
-        console.log('📝 No custom groups, showing empty state');
-        container.innerHTML = `
-            <div class="no-custom-groups">
-                <div class="icon">🎯</div>
-                <h3>📖 Noch keine Stories</h3>
-                <p>Erstelle deine erste Story mit KI-generierten Lektionen zu deinem Lieblingsthema!</p>
-                <button class="btn btn-primary" onclick="showCreateCustomGroupModal()">
-                    📖 Neue Story erstellen
-                </button>
+    // Always show "Level Gruppe erstellen" as first option
+    const createGroupCardHTML = `
+        <div class="level-group-card create-group-card" onclick="showCreateCustomGroupModal()" style="cursor: pointer; border: 2px dashed var(--border); background: var(--surface);">
+            <div class="level-group-thumb">
+                <div class="level-group-title" style="color: var(--accent); font-weight: 600;">📖 Level Gruppe erstellen</div>
+                <div class="level-group-range" style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
+                    Erstelle eine neue Story mit KI-generierten Lektionen
+                </div>
             </div>
-        `;
-        return;
-    }
+            <div class="level-group-meta" style="opacity: 0.6;">
+                <div class="level-group-stat">
+                    <div class="level-group-stat-value">+</div>
+                    <div>Neu</div>
+                </div>
+            </div>
+            <div class="level-group-footer">
+                <div class="level-group-action" onclick="event.stopPropagation(); showCreateCustomGroupModal()">
+                    <span class="action-icon">✨</span>
+                    <span class="action-label">Erstellen</span>
+                </div>
+            </div>
+        </div>
+    `;
     
-    console.log(`🎨 Rendering ${customLevelGroups.length} custom groups`);
-    const gridHTML = customLevelGroups.map(group => renderCustomGroupCard(group)).join('');
-    console.log('📝 First group card HTML length:', gridHTML.substring(0, 200).length, 'chars');
+    console.log(`🎨 Rendering ${customLevelGroups.length} custom groups + create card`);
+    const groupsHTML = customLevelGroups.map(group => renderCustomGroupCard(group)).join('');
+    console.log('📝 First group card HTML length:', groupsHTML.substring(0, 200).length, 'chars');
     
     container.innerHTML = `
         <div class="level-groups-grid">
-            ${gridHTML}
+            ${createGroupCardHTML}
+            ${groupsHTML}
         </div>
     `;
     console.log('✅ Custom groups rendered successfully');
