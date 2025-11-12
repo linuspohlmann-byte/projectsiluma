@@ -1778,13 +1778,13 @@ def serve_tts_audio(lang, fname):
                 'Accept-Ranges': 'bytes'
                 }
             )
-    except s3_storage.s3_client.exceptions.NoSuchKey:
-        print(f"❌ File not found in S3: {s3_key}")
-        return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
+        except s3_storage.s3_client.exceptions.NoSuchKey:
+            print(f"❌ File not found in S3: {s3_key}")
+            return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
         except Exception as e:
-        import traceback
-        print(f"❌ Could not load {s3_key} from S3: {e}")
-        print(f"❌ Traceback: {traceback.format_exc()}")
+            import traceback
+            print(f"❌ Could not load {s3_key} from S3: {e}")
+            print(f"❌ Traceback: {traceback.format_exc()}")
         return Response(f"Error loading audio: {str(e)}", status=500, mimetype='text/plain')
 
 # Add symmetric route for sentence TTS
@@ -1817,13 +1817,13 @@ def serve_tts_sentence(lang, fname):
                 'Accept-Ranges': 'bytes'
                 }
             )
-    except s3_storage.s3_client.exceptions.NoSuchKey:
-        print(f"❌ File not found in S3: {s3_key}")
-        return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
+        except s3_storage.s3_client.exceptions.NoSuchKey:
+            print(f"❌ File not found in S3: {s3_key}")
+            return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
         except Exception as e:
-        import traceback
-        print(f"❌ Could not load {s3_key} from S3: {e}")
-        print(f"❌ Traceback: {traceback.format_exc()}")
+            import traceback
+            print(f"❌ Could not load {s3_key} from S3: {e}")
+            print(f"❌ Traceback: {traceback.format_exc()}")
         return Response(f"Error loading audio: {str(e)}", status=500, mimetype='text/plain')
 
 
