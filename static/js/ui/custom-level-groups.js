@@ -988,8 +988,17 @@ async function unpublishCustomGroup(groupId) {
         // Close modal if open
         closeEditModal();
         
+        // Reload custom level groups to get updated data
+        await loadCustomLevelGroups();
+        
         // Refresh the display
         await showCustomLevelGroupsInLibrary();
+        
+        // Also refresh if we're on the library tab
+        const libraryTab = document.getElementById('library-tab');
+        if (libraryTab && libraryTab.classList.contains('active')) {
+            renderCustomLevelGroups();
+        }
         
         showNotification('Gruppe erfolgreich unpublisht! Sie ist nicht mehr im Marketplace verfügbar.', 'success');
         
