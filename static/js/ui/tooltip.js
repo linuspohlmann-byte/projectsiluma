@@ -1059,25 +1059,57 @@ export async function showWordDetailsPanel(anchor, word) {
       headers['Authorization'] = `Bearer ${sessionToken}`;
     }
     
-    const response = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`, { headers });
+    const url = `/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`;
+    console.log('🔧 Fetching word:', { word: w, language: lang, url });
+    
+    const response = await fetch(url, { headers });
+    console.log('🔧 Word API response:', { ok: response.ok, status: response.status, statusText: response.statusText });
+    
     if (response.ok) {
       const js = await response.json();
-      if (js && js.success && js.word === w) {
-        setCachedWordData(w, lang, nat, js);
-        renderWordDetailsPanel(panel, w, js);
-        return;
+      console.log('🔧 Word API JSON response:', js);
+      
+      // Accept response if success is true, even if word doesn't match exactly (case-insensitive comparison)
+      if (js && js.success) {
+        // Check if word matches (case-insensitive) or if word field is missing (use requested word)
+        const responseWord = js.word || w;
+        const wordsMatch = responseWord.toLowerCase() === w.toLowerCase() || !js.word;
+        
+        if (wordsMatch) {
+          // Use the word from response if available, otherwise use requested word
+          const wordToUse = js.word || w;
+          setCachedWordData(w, lang, nat, js);
+          renderWordDetailsPanel(panel, wordToUse, js);
+          return;
+        } else {
+          console.warn('⚠️ Word mismatch:', { requested: w, response: responseWord });
+        }
+      } else {
+        console.warn('⚠️ API returned success=false:', js);
+      }
+    } else {
+      // Try to get error message from response
+      try {
+        const errorData = await response.json();
+        console.error('❌ Word API error response:', errorData);
+      } catch (e) {
+        console.error('❌ Word API error (non-JSON):', response.status, response.statusText);
       }
     }
   } catch (e) {
-    console.error('Error fetching word:', e);
+    console.error('❌ Error fetching word:', e);
   }
   
-  // Fallback: show error
+  // Fallback: show error with more details
   panel.innerHTML = `
     <div class="word-details-instruction">
       <div class="word-details-instruction-icon">⚠️</div>
       <h3 class="word-details-instruction-title">Wort nicht gefunden</h3>
       <div class="word-details-instruction-text">Details für "${escapeHtml(w)}" konnten nicht geladen werden.</div>
+      <div style="margin-top: 12px; font-size: 12px; color: var(--text-secondary);">
+        Sprache: ${escapeHtml(lang)}<br>
+        Wort: "${escapeHtml(w)}"
+      </div>
     </div>
   `;
 }
