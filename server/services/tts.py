@@ -391,8 +391,8 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
                             # File doesn't exist in S3, fall through to regenerate
                 else:
                     # Not an S3 URL and not a local path - return as-is (might be external URL)
-                print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
-                return existing_url
+                    print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
+                    return existing_url
         conn.close()
     except Exception as e:
         print(f"⚠️ Warning: Could not check DB for existing audio_url: {e}")
