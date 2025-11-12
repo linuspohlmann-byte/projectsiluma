@@ -2400,52 +2400,52 @@ def api_get_custom_level_bulk_stats(group_id):
                         user_id, level_words, language, native_language
                     )
                     if user_fam_counts:
-                            fam_counts = user_fam_counts
+                        fam_counts = user_fam_counts
+                        
+                        # Calculate level score based on familiarity distribution
+                        total_familiarity = sum(fam_counts.values())
+                        if total_familiarity > 0:
+                            # Weight: Level 5 = 100%, Level 4 = 80%, Level 3 = 60%, Level 2 = 40%, Level 1 = 20%
+                            weighted_score = (
+                                fam_counts.get('5', 0) * 1.0 +
+                                fam_counts.get('4', 0) * 0.8 +
+                                fam_counts.get('3', 0) * 0.6 +
+                                fam_counts.get('2', 0) * 0.4 +
+                                fam_counts.get('1', 0) * 0.2
+                            ) / total_familiarity
                             
-                            # Calculate level score based on familiarity distribution
-                            total_familiarity = sum(fam_counts.values())
-                            if total_familiarity > 0:
-                                # Weight: Level 5 = 100%, Level 4 = 80%, Level 3 = 60%, Level 2 = 40%, Level 1 = 20%
-                                weighted_score = (
-                                    fam_counts.get('5', 0) * 1.0 +
-                                    fam_counts.get('4', 0) * 0.8 +
-                                    fam_counts.get('3', 0) * 0.6 +
-                                    fam_counts.get('2', 0) * 0.4 +
-                                    fam_counts.get('1', 0) * 0.2
-                                ) / total_familiarity
-                                
-                                # Determine status based on score
-                                if weighted_score >= 0.6:
-                                    status = 'completed'
-                                elif weighted_score > 0:
-                                    status = 'in_progress'
-                                else:
-                                    status = 'not_started'
-                                
-                                levels_data[level_num] = {
-                                    'success': True,
-                                    'status': status,
-                                    'last_score': weighted_score,
-                                    'fam_counts': fam_counts,
-                                    'total_words': total_words,
-                                    'user_progress': {
-                                        'status': status,
-                                        'score': weighted_score
-                                    }
-                                }
+                            # Determine status based on score
+                            if weighted_score >= 0.6:
+                                status = 'completed'
+                            elif weighted_score > 0:
+                                status = 'in_progress'
                             else:
-                                levels_data[level_num] = {
-                                    'success': True,
-                                    'status': 'not_started',
-                                    'last_score': 0.0,
-                                    'fam_counts': fam_counts,
-                                    'total_words': total_words,
-                                    'user_progress': {
-                                        'status': 'not_started',
-                                        'score': 0.0
-                                    }
+                                status = 'not_started'
+                            
+                            levels_data[level_num] = {
+                                'success': True,
+                                'status': status,
+                                'last_score': weighted_score,
+                                'fam_counts': fam_counts,
+                                'total_words': total_words,
+                                'user_progress': {
+                                    'status': status,
+                                    'score': weighted_score
                                 }
+                            }
                         else:
+                            levels_data[level_num] = {
+                                'success': True,
+                                'status': 'not_started',
+                                'last_score': 0.0,
+                                'fam_counts': fam_counts,
+                                'total_words': total_words,
+                                'user_progress': {
+                                    'status': 'not_started',
+                                    'score': 0.0
+                                }
+                            }
+                    else:
                             levels_data[level_num] = {
                                 'success': True,
                                 'status': 'not_started',
