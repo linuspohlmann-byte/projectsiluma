@@ -422,59 +422,60 @@ export async function openTooltip(anchor, word){
       
       // If we don't have word data yet, try to fetch from global database
       if (!js1) {
-      console.log('⚠️ Tooltip: Word data not in cache, fetching for:', w);
-      
-      // NEW: Use batch API endpoint directly (more efficient than individual calls)
-      const headers = { 'Content-Type': 'application/json' };
-      const sessionToken = localStorage.getItem('session_token');
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-      
-      try {
-        // Use batch endpoint - even for single word, it's more efficient
-        const batchResponse = await fetch('/api/words/batch', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            words: [w],
-            language: lang,
-            native_language: nat
-          })
-        });
+        console.log('⚠️ Tooltip: Word data not in cache, fetching for:', w);
         
-        if (batchResponse.ok) {
-          const batchData = await batchResponse.json();
-          if (batchData.success && batchData.words && batchData.words[w]) {
-            js1 = batchData.words[w];
-            console.log('✅ Tooltip: Fetched word data via batch API:', w);
-            
-            // Cache the word data (sync to both caches)
-            if (js1 && js1.word) {
-              setCachedWordData(w, lang, nat, js1);
-              // Also sync to WORDS_CACHE
-              if (window.cachePut) {
-                window.cachePut(js1);
+        // NEW: Use batch API endpoint directly (more efficient than individual calls)
+        const headers = { 'Content-Type': 'application/json' };
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
+        
+        try {
+          // Use batch endpoint - even for single word, it's more efficient
+          const batchResponse = await fetch('/api/words/batch', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              words: [w],
+              language: lang,
+              native_language: nat
+            })
+          });
+          
+          if (batchResponse.ok) {
+            const batchData = await batchResponse.json();
+            if (batchData.success && batchData.words && batchData.words[w]) {
+              js1 = batchData.words[w];
+              console.log('✅ Tooltip: Fetched word data via batch API:', w);
+              
+              // Cache the word data (sync to both caches)
+              if (js1 && js1.word) {
+                setCachedWordData(w, lang, nat, js1);
+                // Also sync to WORDS_CACHE
+                if (window.cachePut) {
+                  window.cachePut(js1);
+                }
               }
             }
           }
-        }
-      } catch (e) {
-        console.log('⚠️ Batch API failed, falling back to single API:', e);
-        
-        // Fallback to single word API if batch didn't work
-        const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
-          headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
-        });
-        js1 = await r1.json();
-        console.log('✅ Tooltip: Fetched word data via single API:', w);
-        
-        // Cache the word data (sync to both caches)
-        if (js1 && js1.word) {
-          setCachedWordData(w, lang, nat, js1);
-          // Also sync to WORDS_CACHE
-          if (window.cachePut) {
-            window.cachePut(js1);
+        } catch (e) {
+          console.log('⚠️ Batch API failed, falling back to single API:', e);
+          
+          // Fallback to single word API if batch didn't work
+          const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+            headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
+          });
+          js1 = await r1.json();
+          console.log('✅ Tooltip: Fetched word data via single API:', w);
+          
+          // Cache the word data (sync to both caches)
+          if (js1 && js1.word) {
+            setCachedWordData(w, lang, nat, js1);
+            // Also sync to WORDS_CACHE
+            if (window.cachePut) {
+              window.cachePut(js1);
+            }
           }
         }
       }
