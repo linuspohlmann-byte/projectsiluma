@@ -718,8 +718,17 @@ async function updateCustomGroup(groupId) {
         // Close modal
         closeEditModal();
         
+        // Reload custom level groups to get updated data
+        await loadCustomLevelGroups();
+        
         // Refresh the display
         await showCustomLevelGroupsInLibrary();
+        
+        // Also refresh if we're on the library tab
+        const libraryTab = document.getElementById('library-tab');
+        if (libraryTab && libraryTab.classList.contains('active')) {
+            renderCustomLevelGroups();
+        }
         
         showNotification('Gruppe erfolgreich aktualisiert!', 'success');
         
@@ -785,10 +794,25 @@ async function createCustomGroup() {
             showNotification(result.message, 'success');
             closeCreationProgressModal();
             closeModal(createBtn.closest('.modal-overlay'));
+            
+            // Immediately reload custom level groups and refresh overview
+            console.log('🔄 Reloading custom level groups after creation...');
             await loadCustomLevelGroups();
-            // Update the library section if it's currently visible
+            
+            // Update the library section to show the new group
             if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
-                window.showCustomLevelGroupsInLibrary();
+                await window.showCustomLevelGroupsInLibrary();
+            }
+            
+            // Also refresh if we're on the library tab
+            const libraryTab = document.getElementById('library-tab');
+            if (libraryTab && libraryTab.classList.contains('active')) {
+                renderCustomLevelGroups();
+            }
+            
+            // Navigate to library tab to show the new group in overview
+            if (window.showTab) {
+                window.showTab('library');
             }
             
             // Force refresh of level colors and word counts for the new group
@@ -880,8 +904,17 @@ async function publishCustomGroup(groupId) {
         // Close modal
         closeEditModal();
         
+        // Reload custom level groups to get updated data
+        await loadCustomLevelGroups();
+        
         // Refresh the display
         await showCustomLevelGroupsInLibrary();
+        
+        // Also refresh if we're on the library tab
+        const libraryTab = document.getElementById('library-tab');
+        if (libraryTab && libraryTab.classList.contains('active')) {
+            renderCustomLevelGroups();
+        }
         
         showNotification('Gruppe erfolgreich publisht! Sie ist jetzt im Marketplace verfügbar.', 'success');
         
@@ -1041,8 +1074,8 @@ async function deleteCustomGroup(groupId) {
         if (result.success) {
             showNotification('Level-Gruppe wurde gelöscht.', 'success');
             
-            // Immediately navigate to Group Overview
-            console.log('🔄 Immediately navigating back to Group Overview after group deletion');
+            // Immediately reload custom level groups and refresh overview
+            console.log('🔄 Reloading custom level groups after deletion...');
             
             // Hide any modals that might be open
             const modals = document.querySelectorAll('.modal-overlay');
@@ -1052,50 +1085,24 @@ async function deleteCustomGroup(groupId) {
                 }
             });
             
-            // Navigate to levels tab and show level groups overview immediately
-            if (window.showTab) {
-                window.showTab('levels');
-                // Also ensure the levels are rendered
-                if (typeof window.renderLevels === 'function') {
-                    window.renderLevels();
-                }
-                
-                // Show level groups overview (not individual levels)
-                if (typeof window.showLevelGroupsHome === 'function') {
-                    window.showLevelGroupsHome();
-                }
-                
-                // Force focus to the levels tab
-                const levelsTab = document.querySelector('[data-tab="levels"]');
-                if (levelsTab) {
-                    levelsTab.classList.add('active');
-                    levelsTab.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
-            } else {
-                console.warn('⚠️ showTab function not available');
+            // Force reload of custom level groups data immediately
+            await loadCustomLevelGroups();
+            
+            // Refresh the library section to show updated data
+            if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
+                await window.showCustomLevelGroupsInLibrary();
             }
             
-            // Update the library section in the background (after navigation)
-            setTimeout(async () => {
-                console.log('🔄 Starting comprehensive refresh after group deletion...');
-                
-                // Force reload of custom level groups data
-                await loadCustomLevelGroups();
-                
-                // Refresh the library section to show updated data
-                if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
-                    window.showCustomLevelGroupsInLibrary();
-                }
-                
-                // Also refresh the main levels view to ensure consistency
-                if (typeof window.renderLevels === 'function') {
-                    window.renderLevels();
-                }
-                
-                // Force refresh of any cached data
-                if (typeof window.refreshAllLevelColors === 'function') {
-                    window.refreshAllLevelColors();
-                }
+            // Also refresh if we're on the library tab
+            const libraryTab = document.getElementById('library-tab');
+            if (libraryTab && libraryTab.classList.contains('active')) {
+                renderCustomLevelGroups();
+            }
+            
+            // Navigate to library tab if not already there to show updated overview
+            if (window.showTab) {
+                window.showTab('library');
+            }
                 
                 // Force refresh of header stats to update word counts
                 if (window.headerStats && window.headerStats.refresh) {
