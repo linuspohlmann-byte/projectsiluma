@@ -510,7 +510,7 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
         return s3_url  # Return direct S3 URL for faster CDN access
     else:
         print(f"❌ S3 upload failed for '{word}' - S3 is required but upload failed.")
-            return None
+        return None
 
 def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3, sentence_contexts: Dict[str, str] = None) -> Dict[str, str]:
     """
