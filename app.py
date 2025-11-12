@@ -2719,7 +2719,38 @@ def api_generate_specific_custom_levels_content(group_id):
         for level in levels:
             if level['level_number'] in level_numbers:
                 content = level.get('content', {})
-                if content.get('ultra_lazy_loading', False) and not content.get('sentences_generated', False):
+                if content is None:
+                    # Ultra-lazy loading: content not loaded yet
+                    levels_needing_generation.append(level)
+                elif isinstance(content, dict):
+                    # Check if sentences have been generated - look for items array
+                    items = content.get('items', [])
+                    sentences = content.get('sentences', [])
+                    
+                    # If items exist and have content, level is already generated
+                    if items and len(items) > 0:
+                        has_real_content = any(
+                            item.get('text_target') or item.get('text_native_ref') 
+                            for item in items if isinstance(item, dict)
+                        )
+                        if has_real_content:
+                            continue  # Skip - content already exists
+                    
+                    # If sentences exist and have content, level is already generated
+                    if sentences and len(sentences) > 0:
+                        has_real_sentences = any(
+                            isinstance(s, dict) and (s.get('sentence') or s.get('text_target'))
+                            or isinstance(s, str) and s.strip()
+                            for s in sentences
+                        )
+                        if has_real_sentences:
+                            continue  # Skip - sentences already exist
+                    
+                    # Check the ultra_lazy_loading flag
+                    if content.get('ultra_lazy_loading', False) and content.get('sentences_generated', False):
+                        continue  # Skip - already marked as generated
+                    
+                    # If we get here, level needs generation
                     levels_needing_generation.append(level)
         
         if not levels_needing_generation:
@@ -2949,13 +2980,36 @@ def api_generate_all_custom_levels_content(group_id):
                 # Ultra-lazy loading: content not loaded yet, needs generation
                 levels_needing_generation.append(level)
             elif isinstance(content, dict):
-                # Check if sentences have been generated
+                # Check if sentences have been generated - look for items array which contains sentences
+                items = content.get('items', [])
                 sentences = content.get('sentences', [])
-                if not sentences or len(sentences) == 0:
-                    levels_needing_generation.append(level)
-                # Also check the ultra_lazy_loading flag
-                elif content.get('ultra_lazy_loading', False) and not content.get('sentences_generated', False):
-                    levels_needing_generation.append(level)
+                
+                # If items exist and have content, level is already generated
+                if items and len(items) > 0:
+                    # Check if items have actual sentence data
+                    has_real_content = any(
+                        item.get('text_target') or item.get('text_native_ref') 
+                        for item in items if isinstance(item, dict)
+                    )
+                    if has_real_content:
+                        continue  # Skip - content already exists
+                
+                # If sentences exist and have content, level is already generated
+                if sentences and len(sentences) > 0:
+                    has_real_sentences = any(
+                        isinstance(s, dict) and (s.get('sentence') or s.get('text_target'))
+                        or isinstance(s, str) and s.strip()
+                        for s in sentences
+                    )
+                    if has_real_sentences:
+                        continue  # Skip - sentences already exist
+                
+                # Check the ultra_lazy_loading flag - if set and sentences_generated is True, skip
+                if content.get('ultra_lazy_loading', False) and content.get('sentences_generated', False):
+                    continue  # Skip - already marked as generated
+                
+                # If we get here, level needs generation
+                levels_needing_generation.append(level)
         
         if not levels_needing_generation:
             return jsonify({'success': True, 'message': 'All levels already have content generated'})

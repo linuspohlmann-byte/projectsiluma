@@ -400,11 +400,13 @@ export async function openTooltip(anchor, word){
     if (!js1) {
       console.log('🔧 Fetching word data for:', w);
       
-      // Check cache first
+      // Check cache first - use cached data immediately for instant display
       const cachedData = getCachedWordData(w, lang, nat);
       if (cachedData) {
         console.log('🔧 Using cached word data for:', w);
         js1 = cachedData;
+        // Fill immediately with cached data for instant display
+        fill(js1);
       } else {
         // Add authentication headers for user-specific data
         const headers = {};
@@ -413,11 +415,28 @@ export async function openTooltip(anchor, word){
           headers['Authorization'] = `Bearer ${sessionToken}`;
         }
         
-        const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
-          headers
-        });
-        const js = await r1.json();
-        console.log('🔧 Fetched word data:', js);
+        // Use batch endpoint if available for better performance
+        let js = null;
+        if (window.batchGetWords && typeof window.batchGetWords === 'function') {
+          try {
+            const batchResult = await window.batchGetWords([w], lang);
+            if (batchResult && batchResult[w]) {
+              js = batchResult[w];
+              console.log('🔧 Fetched word data via batch API:', js);
+            }
+          } catch (e) {
+            console.log('⚠️ Batch fetch failed, falling back to single API:', e);
+          }
+        }
+        
+        // Fallback to single word API if batch didn't work
+        if (!js) {
+          const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+            headers
+          });
+          js = await r1.json();
+          console.log('🔧 Fetched word data:', js);
+        }
         
         // Cache the word data
         if (js && js.word) {

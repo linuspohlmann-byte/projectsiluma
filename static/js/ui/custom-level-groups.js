@@ -1207,12 +1207,11 @@ async function startCustomGroup(groupId) {
                 }
             }
             
-            // Start background generation for remaining levels (non-blocking)
+            // DISABLED: Don't generate locked levels in background
+            // Only generate levels when user actually unlocks them
+            // This saves resources and prevents unnecessary generation
             if (levelsToGenerate.background.length > 0) {
-                console.log(`🔄 Starting background generation for ${levelsToGenerate.background.length} remaining levels...`);
-                
-                // Generate remaining levels in background without blocking UI
-                generateRemainingLevelsInBackground(groupId, levelsToGenerate.background);
+                console.log(`⏸️ Skipping background generation for ${levelsToGenerate.background.length} locked levels (will generate when unlocked)`);
             }
         } else {
             console.log(`✅ All levels already generated - fast loading!`);
