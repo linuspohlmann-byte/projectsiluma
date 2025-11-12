@@ -950,10 +950,10 @@ export function showInstructionPanel(taskType, options = {}) {
       
     case 'sb':
       instructionText = window.t ? 
-        window.t('instructions.build_sentence', 'Baue den Satz aus den Wörtern in der richtigen Reihenfolge.') : 
-        'Baue den Satz aus den Wörtern in der richtigen Reihenfolge.';
+        window.t('instructions.build_sentence', 'Ziehe die Wörter per Drag & Drop in die richtige Reihenfolge. Klicke auf ein Wort für Details.') : 
+        'Ziehe die Wörter per Drag & Drop in die richtige Reihenfolge. Klicke auf ein Wort für Details.';
       icon = '🧩';
-      hintText = 'Klicke auf ein Wort, um Details zu sehen';
+      hintText = 'Ziehe Wörter per Drag & Drop. Klicke auf ein Wort für Details.';
       break;
       
     case 'translate':

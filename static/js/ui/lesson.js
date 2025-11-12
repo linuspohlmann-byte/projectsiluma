@@ -94,8 +94,8 @@ function displayEnhancedInstruction(taskType, resultBox, options = {}) {
       
     case 'sb':
       instructionText = window.t ? 
-        window.t('instructions.build_sentence', 'Baue den Satz aus den Wörtern in der richtigen Reihenfolge.') : 
-        'Baue den Satz aus den Wörtern in der richtigen Reihenfolge.';
+        window.t('instructions.build_sentence', 'Ziehe die Wörter per Drag & Drop in die richtige Reihenfolge. Klicke auf ein Wort für Details.') : 
+        'Ziehe die Wörter per <span class="instruction-highlight">Drag & Drop</span> in die richtige Reihenfolge. <span class="instruction-highlight">Klicke</span> auf ein Wort für Details.';
       icon = '🧩';
       highlightText = 'Satz bauen';
       break;
@@ -1655,13 +1655,20 @@ async function renderCurrent(){
         b.className = 'secondary sb-chip';
         b.textContent = obj.text;
         b.style.fontSize = '18px';
-        b.title = 'Klicken zum Entfernen. Ziehen zum Umordnen';
+        b.title = 'Klicken zum Entfernen. Ziehen zum Umordnen. Rechtsklick für Details.';
         b.draggable = true;
-        b.addEventListener('click', ()=>{
+        b.dataset.word = obj.text; // Store word for word details panel
+        b.addEventListener('click', (ev)=>{
           if(RUN.answered) return;
+          // Left click: remove word
           chosen.splice(pos,1);
           renderChosen();
           renderOptions();
+        });
+        // Right click or long press: show word details
+        b.addEventListener('contextmenu', async (ev)=>{
+          ev.preventDefault();
+          await showWordDetailsPanel(ev.currentTarget, obj.text);
         });
         b.addEventListener('dragstart', (ev)=>{
           dragFrom = pos;
@@ -1681,18 +1688,41 @@ async function renderCurrent(){
     };
 
     // Single container-level handlers to avoid duplicate listeners and index drift
-    area.ondragover = (ev)=>{ ev.preventDefault(); area.classList.add('highlight'); try{ ev.dataTransfer.dropEffect = 'move'; }catch(_){ } };
+    area.ondragover = (ev)=>{ 
+      ev.preventDefault(); 
+      area.classList.add('highlight'); 
+      try{ ev.dataTransfer.dropEffect = 'move'; }catch(_){ } 
+    };
     area.ondrop = (ev)=>{
       area.classList.remove('highlight');
       ev.preventDefault();
-      if(dragFrom < 0 || dragFrom >= chosen.length) return;
-      const toRaw = computeInsertIndex(area, ev.clientX, ev.clientY);
-      const to = toRaw > dragFrom ? toRaw - 1 : toRaw;
-      if(to === dragFrom) return;
-      const item = chosen.splice(dragFrom, 1)[0];
-      chosen.splice(Math.max(0,Math.min(chosen.length, to)), 0, item);
-      dragFrom = -1;
-      renderChosen();
+      
+      // Check if dropping from options (new word) or from area (reordering)
+      const data = ev.dataTransfer?.getData('text/plain') || '';
+      if(data.startsWith('option-')) {
+        // Dropping from options: add new word
+        const optionIdx = parseInt(data.replace('option-', ''), 10);
+        if(isNaN(optionIdx) || optionIdx < 0 || optionIdx >= (task.options||[]).length) return;
+        const opt = task.options[optionIdx];
+        const alreadyUsed = chosen.some(c => c.idx === optionIdx);
+        if(alreadyUsed) return;
+        
+        const toRaw = computeInsertIndex(area, ev.clientX, ev.clientY);
+        chosen.splice(Math.max(0, Math.min(chosen.length, toRaw)), 0, { text: opt, idx: optionIdx });
+        renderChosen();
+        renderOptions();
+        if(btn){ btn.disabled=false; btn.style.opacity='1'; btn.classList.add('ready'); btn.textContent=window.t ? window.t('buttons.check_answer', 'Antwort prüfen') : 'Antwort prüfen'; }
+      } else {
+        // Dropping from area: reorder existing word
+        if(dragFrom < 0 || dragFrom >= chosen.length) return;
+        const toRaw = computeInsertIndex(area, ev.clientX, ev.clientY);
+        const to = toRaw > dragFrom ? toRaw - 1 : toRaw;
+        if(to === dragFrom) return;
+        const item = chosen.splice(dragFrom, 1)[0];
+        chosen.splice(Math.max(0,Math.min(chosen.length, to)), 0, item);
+        dragFrom = -1;
+        renderChosen();
+      }
     };
     area.ondragleave = ()=>{ area.classList.remove('highlight'); };
 
@@ -1704,13 +1734,32 @@ async function renderCurrent(){
         b.className = 'secondary';
         b.textContent = opt;
         b.style.fontSize = '18px';
+        b.dataset.word = opt; // Store word for word details panel
         if(used){ b.style.display='none'; }
-        b.onclick = async ()=>{
-          if(RUN.answered || used) return;
-          chosen.push({ text: opt, idx }); // index speichern
+        
+        // Make draggable for drag & drop
+        b.draggable = true;
+        b.addEventListener('dragstart', (ev)=>{
+          if(RUN.answered || used) {
+            ev.preventDefault();
+            return;
+          }
+          dragFrom = -1; // Mark as coming from options
+          try{ ev.dataTransfer?.setData('text/plain', `option-${idx}`); }catch(_){ }
+          try{ ev.dataTransfer.effectAllowed = 'copy'; }catch(_){ }
+          b.style.opacity = '0.5';
+        });
+        b.addEventListener('dragend', ()=>{
+          b.style.opacity = '';
+        });
+        
+        // Click opens word details panel instead of adding word
+        b.onclick = async (ev)=>{
+          ev.stopPropagation();
+          if(RUN.answered) return;
+          // Open word details panel
+          await showWordDetailsPanel(ev.currentTarget, opt);
           try{ await playOrGenAudio(opt); }catch(_){ }
-          renderChosen(); renderOptions();
-          if(btn){ btn.disabled=false; btn.style.opacity='1'; btn.classList.add('ready'); btn.textContent=window.t ? window.t('buttons.check_answer', 'Antwort prüfen') : 'Antwort prüfen'; }
         };
         opts.appendChild(b);
       });
