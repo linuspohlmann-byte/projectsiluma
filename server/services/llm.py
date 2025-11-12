@@ -1192,7 +1192,7 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
             from server.db import batch_upsert_word_rows
             batch_upsert_word_rows(words_to_upsert_old_db)
             print(f"✅ Batch inserted {len(words_to_upsert_old_db)} words into old DB")
-            except Exception as e:
+        except Exception as e:
             print(f"⚠️ Warning: Batch insert failed, falling back to individual inserts: {e}")
             # Fallback to individual inserts
             from server.db import upsert_word_row
