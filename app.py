@@ -3669,8 +3669,8 @@ def api_enrich_custom_level_words(group_id, level_number):
                                     ''', (audio_url, datetime.now(UTC).isoformat(), word, language, native_language))
                                 conn.commit()
                         print(f"✅ Generated and updated audio URLs for {len(words_with_audio)} words")
-                finally:
-                    conn.close()
+                    finally:
+                        conn.close()
             except Exception as e:
                 print(f"⚠️ Error generating audio: {e}")
             
