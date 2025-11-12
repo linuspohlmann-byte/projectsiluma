@@ -601,6 +601,11 @@ export function refreshNotifications() {
     loadNotifications();
 }
 
+// Make refreshNotifications available globally for auth.js
+if (typeof window !== 'undefined') {
+    window.refreshNotifications = refreshNotifications;
+}
+
 // Listen for auth state changes
 if (typeof window !== 'undefined') {
     // Refresh notifications when user logs in
@@ -622,6 +627,9 @@ if (typeof window !== 'undefined') {
             if (notificationsPanel) {
                 closeNotificationsPanel();
             }
+            notifications = [];
+            unreadCount = 0;
+            updateNotificationBadge();
         }
     };
 }
