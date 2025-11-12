@@ -3837,11 +3837,11 @@ def api_enrich_custom_level_words(group_id, level_number):
                             # SQLite batch update
                             cur = conn.cursor()
                             for word, audio_url in words_with_audio:
-                            cur.execute('''
+                                cur.execute('''
                                     UPDATE words SET audio_url = ?, updated_at = ? 
                                     WHERE word = ? AND language = ? AND native_language = ?
                                 ''', (audio_url, datetime.now(UTC).isoformat(), word, language, native_language))
-                        conn.commit()
+                            conn.commit()
                             updated_count = len(words_with_audio)
                     print(f"✅ Generated and updated audio URLs for {updated_count}/{len(audio_results)} words")
                 except Exception as e:
