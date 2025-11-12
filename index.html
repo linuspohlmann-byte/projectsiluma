@@ -2923,21 +2923,23 @@
     /* Remove old .nav button:hover rule (if present) and .nav button.active:hover (not needed) */
     section.card{background:var(--card);border-radius:12px;padding:24px 28px;margin-top:24px;box-shadow:0 2px 8px var(--shadow), 0 1px 2px var(--shadow);border:1px solid var(--border)}
 
-    /* Text */
+    /* Text - consistent container styling */
     .sentence {
       font-size:24px;
       line-height:1.7;
       background:var(--surface);
       border-radius:12px;
-      padding:24px 28px;
-      margin-top:20px;
+      padding:20px 24px;
+      margin-top:16px;
+      margin-bottom:16px;
       display: flex;
       justify-content: center;
       align-items: center;
       text-align: center;
       flex-wrap: wrap;
-      border: none;
-      box-shadow: none;
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      box-sizing: border-box;
     }
 
     .sentence-row {
