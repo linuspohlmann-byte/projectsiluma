@@ -393,35 +393,35 @@ export async function openTooltip(anchor, word){
     
     // Check if this is a custom level and try to get word data from custom level context
     if (!js1) {
-    if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
-      console.log('🔧 Tooltip for custom level word:', w);
-      
-      // For custom levels, try to get word data from the current item first
-      const currentItem = window.RUN.items[window.RUN.idx || 0];
-      if (currentItem && currentItem.words) {
-        // Look for the word in the current item's words array
-        const wordData = currentItem.words.find(word => word === w);
-        if (wordData) {
-          console.log('🔧 Found word in custom level item:', wordData);
-          // Create a basic word object for the tooltip
-          js1 = {
-            word: w,
-            language: lang,
-            translation: '', // Will be filled by enrichment
-            familiarity: 0,
-            pos: '',
-            ipa: '',
-            example_native: '',
-            synonyms: [],
-            collocations: [],
-            gender: 'none'
-          };
+      if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
+        console.log('🔧 Tooltip for custom level word:', w);
+        
+        // For custom levels, try to get word data from the current item first
+        const currentItem = window.RUN.items[window.RUN.idx || 0];
+        if (currentItem && currentItem.words) {
+          // Look for the word in the current item's words array
+          const wordData = currentItem.words.find(word => word === w);
+          if (wordData) {
+            console.log('🔧 Found word in custom level item:', wordData);
+            // Create a basic word object for the tooltip
+            js1 = {
+              word: w,
+              language: lang,
+              translation: '', // Will be filled by enrichment
+              familiarity: 0,
+              pos: '',
+              ipa: '',
+              example_native: '',
+              synonyms: [],
+              collocations: [],
+              gender: 'none'
+            };
+          }
         }
       }
-    }
-    
-    // If we don't have word data yet, try to fetch from global database
-    if (!js1) {
+      
+      // If we don't have word data yet, try to fetch from global database
+      if (!js1) {
       console.log('⚠️ Tooltip: Word data not in cache, fetching for:', w);
       
       // NEW: Use batch API endpoint directly (more efficient than individual calls)
