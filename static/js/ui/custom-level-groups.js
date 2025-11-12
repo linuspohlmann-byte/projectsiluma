@@ -622,6 +622,18 @@ async function showCreateCustomGroupModal() {
                         </div>
                     </div>
                     
+                    <div class="form-group" style="margin-top: 24px; padding: 16px; background: var(--surface); border-radius: 8px; border: 1px solid var(--border);">
+                        <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; margin: 0;">
+                            <input type="checkbox" id="publish-immediately" name="publish_immediately" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);">
+                            <div style="flex: 1;">
+                                <span style="font-weight: 600; display: block; margin-bottom: 4px;">🌐 Sofort publishen</span>
+                                <span style="font-size: 13px; color: var(--text-secondary);">
+                                    Deine Story wird direkt nach der Erstellung im Marketplace verfügbar sein
+                                </span>
+                            </div>
+                        </label>
+                    </div>
+                    
                 </form>
             </div>
             <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border);">
@@ -816,7 +828,39 @@ async function createCustomGroup() {
         const result = await response.json();
         
         if (result.success) {
-            showNotification(result.message, 'success');
+            const groupId = result.group_id || result.id;
+            const publishImmediately = formData.get('publish_immediately') === 'on';
+            
+            // If publish immediately is checked, publish the group
+            if (publishImmediately && groupId) {
+                try {
+                    console.log('🌐 Publishing story immediately after creation:', groupId);
+                    const publishHeaders = {
+                        'Content-Type': 'application/json'
+                    };
+                    if (window.authManager && window.authManager.isAuthenticated()) {
+                        Object.assign(publishHeaders, window.authManager.getAuthHeaders());
+                    }
+                    
+                    const publishResponse = await fetch(`/api/custom-level-groups/${groupId}/publish`, {
+                        method: 'POST',
+                        headers: publishHeaders
+                    });
+                    
+                    const publishResult = await publishResponse.json();
+                    if (publishResult.success) {
+                        showNotification('Story erfolgreich erstellt und publisht! Sie ist jetzt im Marketplace verfügbar.', 'success');
+                    } else {
+                        showNotification('Story erfolgreich erstellt, aber Fehler beim Publishen: ' + (publishResult.error || 'Unbekannter Fehler'), 'warning');
+                    }
+                } catch (publishError) {
+                    console.error('❌ Error publishing story after creation:', publishError);
+                    showNotification('Story erfolgreich erstellt, aber Fehler beim Publishen: ' + publishError.message, 'warning');
+                }
+            } else {
+                showNotification(result.message, 'success');
+            }
+            
             closeCreationProgressModal();
             closeModal(createBtn.closest('.modal-overlay'));
             
