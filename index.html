@@ -2958,10 +2958,29 @@
     .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     .grow{flex:1}
 
-    /* Inputs - cleaner design with reduced borders */
-    textarea, input{width:100%;background:var(--card);color:var(--fg);border:1px solid transparent;border-radius:10px;padding:14px 18px;transition:all .2s ease;box-shadow:0 2px 4px rgba(0,0,0,0.05)}
-    textarea{font-size:16px; line-height:1.5; resize:vertical; min-height:40px}
-    textarea:focus, input:focus{border-color:var(--accent);box-shadow:0 4px 8px rgba(0,0,0,0.1), 0 0 0 3px rgba(37, 99, 235, 0.1)}
+    /* Inputs - consistent with container styling */
+    textarea, input{
+      width:100%;
+      background:var(--card);
+      color:var(--fg);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:16px 20px;
+      transition:all .2s ease;
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+      font-size:16px;
+      line-height:1.5;
+      box-sizing:border-box;
+    }
+    textarea{
+      resize:vertical; 
+      min-height:72px;
+    }
+    textarea:focus, input:focus{
+      border-color:var(--accent);
+      box-shadow:0 4px 8px rgba(0,0,0,0.1), 0 0 0 3px rgba(37, 99, 235, 0.1);
+      outline:none;
+    }
 
     /* Ensure lesson textarea shows full placeholder on load */
     #user-translation{
@@ -2971,7 +2990,11 @@
       display: block;
     }
     #user-translation::placeholder{ white-space: normal; }
-    #progress-block{margin-bottom:12px}
+    /* Progress Block - consistent spacing */
+    #progress-block{
+      margin-bottom:16px;
+      padding:0;
+    }
 
     /* Table */
     table{width:100%;border-collapse:separate;border-spacing:0 6px}
@@ -5240,29 +5263,156 @@
 
     .lang-wrap option{ font-size:16px; }
 
-    /* Sentence Builder layout */
-    .sb-wrap{ display:grid; grid-template-columns:1fr; gap:12px; margin-top:10px; justify-items:center }
-    @media (min-width: 720px){ .sb-wrap{ grid-template-columns:1fr; } }
-    .sb-area{ min-height:44px; padding:8px; border-radius:10px; background:var(--surface); display:flex; gap:8px; flex-wrap:wrap; justify-content:center }
-    .sb-options{ padding:8px; border-radius:10px; background:var(--surface); display:flex; gap:8px; flex-wrap:wrap; justify-content:center }
+    /* Sentence Builder layout - consistent styling */
+    .sb-wrap{ 
+      display:grid; 
+      grid-template-columns:1fr; 
+      gap:16px; 
+      margin-top:16px; 
+      justify-items:center;
+      width:100%;
+      box-sizing:border-box;
+    }
+    @media (min-width: 720px){ 
+      .sb-wrap{ 
+        grid-template-columns:1fr; 
+      } 
+    }
+    .sb-area{ 
+      min-height:60px; 
+      padding:16px; 
+      border-radius:12px; 
+      background:var(--surface); 
+      display:flex; 
+      gap:10px; 
+      flex-wrap:wrap; 
+      justify-content:center;
+      border:1px solid var(--border);
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+      width:100%;
+      box-sizing:border-box;
+    }
+    .sb-options{ 
+      padding:16px; 
+      border-radius:12px; 
+      background:var(--surface); 
+      display:flex; 
+      gap:10px; 
+      flex-wrap:wrap; 
+      justify-content:center;
+      border:1px solid var(--border);
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+      width:100%;
+      box-sizing:border-box;
+    }
     .sb-chip{ cursor:grab }
     .sb-chip:active{ cursor:grabbing }
 
     #sentence-wrap { display:flex; flex-direction:column; align-items:center; text-align:center; width:100%; max-width:100%; box-sizing:border-box; overflow:hidden; flex:1 }
     #lesson .sentence { width:100%; max-width:100%; justify-content:center; box-sizing:border-box; overflow:hidden }
-    /* MC Options with labels - similar to Sentence Builder */
-    .mc-options-container{ display:flex; flex-direction:column; align-items:center; gap:12px; width:100%; max-width:100%; box-sizing:border-box; flex:1 }
-    .mc-label{ font-size:16px; font-weight:600; color:var(--text-primary); text-align:center; margin-bottom:8px }
-    .mc-options-grid{ display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:8px; width:100%; max-width:100%; box-sizing:border-box }
+    /* MC Options with labels - consistent styling */
+    .mc-options-container{ 
+      display:flex; 
+      flex-direction:column; 
+      align-items:center; 
+      gap:16px; 
+      width:100%; 
+      max-width:100%; 
+      box-sizing:border-box; 
+      flex:1;
+      margin-top:16px;
+      padding:16px;
+      background:var(--surface);
+      border-radius:12px;
+      border:1px solid var(--border);
+    }
+    .mc-label{ 
+      font-size:16px; 
+      font-weight:600; 
+      color:var(--fg); 
+      text-align:center; 
+      margin:0;
+    }
+    .mc-options-grid{ 
+      display:flex; 
+      justify-content:center; 
+      align-items:center; 
+      flex-wrap:wrap; 
+      gap:10px; 
+      width:100%; 
+      max-width:100%; 
+      box-sizing:border-box;
+    }
     
-    /* Translate Labels - similar to Sentence Builder */
-    .translate-label{ font-size:16px; font-weight:600; color:var(--text-primary); text-align:left; margin-bottom:8px; padding-left:4px }
+    /* Translate Labels - consistent styling */
+    .translate-label{ 
+      font-size:16px; 
+      font-weight:600; 
+      color:var(--fg); 
+      text-align:left; 
+      margin:0 0 12px 0; 
+      padding:0;
+    }
     
-    /* Legacy support */
-    #mc-options{ display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:8px; width:100%; max-width:100%; box-sizing:border-box; flex:1 }
-    .sb-wrap{ display:grid; grid-template-columns:1fr; gap:12px; margin-top:10px; justify-items:center; width:100%; max-width:100%; box-sizing:border-box; flex:1 }
-    .sb-area{ min-height:44px; padding:8px; border-radius:10px; background:var(--surface); display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; max-width:100%; box-sizing:border-box; flex:1 }
-    .sb-options{ padding:8px; border-radius:10px; background:var(--surface); display:flex; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; max-width:100%; box-sizing:border-box; flex:1 }
+    /* Legacy support - consistent styling */
+    #mc-options{ 
+      display:flex; 
+      justify-content:center; 
+      align-items:center; 
+      flex-wrap:wrap; 
+      gap:10px; 
+      width:100%; 
+      max-width:100%; 
+      box-sizing:border-box; 
+      flex:1;
+      padding:16px;
+      background:var(--surface);
+      border-radius:12px;
+      border:1px solid var(--border);
+      margin-top:16px;
+    }
+    .sb-wrap{ 
+      display:grid; 
+      grid-template-columns:1fr; 
+      gap:16px; 
+      margin-top:16px; 
+      justify-items:center; 
+      width:100%; 
+      max-width:100%; 
+      box-sizing:border-box; 
+      flex:1;
+    }
+    .sb-area{ 
+      min-height:60px; 
+      padding:16px; 
+      border-radius:12px; 
+      background:var(--surface); 
+      display:flex; 
+      gap:10px; 
+      flex-wrap:wrap; 
+      justify-content:center; 
+      width:100%; 
+      max-width:100%; 
+      box-sizing:border-box; 
+      flex:1;
+      border:1px solid var(--border);
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+    }
+    .sb-options{ 
+      padding:16px; 
+      border-radius:12px; 
+      background:var(--surface); 
+      display:flex; 
+      gap:10px; 
+      flex-wrap:wrap; 
+      justify-content:center; 
+      width:100%; 
+      max-width:100%; 
+      box-sizing:border-box; 
+      flex:1;
+      border:1px solid var(--border);
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+    }
     #lesson-replay {
       display: inline-flex;
       justify-content: center;
@@ -5302,7 +5452,7 @@
     /* ---- Layout polish v1 ---- */
     /* Lesson Container Layout */
     #lesson-container {
-      display: flex;
+      display: none;
       gap: 24px;
       align-items: flex-start;
       max-width: 1400px;
@@ -5310,8 +5460,8 @@
       padding: 0 20px;
     }
     
-    #lesson-container[style*="display:none"] {
-      display: none !important;
+    #lesson-container:not([style*="display:none"]) {
+      display: flex !important;
     }
     
     #lesson.card{ 
@@ -5522,7 +5672,15 @@
 
     /* Sentence und Audio */
     .sentence{ line-height:1.5 !important }
-    .replay-row{ display:flex; justify-content:center; align-items:center; width:100%; margin-top:10px }
+    /* Replay Row - consistent spacing */
+    .replay-row{ 
+      display:flex; 
+      justify-content:center; 
+      align-items:center; 
+      width:100%; 
+      margin-top:16px;
+      margin-bottom:16px;
+    }
     #lesson .icon-btn#lesson-replay{
       width:48px !important; height:48px !important; font-size:24px !important;
       display:inline-flex; justify-content:center; align-items:center
@@ -5550,21 +5708,41 @@
     #sentence-wrap .word{ background:var(--surface); border:none; box-shadow:0 2px 4px rgba(0,0,0,0.05) }
     #sentence-wrap .word:hover{ background:var(--accent); color:white; border:none; box-shadow:0 4px 8px rgba(0,0,0,0.15) }
 
-    /* SB-Zonen - reduced visual clutter */
-    .sb-area, .sb-options{ justify-content:center; gap:8px; padding:10px; background:var(--surface); border-radius:10px; border:none; box-shadow:none }
+    /* SB-Zonen - consistent with other containers */
+    .sb-area, .sb-options{ 
+      justify-content:center; 
+      gap:10px; 
+      padding:16px; 
+      background:var(--surface); 
+      border-radius:12px; 
+      border:1px solid var(--border); 
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+    }
     .sb-area .placeholder{ border:2px dashed var(--border); border-radius:10px; width:90px; height:34px }
 
-    /* Lesbarkeit */
-    .hint{ background:var(--surface); border-color:var(--border) !important; color:var(--text-secondary); box-shadow:none }
+    /* Instruction/Hint Box - consistent with other containers */
+    .hint, #result.hint{ 
+      background:var(--surface); 
+      border:1px solid var(--border); 
+      border-radius:12px;
+      padding:16px 20px;
+      margin-bottom:16px;
+      color:var(--text-secondary); 
+      box-shadow:0 2px 4px rgba(0,0,0,0.05);
+      font-size:14px;
+      line-height:1.6;
+    }
 
-    /* Sticky Actions */
+    /* Sticky Actions - consistent spacing */
     #lesson .row.actions{
-      position:sticky; bottom:12px;
+      position:sticky; 
+      bottom:16px;
       background:transparent;
-      padding:12px 0 8px 0; 
-      margin:16px 0 0 0;
+      padding:16px 0; 
+      margin:20px 0 0 0;
       z-index:10;
       backdrop-filter:blur(4px);
+      gap:12px;
     }
 
     /* Responsive */
@@ -5580,8 +5758,22 @@
     }
 
     /* --- SB layout upgrade --- */
-    .sb-section{ width:100%; display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:12px }
-    .sb-label{ font-size:16px; font-weight:600; color:var(--text-primary); text-align:center; margin-bottom:8px }
+    .sb-section{ 
+      width:100%; 
+      display:flex; 
+      flex-direction:column; 
+      align-items:center; 
+      gap:12px; 
+      margin-top:16px;
+      box-sizing:border-box;
+    }
+    .sb-label{ 
+      font-size:16px; 
+      font-weight:600; 
+      color:var(--fg); 
+      text-align:center; 
+      margin:0 0 8px 0;
+    }
     .sb-area{ position:relative }
     .sb-area.highlight{ outline:2px solid var(--accent); outline-offset:2px }
     .sb-placeholder{ width:90px; height:34px; border:2px dashed var(--border); border-radius:10px; display:inline-flex; align-items:center; justify-content:center; margin:4px }
