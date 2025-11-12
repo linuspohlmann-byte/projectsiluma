@@ -1321,11 +1321,9 @@ function renderWordDetailsPanel(panel, word, data) {
       ` : ''}
       
       <div class="word-details-buttons">
-        ${audioUrl ? `
-          <button class="word-details-btn" onclick="playAudioFromPanel('${escapeHtml(audioUrl)}')">
-            🔊 Audio
-          </button>
-        ` : ''}
+        <button class="word-details-btn" onclick="playAudioFromPanel('${escapeHtml(word)}')">
+          🔊 Audio
+        </button>
         <button class="word-details-btn primary" onclick="saveWordDetailsFromPanel()">
           💾 Speichern
         </button>
@@ -1342,12 +1340,35 @@ function renderWordDetailsPanel(panel, word, data) {
   }
 }
 
-// Play audio from panel
-window.playAudioFromPanel = function(audioUrl) {
-  if (audioUrl && audioUrl.trim()) {
-    const audio = new Audio(audioUrl);
-    audio.play().catch(e => console.error('Audio play failed:', e));
+// Play audio from panel - use same logic as playOrGenAudio
+window.playAudioFromPanel = async function(wordOrUrl) {
+  // If it's a URL (starts with http or /), play it directly
+  if (wordOrUrl && (wordOrUrl.startsWith('http') || wordOrUrl.startsWith('/'))) {
+    try {
+      const audio = new Audio(wordOrUrl);
+      await audio.play();
+      return;
+    } catch (e) {
+      console.error('Audio play failed:', e);
+      return;
+    }
   }
+  
+  // Otherwise, treat it as a word and use playOrGenAudio logic
+  const word = String(wordOrUrl || TT.word || '').trim();
+  if (!word) return;
+  
+  // Get sentence context if available
+  let sentenceContext = null;
+  if (window.RUN && window.RUN.items && window.RUN.items.length > 0) {
+    const currentItem = window.RUN.items[window.RUN.idx || 0];
+    if (currentItem && currentItem.text_target) {
+      sentenceContext = currentItem.text_target;
+    }
+  }
+  
+  // Use the same playOrGenAudio function
+  await playOrGenAudio(word, sentenceContext);
 };
 
 // Save word details from panel
