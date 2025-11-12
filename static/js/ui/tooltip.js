@@ -1050,115 +1050,6 @@ export async function showWordDetailsPanel(anchor, word) {
     console.log('✅ Word details panel: Using cached word data for instant display:', w);
     renderWordDetailsPanel(panel, w, js1);
     // Continue to fetch fresh data in background (like openTooltip does)
-  }
-  
-  // Check if this is a custom level and try to get word data from custom level context
-  if (!js1) {
-    if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
-      console.log('🔧 Word details panel for custom level word:', w);
-      
-      // For custom levels, try to get word data from the current item first
-      const currentItem = window.RUN.items[window.RUN.idx || 0];
-      if (currentItem && currentItem.words) {
-        // Look for the word in the current item's words array
-        const wordData = currentItem.words.find(word => word === w);
-        if (wordData) {
-          console.log('🔧 Found word in custom level item:', wordData);
-          // Create a basic word object for the panel
-          js1 = {
-            word: w,
-            language: lang,
-            translation: '', // Will be filled by enrichment
-            familiarity: 0,
-            pos: '',
-            ipa: '',
-            example_native: '',
-            synonyms: [],
-            collocations: [],
-            gender: 'none'
-          };
-        }
-      }
-    }
-  }
-  
-  // If we don't have word data yet, try to fetch from global database (same as openTooltip)
-  if (!js1) {
-    console.log('⚠️ Word details panel: Word data not in cache, fetching for:', w);
-    
-    try {
-      // NEW: Use batch API endpoint directly (more efficient than individual calls) - same as openTooltip
-      const headers = { 'Content-Type': 'application/json' };
-      const sessionToken = localStorage.getItem('session_token');
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-      
-      try {
-        // Use batch endpoint - even for single word, it's more efficient (same as openTooltip)
-        const batchResponse = await fetch('/api/words/batch', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            words: [w],
-            language: lang,
-            native_language: nat
-          })
-        });
-        
-        if (batchResponse.ok) {
-          const batchData = await batchResponse.json();
-          if (batchData.success && batchData.words && batchData.words[w]) {
-            js1 = batchData.words[w];
-            console.log('✅ Word details panel: Fetched word data via batch API:', w);
-            
-            // Cache the word data (sync to both caches)
-            if (js1 && js1.word) {
-              setCachedWordData(w, lang, nat, js1);
-              // Also sync to WORDS_CACHE
-              if (window.cachePut) {
-                window.cachePut(js1);
-              }
-            }
-            
-            renderWordDetailsPanel(panel, w, js1);
-            return;
-          }
-        }
-      } catch (e) {
-        console.log('⚠️ Batch API failed, falling back to single API:', e);
-      }
-      
-      // Fallback to single word API if batch didn't work (same as openTooltip)
-      // IMPORTANT: Include native_language in query parameter, not just header!
-      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
-        headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
-      });
-      
-      if (r1.ok) {
-        js1 = await r1.json();
-        console.log('✅ Word details panel: Fetched word data via single API:', w);
-        
-        // Cache the word data (sync to both caches)
-        if (js1 && js1.word) {
-          setCachedWordData(w, lang, nat, js1);
-          // Also sync to WORDS_CACHE
-          if (window.cachePut) {
-            window.cachePut(js1);
-          }
-        }
-        
-        renderWordDetailsPanel(panel, w, js1);
-        return;
-      } else {
-        console.error('❌ Word API error:', r1.status, r1.statusText);
-      }
-    } catch (e) {
-      console.error('❌ Error fetching word:', e);
-    }
-  } else {
-    // We have cached data, but fetch fresh data in background (like openTooltip does)
-    // This ensures we have the latest data
     setTimeout(async () => {
       try {
         const headers = { 'Content-Type': 'application/json' };
@@ -1186,9 +1077,107 @@ export async function showWordDetailsPanel(anchor, word) {
         console.log('⚠️ Background refresh failed:', e);
       }
     }, 100);
+    return; // Exit early if we have cached data
   }
   
-  // Fallback: show error with more details
+  // Check if this is a custom level and try to get word data from custom level context
+  if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
+    console.log('🔧 Word details panel for custom level word:', w);
+    
+    // For custom levels, try to get word data from the current item first
+    const currentItem = window.RUN.items[window.RUN.idx || 0];
+    if (currentItem && currentItem.words) {
+      // Look for the word in the current item's words array
+      const wordData = currentItem.words.find(word => word === w);
+      if (wordData) {
+        console.log('🔧 Found word in custom level item:', wordData);
+        // Create a basic word object for the panel
+        js1 = {
+          word: w,
+          language: lang,
+          translation: '', // Will be filled by enrichment
+          familiarity: 0,
+          pos: '',
+          ipa: '',
+          example_native: '',
+          synonyms: [],
+          collocations: [],
+          gender: 'none'
+        };
+        renderWordDetailsPanel(panel, w, js1);
+        // Continue to fetch real data
+      }
+    }
+  }
+  
+  // If we don't have word data yet, try to fetch from global database (same as openTooltip)
+  // Keep loading state visible while fetching
+  try {
+    // NEW: Use batch API endpoint directly (more efficient than individual calls) - same as openTooltip
+    const headers = { 'Content-Type': 'application/json' };
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+    
+    let fetchedData = null;
+    
+    try {
+      // Use batch endpoint - even for single word, it's more efficient (same as openTooltip)
+      const batchResponse = await fetch('/api/words/batch', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          words: [w],
+          language: lang,
+          native_language: nat
+        })
+      });
+      
+      if (batchResponse.ok) {
+        const batchData = await batchResponse.json();
+        if (batchData.success && batchData.words && batchData.words[w]) {
+          fetchedData = batchData.words[w];
+          console.log('✅ Word details panel: Fetched word data via batch API:', w);
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Batch API failed, falling back to single API:', e);
+    }
+    
+    // Fallback to single word API if batch didn't work (same as openTooltip)
+    if (!fetchedData) {
+      // IMPORTANT: Include native_language in query parameter, not just header!
+      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+        headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
+      });
+      
+      if (r1.ok) {
+        fetchedData = await r1.json();
+        console.log('✅ Word details panel: Fetched word data via single API:', w);
+      } else {
+        console.error('❌ Word API error:', r1.status, r1.statusText);
+      }
+    }
+    
+    // If we got data, render it
+    if (fetchedData && fetchedData.word) {
+      // Cache the word data (sync to both caches)
+      setCachedWordData(w, lang, nat, fetchedData);
+      // Also sync to WORDS_CACHE
+      if (window.cachePut) {
+        window.cachePut(fetchedData);
+      }
+      
+      renderWordDetailsPanel(panel, w, fetchedData);
+      return;
+    }
+  } catch (e) {
+    console.error('❌ Error fetching word:', e);
+  }
+  
+  // Only show error if we truly failed to get data (after all attempts)
+  // Don't show error immediately - wait for async operations to complete
   panel.innerHTML = `
     <div class="word-details-instruction">
       <div class="word-details-instruction-icon">⚠️</div>
