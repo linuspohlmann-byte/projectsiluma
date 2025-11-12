@@ -3848,8 +3848,8 @@ def api_enrich_custom_level_words(group_id, level_number):
                     print(f"❌ Error updating audio URLs: {e}")
                     import traceback
                     traceback.print_exc()
-                    finally:
-                        conn.close()
+                finally:
+                    conn.close()
             else:
                 print(f"⚠️ No audio results returned from batch_ensure_tts_for_words")
         except Exception as e:
