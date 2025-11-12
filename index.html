@@ -2922,6 +2922,8 @@
 
     /* Remove old .nav button:hover rule (if present) and .nav button.active:hover (not needed) */
     section.card{background:var(--card);border-radius:12px;padding:24px 28px;margin-top:24px;box-shadow:0 2px 8px var(--shadow), 0 1px 2px var(--shadow);border:1px solid var(--border)}
+    /* Override margin-top for lesson card when inside lesson-container */
+    #lesson-container #lesson.card{margin-top:0}
 
     /* Text - consistent container styling */
     .sentence {
@@ -5606,7 +5608,7 @@
       align-items: flex-start;
       max-width: 1400px;
       margin: 0 auto;
-      padding: 0 20px;
+      padding: 24px 20px 0 20px; /* Add top padding to align with word-details-panel sticky top */
     }
     
     #lesson-container:not([style*="display:none"]) {
@@ -5620,6 +5622,7 @@
       max-width:none; 
       margin-left:auto; 
       margin-right:auto; 
+      margin-top: 0; /* Remove top margin since container has padding */
       box-sizing:border-box; 
       overflow:hidden 
     }
@@ -5637,6 +5640,7 @@
       border-radius: 16px;
       padding: 24px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      align-self: flex-start; /* Ensure alignment at top */
     }
     
     .word-details-panel-header {
