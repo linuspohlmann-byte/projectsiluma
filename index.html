@@ -5766,7 +5766,8 @@
     .word-details-field {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
+      flex-shrink: 0; /* Prevent fields from shrinking */
     }
     
     .word-details-field-label {
@@ -5780,7 +5781,14 @@
     .word-details-field-value {
       font-size: 14px;
       color: var(--fg);
-      padding: 10px 12px;
+      line-height: 1.5;
+      word-wrap: break-word;
+      padding: 8px 0; /* Minimal padding for text values */
+    }
+    
+    /* Special styling for select elements */
+    .word-details-field-value[style*="padding"] {
+      padding: 10px 12px !important;
       background: var(--surface);
       border-radius: 8px;
       border: 1px solid var(--border);
