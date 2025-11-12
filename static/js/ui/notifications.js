@@ -149,7 +149,7 @@ function addNotificationStyles() {
             width: 400px;
             max-width: calc(100vw - 40px);
             max-height: calc(100vh - 100px);
-            background: var(--card, #ffffff);
+            background: #ffffff !important;
             border: 1px solid var(--border, #e2e8f0);
             border-radius: 12px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.15);
@@ -169,6 +169,7 @@ function addNotificationStyles() {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: #ffffff;
         }
         
         .notifications-header h3 {
@@ -202,6 +203,7 @@ function addNotificationStyles() {
             flex: 1;
             overflow-y: auto;
             padding: 8px;
+            background: #ffffff;
         }
         
         .notifications-empty {
