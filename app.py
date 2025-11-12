@@ -2182,7 +2182,7 @@ def api_custom_levels_groups_summary():
                 result = execute_query(conn, '''
                     SELECT 
                         clg.id,
-                        clg.name,
+                        clg.group_name,
                         clg.language,
                         clg.native_language,
                         COUNT(DISTINCT cl.id) as level_count,
@@ -2195,7 +2195,7 @@ def api_custom_levels_groups_summary():
                         clp.level_number = cl.level_number AND
                         clp.user_id = %s
                     WHERE clg.user_id = %s
-                    GROUP BY clg.id, clg.name, clg.language, clg.native_language
+                    GROUP BY clg.id, clg.group_name, clg.language, clg.native_language
                     ORDER BY clg.created_at DESC
                 ''', (user_id, user_id))
             else:
@@ -2204,7 +2204,7 @@ def api_custom_levels_groups_summary():
                 cur.execute('''
                     SELECT 
                         clg.id,
-                        clg.name,
+                        clg.group_name,
                         clg.language,
                         clg.native_language,
                         COUNT(DISTINCT cl.id) as level_count,
@@ -2217,7 +2217,7 @@ def api_custom_levels_groups_summary():
                         clp.level_number = cl.level_number AND
                         clp.user_id = ?
                     WHERE clg.user_id = ?
-                    GROUP BY clg.id, clg.name, clg.language, clg.native_language
+                    GROUP BY clg.id, clg.group_name, clg.language, clg.native_language
                     ORDER BY clg.created_at DESC
                 ''', (user_id, user_id))
                 result = cur
@@ -2227,7 +2227,7 @@ def api_custom_levels_groups_summary():
                 if isinstance(row, dict):
                     groups.append({
                         'id': row.get('id'),
-                        'name': row.get('name'),
+                        'name': row.get('group_name'),
                         'language': row.get('language'),
                         'native_language': row.get('native_language'),
                         'level_count': row.get('level_count') or 0,
@@ -2238,7 +2238,7 @@ def api_custom_levels_groups_summary():
                     # Handle tuple/list results
                     groups.append({
                         'id': row[0],
-                        'name': row[1],
+                        'name': row[1],  # group_name is at index 1
                         'language': row[2],
                         'native_language': row[3],
                         'level_count': row[4] or 0,
