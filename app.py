@@ -5061,8 +5061,11 @@ def api_word_get():
             user_id = 2
             print(f"🔧 Using test user_id = 2 for /api/word endpoint")
     
-    # Get native language from URL parameter, user context, or default
-    native_language = native_language_param or user_context.get('native_language', 'en')
+    # Get native language from URL parameter, header, user context, or default
+    native_language = native_language_param or request.headers.get('X-Native-Language', '') or user_context.get('native_language', 'en')
+    
+    # Debug logging
+    print(f"🔧 DEBUG api_word_get: Request params - word='{word}', language='{language}', native_language='{native_language}'")
     
     # Get word data from existing PostgreSQL words table
     from server.db_config import get_database_config, get_db_connection, execute_query
@@ -5073,12 +5076,24 @@ def api_word_get():
     try:
         result = None
         if config['type'] == 'postgresql':
-            # PostgreSQL syntax
+            # PostgreSQL syntax - try exact match first
             result = execute_query(conn, '''
                 SELECT * FROM words 
                 WHERE word = %s AND language = %s AND native_language = %s
             ''', (word, language, native_language))
             row = result.fetchone()
+            
+            # If not found, try without native_language constraint (some words might not have native_language set)
+            if not row and language:
+                print(f"🔧 DEBUG api_word_get: Word not found with native_language constraint, trying without...")
+                result = execute_query(conn, '''
+                    SELECT * FROM words 
+                    WHERE word = %s AND language = %s
+                    LIMIT 1
+                ''', (word, language))
+                row = result.fetchone()
+                if row:
+                    print(f"🔧 DEBUG api_word_get: Found word without native_language constraint")
         else:
             # SQLite syntax (fallback)
             cur = conn.cursor()
