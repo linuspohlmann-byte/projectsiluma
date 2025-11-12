@@ -2116,7 +2116,10 @@ async function startCustomLevel(groupId, levelNumber) {
             // OPTIMIZATION: Preload first sentence audio immediately (non-blocking)
             if (formattedContent.length > 0 && formattedContent[0].text_target) {
                 const firstSentence = formattedContent[0].text_target;
-                const lang = group.language || 'en';
+                // Get language from level, currentCustomGroup, or default
+                const lang = level.language || 
+                            (window.currentCustomGroup && window.currentCustomGroup.group && window.currentCustomGroup.group.language) ||
+                            document.getElementById('target-lang')?.value || 'en';
                 // Preload sentence audio in background
                 if (window.prewarmSentenceTTS) {
                     window.prewarmSentenceTTS(firstSentence).catch(() => {});
@@ -2133,8 +2136,13 @@ async function startCustomLevel(groupId, levelNumber) {
             }
             const uniqueFirstWords = [...new Set(firstWords)].slice(0, 10);
             if (uniqueFirstWords.length > 0 && window.preloadWordsBatch) {
-                const lang = group.language || 'en';
-                const nativeLang = group.native_language || 'de';
+                // Get language from level, currentCustomGroup, or default
+                const lang = level.language || 
+                            (window.currentCustomGroup && window.currentCustomGroup.group && window.currentCustomGroup.group.language) ||
+                            document.getElementById('target-lang')?.value || 'en';
+                const nativeLang = level.native_language ||
+                                  (window.currentCustomGroup && window.currentCustomGroup.group && window.currentCustomGroup.group.native_language) ||
+                                  localStorage.getItem('siluma_native') || 'de';
                 window.preloadWordsBatch(uniqueFirstWords, lang, nativeLang).catch(() => {});
             }
             
