@@ -37,6 +37,16 @@ function getCachedWordData(word, language, nativeLanguage) {
         wordDataCache.delete(cacheKey);
     }
     
+    // SYNC: Also check WORDS_CACHE from lesson.js for instant access
+    if (typeof window !== 'undefined' && window.cacheGet) {
+        const lessonCached = window.cacheGet(word, language);
+        if (lessonCached) {
+            // Sync to tooltip cache
+            setCachedWordData(word, language, nativeLanguage, lessonCached);
+            return lessonCached;
+        }
+    }
+    
     return null;
 }
 
@@ -52,6 +62,12 @@ function setCachedWordData(word, language, nativeLanguage, data) {
         const firstKey = wordDataCache.keys().next().value;
         wordDataCache.delete(firstKey);
     }
+}
+
+// Expose cache functions globally for lesson.js access
+if (typeof window !== 'undefined') {
+    window.setCachedWordData = setCachedWordData;
+    window.getCachedWordData = getCachedWordData;
 }
 
 // --- Save current tooltip fields ------------------------------------------------
@@ -407,6 +423,11 @@ export async function openTooltip(anchor, word){
         js1 = cachedData;
         // Fill immediately with cached data for instant display
         fill(js1);
+        
+        // Also check if audio is already preloaded for instant playback
+        if (js1.audio_url && window.audioPreloadCache && window.audioPreloadCache.has(js1.audio_url)) {
+          console.log('🔧 Audio already preloaded for:', w);
+        }
       } else {
         // NEW: Use batch API endpoint directly (more efficient than individual calls)
         const headers = { 'Content-Type': 'application/json' };

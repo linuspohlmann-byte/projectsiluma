@@ -17,8 +17,21 @@ function cachePut(row){
   if(!row) return;
   const key = ck(row.word, row.language || RUN.target || 'en');
   WORDS_CACHE.set(key, row);
+  
+  // SYNC: Also update tooltip cache for instant tooltip access
+  if (typeof window !== 'undefined' && window.setCachedWordData) {
+    const lang = row.language || RUN.target || 'en';
+    const nativeLang = row.native_language || RUN.native || localStorage.getItem('siluma_native') || 'de';
+    window.setCachedWordData(row.word, lang, nativeLang, row);
+  }
 }
 function cacheGet(word, lang){ return WORDS_CACHE.get(ck(word, lang||RUN.target||'en')); }
+
+// Expose cache functions globally for tooltip access
+if (typeof window !== 'undefined') {
+  window.cacheGet = cacheGet;
+  window.cachePut = cachePut;
+}
 
 function normalizeScoreForLesson(raw) {
   if (raw === null || raw === undefined) return 0;
@@ -273,58 +286,42 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
   
   if (progressCallback) progressCallback(`Loading ${words.length} words...`);
   
-  // Parallel loading of all required data
-  const promises = [];
+  // Sequential loading for optimal performance:
+  // 1. Load word data (needed for enrichment check)
+  // 2. Enrich words (needed for audio URLs)
+  // 3. Preload audio (needs audio URLs from enrichment)
+  // 4. Preload sentence audio (can happen in parallel)
   
-  // 1. Load all word data + tooltip data (batch API)
-  promises.push(
-    preloadWordsBatch(words, lang, nativeLang).then(() => {
-      if (progressCallback) progressCallback('Word data loaded');
-      console.log(`✅ Task ${taskIndex}: Word data loaded`);
-    }).catch(err => {
-      console.error(`❌ Task ${taskIndex}: Word data loading failed:`, err);
-    })
-  );
-  
-  // 2. Preload sentence audio
-  const sentenceText = String(task.text_target || '').trim();
-  if (sentenceText) {
-    promises.push(
+  try {
+    // Step 1: Load word data + tooltip data (batch API)
+    if (progressCallback) progressCallback('Loading word data...');
+    await preloadWordsBatch(words, lang, nativeLang);
+    console.log(`✅ Task ${taskIndex}: Word data loaded`);
+    
+    // Step 2: Enrich words if needed (this adds audio_url to cache)
+    const sentenceContext = String(task.text_target || '');
+    const sentenceNative = String(task.text_native_ref || '');
+    if (progressCallback) progressCallback('Enriching words...');
+    await batchEnrichWords(words, lang, nativeLang, sentenceContext, sentenceNative);
+    console.log(`✅ Task ${taskIndex}: Word enrichment complete`);
+    
+    // Step 3: Preload word audio (now audio_urls should be in cache)
+    if (progressCallback) progressCallback('Preloading audio...');
+    await preloadWordsAudio(words, lang);
+    console.log(`✅ Task ${taskIndex}: Word audio ready`);
+    
+    // Step 4: Preload sentence audio (can happen in parallel with word audio)
+    const sentenceText = String(task.text_target || '').trim();
+    if (sentenceText) {
       prewarmSentenceTTS(sentenceText).then(() => {
-        if (progressCallback) progressCallback('Sentence audio ready');
         console.log(`✅ Task ${taskIndex}: Sentence audio ready`);
       }).catch(err => {
         console.error(`❌ Task ${taskIndex}: Sentence audio failed:`, err);
-      })
-    );
+      });
+    }
+  } catch (err) {
+    console.error(`❌ Task ${taskIndex}: Preloading failed:`, err);
   }
-  
-  // 3. Preload word audio (non-blocking, happens after word data is loaded)
-  promises.push(
-    preloadWordsBatch(words, lang, nativeLang).then(() => {
-      return preloadWordsAudio(words, lang);
-    }).then(() => {
-      if (progressCallback) progressCallback('Word audio ready');
-      console.log(`✅ Task ${taskIndex}: Word audio ready`);
-    }).catch(err => {
-      console.error(`❌ Task ${taskIndex}: Word audio failed:`, err);
-    })
-  );
-  
-  // 4. Enrich words if needed (batch enrichment)
-  const sentenceContext = String(task.text_target || '');
-  const sentenceNative = String(task.text_native_ref || '');
-  promises.push(
-    batchEnrichWords(words, lang, nativeLang, sentenceContext, sentenceNative).then(() => {
-      if (progressCallback) progressCallback('Word enrichment complete');
-      console.log(`✅ Task ${taskIndex}: Word enrichment complete`);
-    }).catch(err => {
-      console.error(`❌ Task ${taskIndex}: Word enrichment failed:`, err);
-    })
-  );
-  
-  // Wait for all preloading to complete
-  await Promise.allSettled(promises);
   
   console.log(`✅ Task ${taskIndex}: All data preloaded`);
   if (progressCallback) progressCallback('Ready!');
@@ -960,8 +957,12 @@ async function batchEnrichWords(words, lang, nat, sentence_context, sentence_nat
 }
 
 // Audio preloading cache (exposed globally for tooltip use)
-window.audioPreloadCache = new Map();
-const audioPreloadCache = window.audioPreloadCache;
+if (typeof window !== 'undefined') {
+  if (!window.audioPreloadCache) {
+    window.audioPreloadCache = new Map();
+  }
+}
+const audioPreloadCache = window.audioPreloadCache || new Map();
 
 // Preload audio for instant playback
 async function preloadAudio(audioUrl) {
@@ -1002,19 +1003,65 @@ async function preloadWordsAudio(words, lang) {
   if (!words || words.length === 0) return;
   
   const audioUrls = [];
+  const wordsNeedingAudio = [];
+  
+  // First, check cache for existing audio URLs
   for (const word of words) {
     const cached = cacheGet(word, lang);
     if (cached && cached.audio_url && cached.audio_url.trim()) {
-      audioUrls.push(cached.audio_url.trim());
+      audioUrls.push({ word, url: cached.audio_url.trim() });
+    } else {
+      // Word needs audio URL fetched
+      wordsNeedingAudio.push(word);
     }
   }
   
-  // Preload up to 10 audio files in parallel
+  // Fetch audio URLs for words that don't have them yet (batch)
+  if (wordsNeedingAudio.length > 0) {
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+      
+      // Fetch audio URLs for all words at once
+      const audioPromises = wordsNeedingAudio.map(async (word) => {
+        try {
+          const r = await fetch('/api/word/tts', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ word, language: lang })
+          });
+          const js = await r.json();
+          if (js?.success && js.audio_url) {
+            // Update cache with audio URL
+            const cached = cacheGet(word, lang);
+            if (cached) {
+              cached.audio_url = js.audio_url;
+              cachePut(cached); // Re-save to sync caches
+            }
+            audioUrls.push({ word, url: js.audio_url });
+          }
+        } catch (e) {
+          console.log(`Failed to fetch audio for ${word}:`, e);
+        }
+      });
+      
+      await Promise.allSettled(audioPromises);
+    } catch (e) {
+      console.log('Batch audio URL fetch failed:', e);
+    }
+  }
+  
+  // Preload all audio files in parallel (up to 10 at a time)
   const batchSize = 10;
   for (let i = 0; i < audioUrls.length; i += batchSize) {
     const batch = audioUrls.slice(i, i + batchSize);
-    await Promise.allSettled(batch.map(url => preloadAudio(url)));
+    await Promise.allSettled(batch.map(({ url }) => preloadAudio(url)));
   }
+  
+  console.log(`✅ Preloaded ${audioUrls.length} audio files`);
 }
 
 // Enrich only the words for a single item, with smart caching
