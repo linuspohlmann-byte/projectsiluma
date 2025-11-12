@@ -1156,11 +1156,13 @@ async function startCustomGroup(groupId) {
         
         console.log('📚 Custom group loaded:', group);
         console.log('📖 Levels found:', levels.length);
+        console.log('⚡ Ultra-lazy loading: Levels loaded without content (content loaded on-demand)');
         
-        // Smart generation: Only generate levels that should be unlocked based on user progress
+        // With ultra-lazy loading, levels don't have content yet - it's loaded when level is opened
+        // Check if any levels need content generation (only check level_number, not content)
         const levelsNeedingGeneration = levels.filter(level => {
-            const content = level.content || {};
-            return content.ultra_lazy_loading && !content.sentences_generated;
+            // If level has no content property or content is null, it needs generation
+            return !level.content || level.content === null;
         });
         
         if (levelsNeedingGeneration.length > 0) {
