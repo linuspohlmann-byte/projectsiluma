@@ -1797,15 +1797,15 @@ def serve_tts_sentence(lang, fname):
     
         s3_key = f"media/tts_sentences/{lang}/{fname}"
         try:
-        print(f"🔵 Fetching sentence audio from S3: {s3_key}")
-        # Get file from S3
+            print(f"🔵 Fetching sentence audio from S3: {s3_key}")
+            # Get file from S3
             s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
-        
-        # Read the entire file into memory for more reliable serving
-        # This is acceptable for audio files which are typically small (< 1MB)
-        audio_data = s3_obj['Body'].read()
-        print(f"✅ Loaded {len(audio_data)} bytes from S3: {s3_key}")
-        
+            
+            # Read the entire file into memory for more reliable serving
+            # This is acceptable for audio files which are typically small (< 1MB)
+            audio_data = s3_obj['Body'].read()
+            print(f"✅ Loaded {len(audio_data)} bytes from S3: {s3_key}")
+            
             return Response(
             audio_data,
                 mimetype='audio/mpeg',
