@@ -2446,18 +2446,6 @@ def api_get_custom_level_bulk_stats(group_id):
                                 }
                             }
                     else:
-                            levels_data[level_num] = {
-                                'success': True,
-                                'status': 'not_started',
-                                'last_score': 0.0,
-                                'fam_counts': fam_counts,
-                                'total_words': total_words,
-                                'user_progress': {
-                                    'status': 'not_started',
-                                    'score': 0.0
-                                }
-                            }
-                    else:
                         levels_data[level_num] = {
                             'success': True,
                             'status': 'not_started',
@@ -2469,6 +2457,18 @@ def api_get_custom_level_bulk_stats(group_id):
                                 'score': 0.0
                             }
                         }
+                else:
+                    levels_data[level_num] = {
+                        'success': True,
+                        'status': 'not_started',
+                        'last_score': 0.0,
+                        'fam_counts': fam_counts,
+                        'total_words': total_words,
+                        'user_progress': {
+                            'status': 'not_started',
+                            'score': 0.0
+                        }
+                    }
                 except Exception as e:
                     print(f"Error getting user familiarity data for custom level {level_num}: {e}")
                     # Fallback to default values
