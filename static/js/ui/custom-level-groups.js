@@ -1112,7 +1112,9 @@ async function deleteCustomGroup(groupId) {
             if (window.showTab) {
                 window.showTab('library');
             }
-                
+            
+            // Additional refresh operations after navigation
+            setTimeout(() => {
                 // Force refresh of header stats to update word counts
                 if (window.headerStats && window.headerStats.refresh) {
                     window.headerStats.refresh();
