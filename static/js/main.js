@@ -14,6 +14,7 @@ import './auth.js';
 import './settings.js';
 import './ui/marketplace.js';
 import './ui/custom-level-groups.js';
+import { initNotifications } from './ui/notifications.js';
 
 // Statistics cards are now non-clickable - just display stats
 
@@ -27,6 +28,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Initialize header statistics
   initHeaderStats();
+  
+  // Initialize notifications system
+  await initNotifications();
 
   // Lessons
   initLesson();
