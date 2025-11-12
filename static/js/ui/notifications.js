@@ -596,3 +596,33 @@ if (document.readyState === 'loading') {
     initNotifications();
 }
 
+// Export for manual refresh (e.g., after login)
+export function refreshNotifications() {
+    loadNotifications();
+}
+
+// Listen for auth state changes
+if (typeof window !== 'undefined') {
+    // Refresh notifications when user logs in
+    const originalAuthStateChange = window.onAuthStateChange;
+    window.onAuthStateChange = function(isAuthenticated) {
+        if (originalAuthStateChange) {
+            originalAuthStateChange(isAuthenticated);
+        }
+        if (isAuthenticated) {
+            // User logged in, refresh notifications
+            setTimeout(() => {
+                loadNotifications();
+            }, 1000);
+        } else {
+            // User logged out, hide notifications
+            if (notificationIcon) {
+                notificationIcon.style.display = 'none';
+            }
+            if (notificationsPanel) {
+                closeNotificationsPanel();
+            }
+        }
+    };
+}
+
