@@ -168,39 +168,86 @@ async function enrichWordIfNeeded(word, lang, nat, sentence_context = '', senten
     });
   }
 }
+// Optimized batch word preloading with familiarity data
+async function preloadWordsBatch(words, lang, nativeLang) {
+  const uniq = Array.from(new Set((words||[]).map(w=>String(w||'').trim()).filter(Boolean)));
+  if(!uniq.length) return {};
+  
+  // Check cache first
+  const cached = {};
+  const miss = [];
+  for (const w of uniq) {
+    const cachedWord = cacheGet(w, lang);
+    if (cachedWord) {
+      cached[w] = cachedWord;
+    } else {
+      miss.push(w);
+    }
+  }
+  
+  if(!miss.length) return cached;
+  
+  try{
+    const headers = { 'Content-Type': 'application/json' };
+    
+    // Add authentication header if session token exists
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      Object.assign(headers, window.authManager.getAuthHeaders());
+    } else {
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+    }
+    
+    // Use optimized batch endpoint with familiarity data
+    const apiUrl = '/api/words/batch';
+    console.log('🔧 preloadWordsBatch API call:', apiUrl, { words: miss.length, language: lang||RUN.target||'en' });
+    
+    const r = await fetch(apiUrl, { 
+      method:'POST', 
+      headers, 
+      body: JSON.stringify({ 
+        words: miss, 
+        language: lang||RUN.target||'en',
+        native_language: nativeLang || RUN.native || 'de'
+      }) 
+    });
+    
+    if (!r.ok) {
+      console.error('❌ preloadWordsBatch API error:', r.status, r.statusText);
+      return cached;
+    }
+    
+    const js = await r.json();
+    if (js && js.success && js.words) {
+      // Cache all words
+      Object.values(js.words).forEach(cachePut);
+      // Merge with cached words
+      return { ...cached, ...js.words };
+    }
+    return cached;
+  }catch(e){
+    console.error('❌ preloadWordsBatch error:', e);
+    return cached; 
+  }
+}
+
 async function batchGetWords(words, lang){
   const uniq = Array.from(new Set((words||[]).map(w=>String(w||'').trim()).filter(Boolean)));
   if(!uniq.length) return [];
   const miss = uniq.filter(w=> !cacheGet(w, lang));
   if(!miss.length) return uniq.map(w=> cacheGet(w, lang)).filter(Boolean);
-  try{
-    const headers = { 'Content-Type': 'application/json' };
-    
-    // Add authentication header if session token exists
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
-    }
-    
-    // Use relative URL to avoid CORS issues
-    const apiUrl = '/api/words/get_many';
-    console.log('🔧 batchGetWords API call:', apiUrl, { words: miss, language: lang||RUN.target||'en' });
-    
-    const r = await fetch(apiUrl, { method:'POST', headers, body: JSON.stringify({ words: miss, language: lang||RUN.target||'en' }) });
-    
-    if (!r.ok) {
-      console.error('❌ batchGetWords API error:', r.status, r.statusText);
-      return [];
-    }
-    
-    const js = await r.json();
-    const arr = (js && js.success && Array.isArray(js.data)) ? js.data : [];
-    arr.forEach(cachePut);
-    return uniq.map(w=> cacheGet(w, lang)).filter(Boolean);
-  }catch(e){
-    console.error('❌ batchGetWords error:', e);
-    return []; 
-  }
+  
+  // Use optimized batch endpoint
+  const nativeLang = RUN.native || localStorage.getItem('siluma_native') || 'de';
+  const wordsData = await preloadWordsBatch(miss, lang, nativeLang);
+  
+  // Convert to array format expected by existing code
+  return uniq.map(w=> {
+    const cached = cacheGet(w, lang);
+    return cached || wordsData[w] || null;
+  }).filter(Boolean);
 }
 
 // --- Audio replay button helper ---
@@ -1929,6 +1976,24 @@ async function startLevel(lvl){
       // Keep custom level context for API calls during the lesson
       // RUN._customGroupId and RUN._customLevelNumber will be cleared in finishLevel()
       
+      // Preload first N words immediately for instant tooltip access
+      const PRELOAD_WORD_COUNT = 10;
+      const firstWords = [];
+      for (let i = 0; i < Math.min(PRELOAD_WORD_COUNT, RUN.items.length); i++) {
+        const item = RUN.items[i];
+        if (item.words && Array.isArray(item.words)) {
+          firstWords.push(...item.words);
+        }
+      }
+      const uniqueFirstWords = [...new Set(firstWords)].slice(0, PRELOAD_WORD_COUNT);
+      
+      // Preload first words immediately using batch endpoint
+      if (uniqueFirstWords.length > 0) {
+        preloadWordsBatch(uniqueFirstWords, RUN.target, RUN.native).catch(err => {
+          console.log('Preload words batch error:', err);
+        });
+      }
+      
       // Enrichment in background
       setTimeout(() => {
         Promise.all([
@@ -1937,7 +2002,7 @@ async function startLevel(lvl){
         ]).catch(err => console.log('Background enrichment error:', err));
       }, 50);
       
-      // Ensure words are loaded for tooltips
+      // Ensure words are loaded for tooltips (use batch endpoint for better performance)
       setTimeout(async () => {
         try {
           const allWords = [];
@@ -1948,7 +2013,8 @@ async function startLevel(lvl){
           });
           const uniqueWords = [...new Set(allWords)];
           console.log('🔧 Loading words for tooltips:', uniqueWords);
-          await batchGetWords(uniqueWords, RUN.target);
+          // Use optimized batch endpoint
+          await preloadWordsBatch(uniqueWords, RUN.target, RUN.native);
           
       // Skip redundant enrichment for tooltips - words are already enriched in preEnrichItemBlocking
       // This prevents duplicate enrichment requests that cause performance issues
@@ -2053,6 +2119,24 @@ async function startLevel(lvl){
       
       // Keep custom level data for API calls during the lesson
       // RUN._customGroupId and RUN._customLevelNumber will be cleared in finishLevel()
+      
+      // Preload first N words immediately for instant tooltip access
+      const PRELOAD_WORD_COUNT = 10;
+      const firstWords = [];
+      for (let i = 0; i < Math.min(PRELOAD_WORD_COUNT, RUN.items.length); i++) {
+        const item = RUN.items[i];
+        if (item.words && Array.isArray(item.words)) {
+          firstWords.push(...item.words);
+        }
+      }
+      const uniqueFirstWords = [...new Set(firstWords)].slice(0, PRELOAD_WORD_COUNT);
+      
+      // Preload first words immediately using batch endpoint
+      if (uniqueFirstWords.length > 0) {
+        preloadWordsBatch(uniqueFirstWords, RUN.target, RUN.native).catch(err => {
+          console.log('Preload words batch error:', err);
+        });
+      }
       
       // Enrichment in background
       setTimeout(() => {

@@ -2299,18 +2299,63 @@ def api_get_custom_level_group(group_id):
         if not group:
             return jsonify({'success': False, 'error': 'Level group not found'}), 404
         
-        # Get all levels for this group
-        levels = get_custom_levels_for_group(group_id)
+        # Get all levels for this group WITHOUT content (ultra-lazy loading)
+        # This dramatically improves loading speed - content loaded on-demand
+        from server.db_config import get_database_config, get_db_connection, execute_query
         
-        # Skip word processing for now - will be done on-demand when levels are accessed
-        # This dramatically improves loading speed from ~1 minute to ~2 seconds
-        print(f"📚 Loaded {len(levels)} levels for group {group_id} (word processing deferred for performance)")
+        config = get_database_config()
+        conn = get_db_connection()
         
-        return jsonify({
-            'success': True,
-            'group': group,
-            'levels': levels
-        })
+        try:
+            if config['type'] == 'postgresql':
+                result = execute_query(conn, '''
+                    SELECT 
+                        id, level_number, word_count, created_at, updated_at
+                    FROM custom_levels
+                    WHERE group_id = %s
+                    ORDER BY level_number
+                ''', (group_id,))
+            else:
+                cur = conn.cursor()
+                cur.execute('''
+                    SELECT 
+                        id, level_number, word_count, created_at, updated_at
+                    FROM custom_levels
+                    WHERE group_id = ?
+                    ORDER BY level_number
+                ''', (group_id,))
+                result = cur
+            
+            levels = []
+            for row in result.fetchall():
+                if isinstance(row, dict):
+                    levels.append({
+                        'id': row.get('id'),
+                        'level_number': row.get('level_number'),
+                        'word_count': row.get('word_count') or 0,
+                        'created_at': row.get('created_at'),
+                        'updated_at': row.get('updated_at'),
+                        'content': None  # Loaded on-demand via separate endpoint
+                    })
+                else:
+                    levels.append({
+                        'id': row[0],
+                        'level_number': row[1],
+                        'word_count': row[2] or 0,
+                        'created_at': row[3],
+                        'updated_at': row[4],
+                        'content': None  # Loaded on-demand via separate endpoint
+                    })
+            
+            print(f"📚 Loaded {len(levels)} levels for group {group_id} (ultra-lazy: content loaded on-demand)")
+            
+            return jsonify({
+                'success': True,
+                'group': group,
+                'levels': levels
+            })
+        finally:
+            conn.close()
         
     except Exception as e:
         print(f"Error getting custom level group: {e}")
@@ -4878,6 +4923,143 @@ def api_word_get():
                 pass
     return jsonify(data)
 
+
+# --- Optimized batch word fetch endpoint with familiarity data ---
+@words_bp.post('/api/words/batch')
+@require_auth(optional=True)
+def api_words_batch():
+    """Fetch multiple words in single optimized query - includes user familiarity data"""
+    payload = request.get_json(force=True) or {}
+    words = payload.get('words') or []
+    language = (payload.get('language') or '').strip()
+    
+    # Normalize input
+    words = [str(w).strip() for w in words if str(w).strip()]
+    if not words:
+        return jsonify({'success': True, 'words': {}})
+    
+    try:
+        user_context = get_user_context()
+        user_id = user_context.get('user_id')
+        native_language = user_context.get('native_language', 'en')
+        
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        try:
+            # Fetch words and familiarity data in optimized queries
+            if config['type'] == 'postgresql':
+                # Get words data
+                result = execute_query(conn, '''
+                    SELECT * FROM words 
+                    WHERE word = ANY(%s) AND language = %s AND native_language = %s
+                ''', (words, language, native_language))
+                word_rows = result.fetchall()
+                
+                # Get familiarity data if authenticated
+                familiarity_map = {}
+                if user_id:
+                    try:
+                        fam_result = execute_query(conn, '''
+                            SELECT word, familiarity, seen_count, correct_count, user_comment
+                            FROM user_word_familiarity
+                            WHERE user_id = %s AND word = ANY(%s) AND language = %s AND native_language = %s
+                        ''', (user_id, words, language, native_language))
+                        for row in fam_result.fetchall():
+                            if isinstance(row, dict):
+                                familiarity_map[row['word']] = {
+                                    'familiarity': row.get('familiarity', 0) or 0,
+                                    'seen_count': row.get('seen_count', 0) or 0,
+                                    'correct_count': row.get('correct_count', 0) or 0,
+                                    'user_comment': row.get('user_comment') or ''
+                                }
+                            else:
+                                familiarity_map[row[0]] = {
+                                    'familiarity': row[1] or 0,
+                                    'seen_count': row[2] or 0,
+                                    'correct_count': row[3] or 0,
+                                    'user_comment': row[4] or ''
+                                }
+                    except Exception as e:
+                        print(f"Error fetching familiarity data: {e}")
+            else:
+                # SQLite syntax
+                cur = conn.cursor()
+                placeholders = ','.join('?' for _ in words)
+                result = cur.execute(
+                    f'SELECT * FROM words WHERE word IN ({placeholders}) AND language=? AND native_language=?',
+                    (*words, language, native_language)
+                )
+                word_rows = result.fetchall()
+                
+                # Get familiarity data if authenticated
+                familiarity_map = {}
+                if user_id:
+                    try:
+                        fam_result = cur.execute(
+                            f'SELECT word, familiarity, seen_count, correct_count, user_comment FROM user_word_familiarity WHERE user_id=? AND word IN ({placeholders}) AND language=? AND native_language=?',
+                            (user_id, *words, language, native_language)
+                        )
+                        for row in fam_result.fetchall():
+                            if isinstance(row, dict):
+                                familiarity_map[row['word']] = {
+                                    'familiarity': row.get('familiarity', 0) or 0,
+                                    'seen_count': row.get('seen_count', 0) or 0,
+                                    'correct_count': row.get('correct_count', 0) or 0,
+                                    'user_comment': row.get('user_comment') or ''
+                                }
+                            else:
+                                familiarity_map[row[0]] = {
+                                    'familiarity': row[1] or 0,
+                                    'seen_count': row[2] or 0,
+                                    'correct_count': row[3] or 0,
+                                    'user_comment': row[4] or ''
+                                }
+                    except Exception as e:
+                        print(f"Error fetching familiarity data: {e}")
+            
+            # Convert rows to dict format
+            words_data = {}
+            for row in word_rows:
+                from server.db import _coerce_row_to_dict
+                word_data = _coerce_row_to_dict(row, getattr(result, 'description', None))
+                if not word_data:
+                    continue
+                
+                # Parse JSON fields
+                for json_field in ['conj', 'comp', 'synonyms', 'collocations', 'tags', 'info']:
+                    if word_data.get(json_field):
+                        try:
+                            word_data[json_field] = json.loads(word_data[json_field]) if isinstance(word_data[json_field], str) else word_data[json_field]
+                        except (json.JSONDecodeError, TypeError):
+                            word_data[json_field] = None
+                    else:
+                        word_data[json_field] = None
+                
+                word = word_data.get('word')
+                if word:
+                    # Add familiarity data
+                    if word in familiarity_map:
+                        word_data.update(familiarity_map[word])
+                    else:
+                        word_data['familiarity'] = 0
+                        word_data['seen_count'] = 0
+                        word_data['correct_count'] = 0
+                        word_data['user_comment'] = ''
+                    
+                    words_data[word] = word_data
+            
+            return jsonify({'success': True, 'words': words_data})
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"❌ Error in api_words_batch: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # --- Batch word fetch endpoint ---
 @words_bp.post('/api/words/get_many')
