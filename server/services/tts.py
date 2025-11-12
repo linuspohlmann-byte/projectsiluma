@@ -490,25 +490,25 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     # Upload directly to S3 (S3 is required - no local disk)
     print(f"🔵 Uploading TTS audio for '{word}' directly to S3 (from memory)...")
     s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts')
-        if s3_url:
-            print(f"✅ S3 upload successful for '{word}': {s3_url}")
+    if s3_url:
+        print(f"✅ S3 upload successful for '{word}': {s3_url}")
         # Update DB with local URL path for compatibility (but return S3 URL for faster access)
-            url_path = f'/media/tts/{lang}/{fname}'
+        url_path = f'/media/tts/{lang}/{fname}'
+        try:
+            conn = get_db_connection()
+            now = datetime.now(UTC).isoformat()
+            execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                         (url_path, now, word, lang))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"⚠️ Warning: Could not update DB with URL: {e}")
             try:
-                conn = get_db_connection()
-                now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                             (url_path, now, word, lang))
-                conn.commit()
                 conn.close()
-            except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with URL: {e}")
-                try:
-                    conn.close()
-                except:
-                    pass
+            except:
+                pass
         return s3_url  # Return direct S3 URL for faster CDN access
-        else:
+    else:
         print(f"❌ S3 upload failed for '{word}' - S3 is required but upload failed.")
             return None
 
