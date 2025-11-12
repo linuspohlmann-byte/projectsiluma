@@ -430,6 +430,66 @@ function renderCustomGroupCard(group) {
         });
     }
     
+    // Check if this is a placeholder with generation status
+    const isPlaceholder = group._isPlaceholder || group.status === 'generating';
+    const genStatus = group._generationStatus;
+    
+    if (isPlaceholder && genStatus) {
+        // Render placeholder with progress
+        const progress = Math.round((genStatus.progress || 0) * 100);
+        const stepMessages = {
+            'enriching': 'Bereichere Input mit KI...',
+            'creating_group': 'Erstelle Story-Gruppe...',
+            'topics': 'Generiere Topics...',
+            'titles': 'Generiere Titles...',
+            'saving': 'Speichere Level...',
+            'completed': 'Fertig!',
+            'failed': 'Fehler'
+        };
+        const stepMessage = genStatus.message || stepMessages[genStatus.step] || 'Wird erstellt...';
+        
+        return `
+            <div class="level-group-card custom-level-group generating-placeholder" data-group-id="${group.id}" style="opacity: 0.8; cursor: wait;">
+                <div class="level-group-thumb">
+                    <div class="level-group-title">${escapeHtml(group.group_name)}</div>
+                    <div class="level-group-range" style="margin-top: 12px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <div class="spinner-small" style="width: 16px; height: 16px; border: 2px solid var(--border); border-top: 2px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                            <span style="font-size: 13px; color: var(--text-secondary);">${escapeHtml(stepMessage)}</span>
+                        </div>
+                        <div style="width: 100%; height: 4px; background: var(--surface); border-radius: 2px; overflow: hidden;">
+                            <div style="width: ${progress}%; height: 100%; background: var(--accent); transition: width 0.3s ease; border-radius: 2px;"></div>
+                        </div>
+                        <div style="margin-top: 4px; font-size: 11px; color: var(--text-secondary); text-align: right;">
+                            ${progress}%
+                        </div>
+                    </div>
+                </div>
+                <div class="level-group-meta" style="opacity: 0.5;">
+                    <div class="level-group-stat">
+                        <div class="level-group-stat-value">-</div>
+                        <div>Level</div>
+                    </div>
+                    <div class="level-group-stat">
+                        <div class="level-group-stat-value">-</div>
+                        <div>Wörter</div>
+                    </div>
+                    <div class="level-group-stat">
+                        <div class="level-group-stat-value">-</div>
+                        <div>Abgeschlossen</div>
+                    </div>
+                </div>
+                <div class="level-group-footer">
+                    <div class="level-group-action" style="opacity: 0.5; cursor: not-allowed;">
+                        <span class="action-icon">⏳</span>
+                        <span class="action-label">Wird erstellt...</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Normal card rendering
     return `
         <div class="level-group-card custom-level-group" data-group-id="${group.id}" onclick="startCustomGroup(${group.id})" style="cursor: pointer;">
             <div class="level-group-thumb">
@@ -818,8 +878,36 @@ async function createCustomGroup() {
     createBtn.textContent = 'Erstelle...';
     createBtn.disabled = true;
     
-    // Show progress modal
-    showCreationProgressModal();
+    // Close modal immediately and show placeholder card
+    closeModal(createBtn.closest('.modal-overlay'));
+    
+    // Create placeholder card immediately
+    const placeholderId = `placeholder-${Date.now()}`;
+    const placeholderGroup = {
+        id: placeholderId,
+        group_name: groupName,
+        context_description: data.context_description,
+        level_count: 0,
+        total_words: 0,
+        completed_levels: 0,
+        status: 'generating',
+        _isPlaceholder: true
+    };
+    
+    // Add placeholder to the beginning of the list
+    customLevelGroups.unshift(placeholderGroup);
+    
+    // Render immediately with placeholder
+    renderCustomLevelGroups();
+    
+    // Navigate to library tab to show placeholder
+    if (window.showTab) {
+        window.showTab('library');
+    }
+    
+    // Start polling for status updates
+    let statusPollInterval = null;
+    let groupId = null;
     
     try {
         const headers = {
@@ -838,13 +926,185 @@ async function createCustomGroup() {
         const result = await response.json();
         
         if (result.success) {
-            const groupId = result.group_id || result.id;
+            groupId = result.group_id || result.id;
+            
+            // Update placeholder with real group_id
+            const placeholderIndex = customLevelGroups.findIndex(g => g.id === placeholderId);
+            if (placeholderIndex !== -1) {
+                customLevelGroups[placeholderIndex].id = groupId;
+                customLevelGroups[placeholderIndex]._realId = groupId;
+            }
+            
+            // Start polling for generation status
+            statusPollInterval = startStatusPolling(groupId, placeholderId);
+            
             const publishImmediately = formData.get('publish_immediately') === 'on';
             
-            // If publish immediately is checked, publish the group
+            // Store publish flag for later (after generation completes)
             if (publishImmediately && groupId) {
+                const placeholderIndex = customLevelGroups.findIndex(g => g.id === groupId || g._realId === groupId);
+                if (placeholderIndex !== -1) {
+                    customLevelGroups[placeholderIndex]._publishAfterGeneration = true;
+                }
+            }
+            
+            // Note: Publishing will happen after generation completes via status polling
+            // The status polling will handle completion and publishing
+            // Status polling will handle completion
+            // Don't reload here - let polling handle it
+        } else {
+            // Stop polling if it was started
+            if (statusPollInterval) {
+                clearInterval(statusPollInterval);
+            }
+            
+            // Remove placeholder on error
+            const placeholderIndex = customLevelGroups.findIndex(g => g.id === placeholderId || g._isPlaceholder);
+            if (placeholderIndex !== -1) {
+                customLevelGroups.splice(placeholderIndex, 1);
+                renderCustomLevelGroups();
+            }
+            
+            let errorMessage = result.error || 'Fehler beim Erstellen der Story';
+            
+            // Handle specific error cases
+            if (errorMessage.includes('UNIQUE constraint') || errorMessage.includes('already exists')) {
+                errorMessage = 'Eine Story mit diesem Namen existiert bereits in dieser Sprache. Bitte wähle einen anderen Namen.';
+            }
+            
+            showNotification(errorMessage, 'error');
+        }
+    } catch (error) {
+        console.error('Error creating custom group:', error);
+        
+        // Stop polling if it was started
+        if (statusPollInterval) {
+            clearInterval(statusPollInterval);
+        }
+        
+        // Remove placeholder on error
+        const placeholderIndex = customLevelGroups.findIndex(g => g.id === placeholderId || g._isPlaceholder);
+        if (placeholderIndex !== -1) {
+            customLevelGroups.splice(placeholderIndex, 1);
+            renderCustomLevelGroups();
+        }
+        
+        showNotification('Fehler beim Erstellen der Level-Gruppe', 'error');
+    } finally {
+        createBtn.textContent = originalText;
+        createBtn.disabled = false;
+    }
+}
+
+// Start polling for generation status
+function startStatusPolling(groupId, placeholderId) {
+    let pollCount = 0;
+    const maxPolls = 120; // Max 2 minutes (120 * 1 second)
+    
+    const pollInterval = setInterval(async () => {
+        pollCount++;
+        
+        try {
+            const headers = {};
+            if (window.authManager && window.authManager.isAuthenticated()) {
+                Object.assign(headers, window.authManager.getAuthHeaders());
+            }
+            
+            const response = await fetch(`/api/custom-level-groups/${groupId}/generation-status`, { headers });
+            
+            if (!response.ok) {
+                if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    handleGenerationComplete(groupId, placeholderId, false, 'Timeout beim Abrufen des Status');
+                }
+                return;
+            }
+            
+            const statusData = await response.json();
+            
+            if (statusData.success) {
+                const status = statusData.status;
+                const step = statusData.step || '';
+                const progress = statusData.progress || 0;
+                const message = statusData.message || '';
+                const error = statusData.error;
+                
+                // Update placeholder card with status
+                updatePlaceholderStatus(groupId, placeholderId, {
+                    status,
+                    step,
+                    progress,
+                    message,
+                    error
+                });
+                
+                if (status === 'completed') {
+                    clearInterval(pollInterval);
+                    await handleGenerationComplete(groupId, placeholderId, true);
+                } else if (status === 'failed') {
+                    clearInterval(pollInterval);
+                    await handleGenerationComplete(groupId, placeholderId, false, error || message);
+                }
+            } else {
+                // If status endpoint fails, check if group exists (might be completed)
+                if (pollCount > 5) {
+                    // After 5 polls, check if group exists
+                    const groupExists = await checkGroupExists(groupId);
+                    if (groupExists) {
+                        clearInterval(pollInterval);
+                        await handleGenerationComplete(groupId, placeholderId, true);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error polling generation status:', error);
+            if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+                handleGenerationComplete(groupId, placeholderId, false, 'Fehler beim Abrufen des Status');
+            }
+        }
+        
+        if (pollCount >= maxPolls) {
+            clearInterval(pollInterval);
+            handleGenerationComplete(groupId, placeholderId, false, 'Timeout beim Abrufen des Status');
+        }
+    }, 1000); // Poll every second
+    
+    return pollInterval;
+}
+
+// Update placeholder card with status
+function updatePlaceholderStatus(groupId, placeholderId, statusData) {
+    const placeholderIndex = customLevelGroups.findIndex(g => 
+        g.id === groupId || g.id === placeholderId || g._realId === groupId || g._isPlaceholder
+    );
+    
+    if (placeholderIndex !== -1) {
+        const placeholder = customLevelGroups[placeholderIndex];
+        placeholder._generationStatus = statusData;
+        
+        // Re-render to show updated status
+        renderCustomLevelGroups();
+    }
+}
+
+// Handle generation completion
+async function handleGenerationComplete(groupId, placeholderId, success, errorMessage = null) {
+    const placeholderIndex = customLevelGroups.findIndex(g => 
+        g.id === groupId || g.id === placeholderId || g._realId === groupId || g._isPlaceholder
+    );
+    
+    if (placeholderIndex !== -1) {
+        const placeholder = customLevelGroups[placeholderIndex];
+        const shouldPublish = placeholder._publishAfterGeneration;
+        
+        if (success) {
+            // Reload groups to get real data
+            await loadCustomLevelGroups();
+            
+            // If publish was requested, do it now
+            if (shouldPublish && groupId) {
                 try {
-                    console.log('🌐 Publishing story immediately after creation:', groupId);
                     const publishHeaders = {
                         'Content-Type': 'application/json'
                     };
@@ -868,59 +1128,36 @@ async function createCustomGroup() {
                     showNotification('Story erfolgreich erstellt, aber Fehler beim Publishen: ' + publishError.message, 'warning');
                 }
             } else {
-                showNotification(result.message, 'success');
+                showNotification('Story erfolgreich erstellt!', 'success');
             }
             
-            closeCreationProgressModal();
-            closeModal(createBtn.closest('.modal-overlay'));
-            
-            // Immediately reload custom level groups and refresh overview
-            console.log('🔄 Reloading custom level groups after creation...');
-            await loadCustomLevelGroups();
-            
-            // Update the library section to show the new group
+            // Refresh display
             if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
                 await window.showCustomLevelGroupsInLibrary();
             }
             
-            // Also refresh if we're on the library tab
-            const libraryTab = document.getElementById('library-tab');
-            if (libraryTab && libraryTab.classList.contains('active')) {
-                renderCustomLevelGroups();
-            }
-            
-            // Navigate to library tab to show the new group in overview
-            if (window.showTab) {
-                window.showTab('library');
-            }
-            
-            // Force refresh of level colors and word counts for the new group
-            setTimeout(async () => {
-                if (typeof window.refreshAllLevelColors === 'function') {
-                    await window.refreshAllLevelColors();
-                }
-                if (typeof window.renderLevels === 'function') {
-                    await window.renderLevels();
-                }
-            }, 1000); // Wait 1 second for the group to be fully loaded
+            renderCustomLevelGroups();
         } else {
-            let errorMessage = result.error || 'Fehler beim Erstellen der Story';
-            
-            // Handle specific error cases
-            if (errorMessage.includes('UNIQUE constraint') || errorMessage.includes('already exists')) {
-                errorMessage = 'Eine Story mit diesem Namen existiert bereits in dieser Sprache. Bitte wähle einen anderen Namen.';
-            }
-            
-            showNotification(errorMessage, 'error');
-            closeCreationProgressModal();
+            // Remove placeholder on error
+            customLevelGroups.splice(placeholderIndex, 1);
+            renderCustomLevelGroups();
+            showNotification(errorMessage || 'Fehler bei der Story-Generierung', 'error');
         }
+    }
+}
+
+// Check if group exists (fallback for status polling)
+async function checkGroupExists(groupId) {
+    try {
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        const response = await fetch(`/api/custom-level-groups/${groupId}`, { headers });
+        return response.ok;
     } catch (error) {
-        console.error('Error creating custom group:', error);
-        showNotification('Fehler beim Erstellen der Level-Gruppe', 'error');
-        closeCreationProgressModal();
-    } finally {
-        createBtn.textContent = originalText;
-        createBtn.disabled = false;
+        return false;
     }
 }
 
@@ -2888,6 +3125,9 @@ function showCreationProgressModal() {
             @keyframes spin {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
+            }
+            .spinner-small {
+                animation: spin 1s linear infinite;
             }
         </style>
     `;

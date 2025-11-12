@@ -142,12 +142,18 @@ def create_custom_level_group(
 def generate_custom_levels(group_id: int, language: str, native_language: str, 
                           context_description: str, cefr_level: str, num_levels: int) -> bool:
     """Generate AI-powered levels for a custom level group with ULTRA-LAZY LOADING - maximum speed, everything on demand"""
+    from server.story_generation_status import set_generation_status
+        
     try:
         print(f"🚀 Starting ULTRA-LAZY LOADING level generation for group {group_id} with {num_levels} levels")
         print("⚡ Ultra-fast creation: Only Topics + Titles, everything else on demand")
         
+        # Update status: Starting generation
+        set_generation_status(group_id, 'generating', 'starting', 0.0, 'Starte Story-Generierung...')
+        
         # Step 1: Generate topics sequentially for story progression
         print("📚 Generating topics sequentially for story progression...")
+        set_generation_status(group_id, 'generating', 'topics', 0.1, f'Generiere Topics für {num_levels} Level...')
         topics = []
         
         for i in range(1, num_levels + 1):
@@ -161,6 +167,9 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                     topic = f"{context_description} - Level {i}"
                 topics.append((i, topic))
                 print(f"✅ Generated topic for level {i}: {topic}")
+                # Update progress: topics generation
+                progress = 0.1 + (i / num_levels) * 0.3  # 10% to 40%
+                set_generation_status(group_id, 'generating', 'topics', progress, f'Topic {i}/{num_levels} generiert...')
             except Exception as e:
                 import traceback
                 print(f"❌ Error generating topic for level {i}: {e}")
@@ -169,9 +178,13 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                 topic = f"{context_description} - Level {i}"
                 topics.append((i, topic))
                 print(f"✅ Using fallback topic for level {i}: {topic}")
+                # Update progress even on fallback
+                progress = 0.1 + (i / num_levels) * 0.3
+                set_generation_status(group_id, 'generating', 'topics', progress, f'Topic {i}/{num_levels} generiert...')
         
         # Step 2: Generate titles sequentially for story progression
         print("📝 Generating titles sequentially for story progression...")
+        set_generation_status(group_id, 'generating', 'titles', 0.4, f'Generiere Titles für {num_levels} Level...')
         titles = []
         
         for i, topic in topics:
@@ -185,6 +198,9 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                     title = f"Level {i}: {topic}"
                 titles.append((i, title))
                 print(f"✅ Generated title for level {i}: {title}")
+                # Update progress: titles generation
+                progress = 0.4 + (i / num_levels) * 0.3  # 40% to 70%
+                set_generation_status(group_id, 'generating', 'titles', progress, f'Title {i}/{num_levels} generiert...')
             except Exception as e:
                 import traceback
                 print(f"❌ Error generating title for level {i}: {e}")
@@ -193,6 +209,9 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                 title = f"Level {i}: {topic}"
                 titles.append((i, title))
                 print(f"✅ Using fallback title for level {i}: {title}")
+                # Update progress even on fallback
+                progress = 0.4 + (i / num_levels) * 0.3
+                set_generation_status(group_id, 'generating', 'titles', progress, f'Title {i}/{num_levels} generiert...')
         
         # Sort by level number
         topics.sort(key=lambda x: x[0])
@@ -200,6 +219,7 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
         
         # Step 3: Create and save all levels with ULTRA-LAZY loading (no sentences, no word enrichment)
         print("💾 Creating all levels with ULTRA-LAZY loading (no sentences, no word enrichment yet)...")
+        set_generation_status(group_id, 'generating', 'saving', 0.7, f'Speichere {num_levels} Level...')
         for i, (level_num, topic) in enumerate(topics):
             # Create level content with ONLY topics and titles - everything else on demand
             level_content = create_level_content_ultra_lazy(
@@ -213,12 +233,19 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
                 # Update word count after saving (for ultra-lazy levels, this will be 0)
                 update_word_count_for_level(group_id, level_num, level_content)
                 print(f"✅ Saved level {level_num} to database (ultra-lazy loading)")
+                # Update progress: saving levels
+                progress = 0.7 + ((i + 1) / num_levels) * 0.3  # 70% to 100%
+                set_generation_status(group_id, 'generating', 'saving', progress, f'Level {i + 1}/{num_levels} gespeichert...')
             else:
                 print(f"❌ Failed to save level {level_num}")
+                set_generation_status(group_id, 'failed', 'saving', progress, f'Fehler beim Speichern von Level {level_num}', error=str(e))
                 return False
         
         print(f"🎉 ULTRA-LAZY LOADING generation complete: {num_levels} levels created in ~5-10 seconds!")
         print("📝 Sentences and word enrichment will happen when users start individual levels")
+        
+        # Update status: Completed
+        set_generation_status(group_id, 'completed', 'completed', 1.0, f'Story erfolgreich erstellt! {num_levels} Level bereit.')
         return True
         
     except Exception as e:
@@ -226,6 +253,7 @@ def generate_custom_levels(group_id: int, language: str, native_language: str,
         error_trace = traceback.format_exc()
         print(f"❌ Error generating custom levels: {e}")
         print(f"❌ Traceback: {error_trace}")
+        set_generation_status(group_id, 'failed', 'error', 0.0, 'Fehler bei der Story-Generierung', error=str(e))
         return False
 
 def generate_custom_levels_original(group_id: int, language: str, native_language: str, 

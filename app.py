@@ -2120,9 +2120,20 @@ def api_create_custom_level_group():
         if num_levels < 1 or num_levels > 20:
             return jsonify({'success': False, 'error': 'Number of levels must be between 1 and 20'}), 400
         
+        # Import status tracking
+        from server.story_generation_status import set_generation_status
+        
         # Step 1: Enrich user input with AI before creating the story
         print("✨ Enriching user input with AI for better story generation...")
         from server.services.llm import enrich_story_context
+        
+        # Create a temporary group_id for status tracking (we'll use -1 as placeholder)
+        # We'll update it once we have the real group_id
+        temp_group_id = -1
+        
+        # Update status: Enriching input
+        set_generation_status(temp_group_id, 'generating', 'enriching', 0.0, 'Bereichere Input mit KI...')
+        
         enriched_input = enrich_story_context(
             group_name=group_name,
             context_description=context_description,
@@ -2139,6 +2150,9 @@ def api_create_custom_level_group():
         print(f"   Title: {enriched_group_name}")
         print(f"   Context length: {len(enriched_context_description)} characters")
         
+        # Update status: Creating group
+        set_generation_status(temp_group_id, 'generating', 'creating_group', 0.05, 'Erstelle Story-Gruppe...')
+        
         # Create the level group with enriched input
         group_id = create_custom_level_group(
             user_id=user_id,
@@ -2151,7 +2165,14 @@ def api_create_custom_level_group():
         )
         
         if not group_id:
+            set_generation_status(temp_group_id, 'failed', 'creating_group', 0.0, 'Fehler beim Erstellen der Story-Gruppe', error='Failed to create level group')
             return jsonify({'success': False, 'error': 'Failed to create level group'}), 500
+        
+        # Now update status with real group_id
+        set_generation_status(group_id, 'generating', 'creating_group', 0.05, 'Story-Gruppe erstellt, starte Level-Generierung...')
+        # Clear temp status
+        from server.story_generation_status import clear_generation_status
+        clear_generation_status(temp_group_id)
         
         # Generate AI-powered levels using enriched context
         success = generate_custom_levels(
@@ -2184,6 +2205,46 @@ def api_create_custom_level_group():
             'error': str(e),
             'error_type': type(e).__name__
         }), 500
+
+@custom_levels_bp.get('/api/custom-level-groups/<int:group_id>/generation-status')
+@require_auth(optional=True)
+def api_get_generation_status(group_id):
+    """Get the current generation status for a story"""
+    try:
+        from server.story_generation_status import get_generation_status
+        
+        status = get_generation_status(group_id)
+        
+        if not status:
+            # No status found - check if group exists and is completed
+            from server.services.custom_levels import get_custom_level_group
+            user_context = get_user_context()
+            user_id = user_context.get('user_id')
+            
+            group = get_custom_level_group(group_id, user_id) if user_id else None
+            if group:
+                # Group exists, generation is complete
+                return jsonify({
+                    'success': True,
+                    'status': 'completed',
+                    'step': 'completed',
+                    'progress': 1.0,
+                    'message': 'Story erfolgreich erstellt'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Group not found'
+                }), 404
+        
+        return jsonify({
+            'success': True,
+            **status
+        })
+        
+    except Exception as e:
+        print(f"Error getting generation status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @custom_levels_bp.get('/api/custom-levels/groups/summary')
 @require_auth(optional=True)
