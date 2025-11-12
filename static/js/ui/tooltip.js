@@ -1069,8 +1069,10 @@ export async function showWordDetailsPanel(anchor, word) {
       const js = await response.json();
       console.log('🔧 Word API JSON response:', js);
       
-      // Accept response if success is true, even if word doesn't match exactly (case-insensitive comparison)
-      if (js && js.success) {
+      // Accept response if success is true (or if success field is missing, assume success for backward compatibility)
+      const isSuccess = js && (js.success === true || js.success === undefined);
+      
+      if (isSuccess) {
         // Check if word matches (case-insensitive) or if word field is missing (use requested word)
         const responseWord = js.word || w;
         const wordsMatch = responseWord.toLowerCase() === w.toLowerCase() || !js.word;

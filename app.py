@@ -5086,8 +5086,9 @@ def api_word_get():
             row = result.fetchone()
         
         if not row:
-            # Return empty word data if not found
+            # Return empty word data if not found (but with success: true so frontend can display empty state)
             return jsonify({
+              'success': True,
               'word': word, 'language': language, 'translation': '', 'example': '', 'example_native': '',
               'lemma': '', 'pos': '', 'ipa': '', 'audio_url': '', 'gender': 'none', 'plural': '',
               'conj': {}, 'comp': {}, 'synonyms': [], 'collocations': [], 'cefr': '', 'freq_rank': None, 'tags': [], 'note': '',
@@ -5219,6 +5220,9 @@ def api_word_get():
                 data[k] = json.loads(data[k])
             except Exception:
                 pass
+    
+    # Always include success: true for frontend compatibility
+    data['success'] = True
     return jsonify(data)
 
 
