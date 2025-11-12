@@ -21,7 +21,7 @@ let totalWordsEl, memorizedWordsEl, progressEl;
  */
 export function initHeaderStats() {
   // Get elements
-  totalWordsEl = $('#total-words-count');
+  totalWordsEl = null; // Removed - no longer displayed
   memorizedWordsEl = $('#memorized-words-count');
   progressEl = $('#learning-progress');
   
@@ -133,28 +133,26 @@ export function updateFromBulkData(headerStats) {
   
   try {
     // Only update if values have changed to prevent unnecessary DOM updates
-    const currentTotal = totalWordsEl ? totalWordsEl.textContent : '';
     const currentMemorized = memorizedWordsEl ? memorizedWordsEl.textContent : '';
     
-    const newTotal = headerStats.total_words !== undefined ? headerStats.total_words.toLocaleString() : currentTotal;
     const newMemorized = headerStats.memorized_words !== undefined ? headerStats.memorized_words.toLocaleString() : currentMemorized;
-    
-    // Update total words count only if changed
-    if (totalWordsEl && headerStats.total_words !== undefined && currentTotal !== newTotal) {
-      totalWordsEl.textContent = newTotal;
-      totalWordsEl.style.transform = 'scale(1.1)';
-      setTimeout(() => {
-        totalWordsEl.style.transform = 'scale(1)';
-      }, 200);
-    }
     
     // Update memorized words count only if changed
     if (memorizedWordsEl && headerStats.memorized_words !== undefined && currentMemorized !== newMemorized) {
       memorizedWordsEl.textContent = newMemorized;
-      memorizedWordsEl.style.transform = 'scale(1.1)';
+      memorizedWordsEl.style.transform = 'scale(1.15)';
       setTimeout(() => {
         memorizedWordsEl.style.transform = 'scale(1)';
       }, 200);
+      
+      // Also animate the parent counter for visual feedback
+      const counterEl = memorizedWordsEl.closest('.topbar-learned-counter');
+      if (counterEl) {
+        counterEl.style.transform = 'scale(1.05)';
+        setTimeout(() => {
+          counterEl.style.transform = 'scale(1)';
+        }, 200);
+      }
     }
     
     console.log('📊 Header stats updated from bulk data:', headerStats);
@@ -247,20 +245,24 @@ export async function updateFromWordsData() {
     }
     
     // Update UI elements
-    if (totalWordsEl) {
-      totalWordsEl.textContent = activeWords.toLocaleString();
-      totalWordsEl.style.transform = 'scale(1.1)';
-      setTimeout(() => {
-        totalWordsEl.style.transform = 'scale(1)';
-      }, 200);
-    }
+    // totalWordsEl removed - no longer displayed
     
     if (memorizedWordsEl) {
       memorizedWordsEl.textContent = learnedWords.toLocaleString();
-      memorizedWordsEl.style.transform = 'scale(1.1)';
+      // Add subtle animation
+      memorizedWordsEl.style.transform = 'scale(1.15)';
       setTimeout(() => {
         memorizedWordsEl.style.transform = 'scale(1)';
       }, 200);
+      
+      // Also animate the parent counter for visual feedback
+      const counterEl = memorizedWordsEl.closest('.topbar-learned-counter');
+      if (counterEl) {
+        counterEl.style.transform = 'scale(1.05)';
+        setTimeout(() => {
+          counterEl.style.transform = 'scale(1)';
+        }, 200);
+      }
     }
     
     // Expose latest counts globally for other modules (e.g. library cards)

@@ -253,6 +253,45 @@
       border-left: 1px solid var(--border);
     }
     
+    .topbar-learned-counter {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+    
+    .topbar-learned-counter:hover {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+    
+    .topbar-learned-icon {
+      font-size: 16px;
+    }
+    
+    .topbar-learned-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.8;
+    }
+    
+    .topbar-learned-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 20px;
+      text-align: center;
+    }
+    
     .nav-tab {
       display: flex;
       align-items: center;
@@ -438,6 +477,23 @@
         gap: 4px;
         margin-left: 12px;
         padding-left: 12px;
+      }
+      
+      .topbar-learned-counter {
+        padding: 6px 8px;
+        gap: 4px;
+      }
+      
+      .topbar-learned-label {
+        display: none;
+      }
+      
+      .topbar-learned-icon {
+        font-size: 14px;
+      }
+      
+      .topbar-learned-value {
+        font-size: 13px;
       }
       
       .nav-tabs {
@@ -5729,6 +5785,12 @@
         
         <!-- User Actions Group -->
         <div class="nav-group nav-group-actions">
+          <!-- Learned words counter -->
+          <div class="topbar-learned-counter" id="topbar-learned-counter">
+            <span class="topbar-learned-icon">💡</span>
+            <span class="topbar-learned-label">Gelernt:</span>
+            <span id="memorized-words-count" class="topbar-learned-value">0</span>
+          </div>
           <!-- Notification icon will be inserted here by notifications.js -->
           <button type="button" class="user-tab">
             <div id="auth-section" class="user-section" style="display: none;">
@@ -5790,22 +5852,6 @@
       </div>
     </div>
 
-    <div class="global-stat-bar" aria-live="polite">
-      <div class="stat-card" id="words-stat-card">
-        <div class="stat-icon">📖</div>
-        <div class="stat-content">
-          <div class="stat-label">Wörter</div>
-          <div id="total-words-count" class="stat-value">0</div>
-        </div>
-      </div>
-      <div class="stat-card" id="learned-stat-card">
-        <div class="stat-icon">💡</div>
-        <div class="stat-content">
-          <div class="stat-label">Gelernt</div>
-          <div id="memorized-words-count" class="stat-value">0</div>
-        </div>
-      </div>
-    </div>
 
     <section id="levels-card" class="card">
       <!-- Enhanced Course Configuration -->
@@ -7687,10 +7733,8 @@
             if (wordsLearnedEl && wordsLearnedEl.dataset.static !== 'true') wordsLearnedEl.textContent = '0';
             
             // Update progress stats in library header
-            const totalWordsCountEl = document.getElementById('total-words-count');
             const memorizedWordsCountEl = document.getElementById('memorized-words-count');
             
-            if (totalWordsCountEl) totalWordsCountEl.textContent = activeWords.toLocaleString();
             if (memorizedWordsCountEl) memorizedWordsCountEl.textContent = memorizedWords.toLocaleString();
         }
         
