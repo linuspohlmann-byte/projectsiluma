@@ -5135,15 +5135,54 @@ def api_word_get():
             if not data:
                 data = {}
         
+        # Debug: Log what we got from database
+        print(f"🔧 DEBUG api_word_get: Retrieved data keys: {list(data.keys())}")
+        print(f"🔧 DEBUG api_word_get: translation={data.get('translation')}, ipa={data.get('ipa')}, pos={data.get('pos')}, gender={data.get('gender')}")
+        print(f"🔧 DEBUG api_word_get: example={data.get('example')}, example_native={data.get('example_native')}, synonyms={data.get('synonyms')}")
+        
+        # Ensure all expected fields exist, even if None/empty
+        expected_fields = {
+            'translation': '',
+            'ipa': '',
+            'pos': '',
+            'gender': 'none',
+            'example': '',
+            'example_native': '',
+            'synonyms': None,
+            'collocations': None,
+            'lemma': '',
+            'audio_url': '',
+            'plural': '',
+            'cefr': '',
+            'freq_rank': None,
+            'tags': None,
+            'note': '',
+            'info': None,
+            'conj': None,
+            'comp': None
+        }
+        
+        # Set defaults for missing fields
+        for field, default_value in expected_fields.items():
+            if field not in data or data[field] is None:
+                data[field] = default_value
+        
         # Parse JSON fields
         for json_field in ['conj', 'comp', 'synonyms', 'collocations', 'tags', 'info']:
             if data.get(json_field):
                 try:
-                    data[json_field] = json.loads(data[json_field]) if isinstance(data[json_field], str) else data[json_field]
-                except (json.JSONDecodeError, TypeError):
+                    if isinstance(data[json_field], str):
+                        data[json_field] = json.loads(data[json_field])
+                    # If already parsed (dict/list), keep as is
+                except (json.JSONDecodeError, TypeError) as e:
+                    print(f"⚠️ Warning: Could not parse JSON field {json_field}: {e}, value: {data.get(json_field)}")
                     data[json_field] = None
             else:
-                data[json_field] = None
+                # Set to empty list/array for synonyms/collocations/tags, empty dict for others
+                if json_field in ['synonyms', 'collocations', 'tags']:
+                    data[json_field] = []
+                else:
+                    data[json_field] = {}
         
     except Exception as e:
         import traceback
@@ -5209,20 +5248,19 @@ def api_word_get():
         data['correct_count'] = 0
         data['user_comment'] = ''
     
-    if data.get('info'):
-        try:
-            data['info'] = json.loads(data['info'])
-        except Exception:
-            pass
-    for k in ('conj','comp','synonyms','collocations','tags'):
-        if data.get(k):
-            try:
-                data[k] = json.loads(data[k])
-            except Exception:
-                pass
+    # Final debug: Log what we're returning
+    print(f"🔧 DEBUG api_word_get: Final data being returned - translation={data.get('translation')}, ipa={data.get('ipa')}, pos={data.get('pos')}, gender={data.get('gender')}")
+    print(f"🔧 DEBUG api_word_get: example={data.get('example')}, example_native={data.get('example_native')}, synonyms={data.get('synonyms')}")
     
     # Always include success: true for frontend compatibility
     data['success'] = True
+    
+    # Ensure all fields are properly serialized (convert None to empty strings for text fields)
+    text_fields = ['translation', 'ipa', 'pos', 'gender', 'example', 'example_native', 'lemma', 'audio_url', 'plural', 'cefr', 'note']
+    for field in text_fields:
+        if data.get(field) is None:
+            data[field] = ''
+    
     return jsonify(data)
 
 
