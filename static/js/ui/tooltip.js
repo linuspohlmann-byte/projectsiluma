@@ -383,8 +383,16 @@ export async function openTooltip(anchor, word){
     
     console.log('🔧 Tooltip opening for word:', w, 'language:', lang);
     
+    // CRITICAL: Check cache FIRST before any API calls for instant display
+    let js1 = getCachedWordData(w, lang, nat);
+    if (js1) {
+      console.log('✅ Tooltip: Using cached word data for instant display:', w);
+      fill(js1);
+      // Audio will be handled by playOrGenAudio if needed
+    }
+    
     // Check if this is a custom level and try to get word data from custom level context
-    let js1 = null;
+    if (!js1) {
     if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
       console.log('🔧 Tooltip for custom level word:', w);
       
@@ -414,65 +422,59 @@ export async function openTooltip(anchor, word){
     
     // If we don't have word data yet, try to fetch from global database
     if (!js1) {
-      console.log('🔧 Fetching word data for:', w);
+      console.log('⚠️ Tooltip: Word data not in cache, fetching for:', w);
       
-      // OPTIMIZED: Check cache first - use cached data immediately for instant display
-      const cachedData = getCachedWordData(w, lang, nat);
-      if (cachedData) {
-        console.log('🔧 Using cached word data for:', w);
-        js1 = cachedData;
-        // Fill immediately with cached data for instant display
-        fill(js1);
+      // NEW: Use batch API endpoint directly (more efficient than individual calls)
+      const headers = { 'Content-Type': 'application/json' };
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+      
+      try {
+        // Use batch endpoint - even for single word, it's more efficient
+        const batchResponse = await fetch('/api/words/batch', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            words: [w],
+            language: lang,
+            native_language: nat
+          })
+        });
         
-        // Also check if audio is already preloaded for instant playback
-        if (js1.audio_url && window.audioPreloadCache && window.audioPreloadCache.has(js1.audio_url)) {
-          console.log('🔧 Audio already preloaded for:', w);
-        }
-      } else {
-        // NEW: Use batch API endpoint directly (more efficient than individual calls)
-        const headers = { 'Content-Type': 'application/json' };
-        const sessionToken = localStorage.getItem('session_token');
-        if (sessionToken) {
-          headers['Authorization'] = `Bearer ${sessionToken}`;
-        }
-        
-        try {
-          // Use batch endpoint - even for single word, it's more efficient
-          const batchResponse = await fetch('/api/words/batch', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              words: [w],
-              language: lang,
-              native_language: nat
-            })
-          });
-          
-          if (batchResponse.ok) {
-            const batchData = await batchResponse.json();
-            if (batchData.success && batchData.words && batchData.words[w]) {
-              js1 = batchData.words[w];
-              console.log('🔧 Fetched word data via batch API:', js1);
-              
-              // Cache the word data
-              if (js1 && js1.word) {
-                setCachedWordData(w, lang, nat, js1);
+        if (batchResponse.ok) {
+          const batchData = await batchResponse.json();
+          if (batchData.success && batchData.words && batchData.words[w]) {
+            js1 = batchData.words[w];
+            console.log('✅ Tooltip: Fetched word data via batch API:', w);
+            
+            // Cache the word data (sync to both caches)
+            if (js1 && js1.word) {
+              setCachedWordData(w, lang, nat, js1);
+              // Also sync to WORDS_CACHE
+              if (window.cachePut) {
+                window.cachePut(js1);
               }
             }
           }
-        } catch (e) {
-          console.log('⚠️ Batch API failed, falling back to single API:', e);
-          
-          // Fallback to single word API if batch didn't work
-          const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
-            headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
-          });
-          js1 = await r1.json();
-          console.log('🔧 Fetched word data via single API:', js1);
-          
-          // Cache the word data
-          if (js1 && js1.word) {
-            setCachedWordData(w, lang, nat, js1);
+        }
+      } catch (e) {
+        console.log('⚠️ Batch API failed, falling back to single API:', e);
+        
+        // Fallback to single word API if batch didn't work
+        const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+          headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
+        });
+        js1 = await r1.json();
+        console.log('✅ Tooltip: Fetched word data via single API:', w);
+        
+        // Cache the word data (sync to both caches)
+        if (js1 && js1.word) {
+          setCachedWordData(w, lang, nat, js1);
+          // Also sync to WORDS_CACHE
+          if (window.cachePut) {
+            window.cachePut(js1);
           }
         }
       }
@@ -567,29 +569,49 @@ export async function playOrGenAudio(word, sentenceContext = null){
   }
 
   try{
-    // First check if we have audio URL in cache (from word enrichment)
+    // First check if we have audio URL in cache (from word enrichment/preloading)
     let audioUrl = null;
-    if (window.cacheGet) {
+    
+    // Check tooltip cache first
+    const nat = window.RUN?.native || localStorage.getItem('siluma_native') || 'de';
+    const cachedTooltip = getCachedWordData(w, lang, nat);
+    if (cachedTooltip && cachedTooltip.audio_url && cachedTooltip.audio_url.trim()) {
+      audioUrl = cachedTooltip.audio_url.trim();
+      console.log('✅ Tooltip audio: Found URL in tooltip cache:', w);
+    }
+    
+    // Also check WORDS_CACHE
+    if (!audioUrl && window.cacheGet) {
       const cached = window.cacheGet(w, lang);
       if (cached && cached.audio_url && cached.audio_url.trim()) {
         audioUrl = cached.audio_url.trim();
+        console.log('✅ Tooltip audio: Found URL in WORDS_CACHE:', w);
       }
     }
     
     // If no cached URL, fetch from API
     if (!audioUrl) {
-    const payload = { word: w, language: lang };
-    if (sentenceContext && sentenceContext.trim()) {
-      payload.sentence = sentenceContext.trim();
-    }
-    
-    const r = await fetch('/api/word/tts', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
-    });
-    const js = await r.json();
-    if(js?.success && js.audio_url){
+      console.log('⚠️ Tooltip audio: No cached URL, fetching from API:', w);
+      const payload = { word: w, language: lang };
+      if (sentenceContext && sentenceContext.trim()) {
+        payload.sentence = sentenceContext.trim();
+      }
+      
+      const r = await fetch('/api/word/tts', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const js = await r.json();
+      if(js?.success && js.audio_url){
         audioUrl = js.audio_url;
+        // Update cache with audio URL
+        if (window.cacheGet) {
+          const cached = window.cacheGet(w, lang);
+          if (cached) {
+            cached.audio_url = audioUrl;
+            if (window.cachePut) window.cachePut(cached);
+          }
+        }
       }
     }
     

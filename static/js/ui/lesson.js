@@ -15,12 +15,12 @@ const WORDS_CACHE = new Map(); // key: lang + '|' + word
 const ck = (w, lang)=> `${lang}|${String(w||'').trim()}`;
 function cachePut(row){
   if(!row) return;
-  const key = ck(row.word, row.language || RUN.target || 'en');
+  const lang = row.language || RUN.target || 'en';
+  const key = ck(row.word, lang);
   WORDS_CACHE.set(key, row);
   
   // SYNC: Also update tooltip cache for instant tooltip access
   if (typeof window !== 'undefined' && window.setCachedWordData) {
-    const lang = row.language || RUN.target || 'en';
     const nativeLang = row.native_language || RUN.native || localStorage.getItem('siluma_native') || 'de';
     window.setCachedWordData(row.word, lang, nativeLang, row);
   }
