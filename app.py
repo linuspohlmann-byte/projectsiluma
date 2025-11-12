@@ -3595,10 +3595,10 @@ def api_enrich_custom_level_words(group_id, level_number):
         
         existing_words = set()
         try:
-                    if config['type'] == 'postgresql':
+            if config['type'] == 'postgresql':
                 # OPTIMIZATION: Use ANY with array instead of multiple OR conditions
                 # This is much more efficient for PostgreSQL
-                        result = execute_query(conn, '''
+                result = execute_query(conn, '''
                     SELECT word FROM words 
                     WHERE word = ANY(%s) AND language = %s AND native_language = %s
                 ''', (words, language, native_language))
@@ -3607,9 +3607,9 @@ def api_enrich_custom_level_words(group_id, level_number):
                     row_dict = _coerce_row_to_dict(row, getattr(result, 'description', None))
                     if row_dict and row_dict.get('word'):
                         existing_words.add(row_dict['word'])
-                    else:
+            else:
                 # SQLite batch check
-                        cur = conn.cursor()
+                cur = conn.cursor()
                 placeholders = ','.join(['?'] * len(words))
                 query = f'''
                     SELECT word FROM words 
