@@ -5800,6 +5800,7 @@
       #lesson-container {
         flex-direction: column;
         gap: 16px;
+        padding: 24px 20px 0 20px; /* Maintain top padding for alignment */
       }
       
       .word-details-panel {
@@ -5807,12 +5808,13 @@
         position: relative;
         top: 0;
         max-height: none;
+        align-self: stretch; /* Full width on mobile */
       }
     }
     
     @media (max-width: 560px) {
       #lesson-container {
-        padding: 0;
+        padding: 16px 12px 0 12px; /* Reduced but consistent padding */
       }
       
       .word-details-panel {
