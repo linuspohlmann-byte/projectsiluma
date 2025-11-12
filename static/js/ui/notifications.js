@@ -54,7 +54,7 @@ function createNotificationIcon() {
     // Create notification icon button
     const iconContainer = document.createElement('div');
     iconContainer.id = 'notification-icon-container';
-    iconContainer.style.cssText = 'position: relative; margin-left: auto; margin-right: 16px;';
+    iconContainer.style.cssText = 'position: relative; margin: 0; padding: 0;';
     
     const iconBtn = document.createElement('button');
     iconBtn.id = 'notification-icon';
@@ -68,9 +68,18 @@ function createNotificationIcon() {
     
     iconContainer.appendChild(iconBtn);
     
-    // Insert before user tab or at the end
+    // Insert into nav-group-actions before user tab
+    const actionsGroup = $('.nav-group-actions');
     const userTab = $('.user-tab');
-    if (userTab && userTab.parentNode) {
+    if (actionsGroup) {
+        // Insert before user tab in actions group
+        if (userTab && userTab.parentNode === actionsGroup) {
+            actionsGroup.insertBefore(iconContainer, userTab);
+        } else {
+            actionsGroup.appendChild(iconContainer);
+        }
+    } else if (userTab && userTab.parentNode) {
+        // Fallback: insert before user tab
         userTab.parentNode.insertBefore(iconContainer, userTab);
     } else {
         topbar.appendChild(iconContainer);
