@@ -588,10 +588,10 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     fname = f"{h}.mp3"
     
     # Check if file exists in S3
-        if tts_audio_exists(lang, fname, 'tts_sentences'):
-            s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
+    if tts_audio_exists(lang, fname, 'tts_sentences'):
+        s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
         print(f"✅ Found sentence audio in S3, returning direct S3 URL")
-            return s3_url
+        return s3_url
     model, voice, has_lang_voice = _pick_tts_config(lang)
     instr = _pick_tts_instructions(lang, context)
     if isinstance(instructions, str) and instructions.strip():
