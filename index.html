@@ -2024,10 +2024,21 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 16px;
+      gap: 24px;
       margin-bottom: 24px;
-      padding-bottom: 16px;
+      padding-bottom: 20px;
       border-bottom: 2px solid var(--border);
+    }
+    
+    .library-header-left {
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    .library-header-right {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
     }
     
     .library-title {
@@ -2066,45 +2077,23 @@
       letter-spacing: 0.5px;
     }
     
-    /* Quick Actions Styles */
-    .library-quick-actions {
-      margin: 24px 0;
-      padding: 20px;
-      background: var(--surface);
-      border-radius: 12px;
-      border: 1px solid var(--border);
-    }
-    
-    .quick-actions-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--fg);
-      margin: 0 0 16px 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    
-    .quick-actions-title::before {
-      content: '⚡';
-      font-size: 20px;
-    }
-    
+    /* Quick Actions Styles - Now integrated in header */
     .quick-actions-buttons {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
     }
     
     
     
     .quick-action-btn {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
-      padding: 20px 16px;
+      gap: 8px;
+      padding: 10px 16px;
       border: 2px solid var(--border);
-      border-radius: 12px;
+      border-radius: 8px;
       background: var(--card);
       color: var(--fg);
       cursor: pointer;
@@ -2112,11 +2101,14 @@
       text-decoration: none;
       position: relative;
       overflow: hidden;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 500;
     }
     
     .quick-action-btn:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       border-color: var(--accent);
     }
     
@@ -2132,26 +2124,22 @@
     }
     
     .quick-action-btn .btn-icon {
-      font-size: 32px;
-      margin-bottom: 8px;
+      font-size: 18px;
       transition: transform 0.3s ease;
+      flex-shrink: 0;
     }
     
     .quick-action-btn:hover .btn-icon {
-      transform: scale(1.1);
+      transform: scale(1.15);
     }
     
     .quick-action-btn .btn-label {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 600;
-      margin-bottom: 4px;
     }
     
     .quick-action-btn .btn-description {
-      font-size: 12px;
-      opacity: 0.8;
-      text-align: center;
-      line-height: 1.4;
+      display: none; /* Hidden in header layout, shown in tooltip */
     }
     
     .quick-action-btn::before {
@@ -2425,8 +2413,22 @@
       
       .library-header {
         flex-direction: column;
-        gap: 16px;
-        align-items: flex-start;
+        gap: 20px;
+        align-items: stretch;
+      }
+      
+      .library-header-right {
+        width: 100%;
+      }
+      
+      .quick-actions-buttons {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+      }
+      
+      .quick-action-btn {
+        flex: 1 1 auto;
+        min-width: 120px;
       }
       
       .stat-item {
@@ -5904,31 +5906,25 @@
         <div id="library-tab" class="tab-content active">
           <div class="library-content">
             <div class="library-header">
-              <div>
+              <div class="library-header-left">
                 <h2 class="library-title" data-i18n="library.title">📚 Meine Bibliothek</h2>
                 <p class="library-subtitle" data-i18n="library.subtitle">Deine gespeicherten Kurse und Fortschritte</p>
               </div>
-            </div>
-            
-            <!-- Quick Actions Section -->
-            <div class="library-quick-actions">
-              <h3 class="quick-actions-title" data-i18n="library.quick_actions">Schnellzugriff</h3>
-              <div class="quick-actions-buttons">
-                <button id="smart-practice-btn" class="quick-action-btn primary" type="button">
-                  <span class="btn-icon">💪</span>
-                  <span class="btn-label" data-i18n="library.practice">Übung</span>
-                  <span class="btn-description" data-i18n="library.practice_desc">Intelligente Wiederholung</span>
-                </button>
-                <button id="create-custom-levels-btn" class="quick-action-btn" type="button">
-                  <span class="btn-icon">🎯</span>
-                  <span class="btn-label">Level erstellen</span>
-                  <span class="btn-description">AI-generierte Level-Gruppen</span>
-                </button>
-                <button id="alphabet-practice-btn" class="quick-action-btn" type="button">
-                  <span class="btn-icon">🔤</span>
-                  <span class="btn-label" data-i18n="library.alphabet">Alphabet</span>
-                  <span class="btn-description" data-i18n="library.alphabet_desc">Lerne das Alphabet</span>
-                </button>
+              <div class="library-header-right">
+                <div class="quick-actions-buttons">
+                  <button id="smart-practice-btn" class="quick-action-btn primary" type="button" title="Intelligente Wiederholung">
+                    <span class="btn-icon">💪</span>
+                    <span class="btn-label" data-i18n="library.practice">Übung</span>
+                  </button>
+                  <button id="create-custom-levels-btn" class="quick-action-btn" type="button" title="AI-generierte Level-Gruppen">
+                    <span class="btn-icon">🎯</span>
+                    <span class="btn-label">Level erstellen</span>
+                  </button>
+                  <button id="alphabet-practice-btn" class="quick-action-btn" type="button" title="Lerne das Alphabet">
+                    <span class="btn-icon">🔤</span>
+                    <span class="btn-label" data-i18n="library.alphabet">Alphabet</span>
+                  </button>
+                </div>
               </div>
             </div>
             
