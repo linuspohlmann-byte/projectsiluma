@@ -194,10 +194,6 @@ function showCustomLevelGroupsInLibrary() {
         customGroupsSection.id = 'custom-level-groups-section';
         customGroupsSection.className = 'library-section';
         customGroupsSection.innerHTML = `
-            <div class="section-header">
-                <h2>🎯 Meine Level-Gruppen</h2>
-                <p>Deine persönlichen, AI-generierten Level-Gruppen</p>
-            </div>
             <div id="custom-level-groups-container">
                 <!-- Custom level groups will be loaded here -->
             </div>
