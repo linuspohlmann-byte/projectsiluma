@@ -362,45 +362,48 @@ export async function checkAuthAndInitialize() {
     }
     
     initializationPromise = (async () => {
-        // Show login screen immediately
+        // Initialize handlers first (needed for login/register forms)
+        initLoginScreenHandlers();
+        
+        // Check if user has session token BEFORE showing login screen
+        const sessionToken = localStorage.getItem('session_token');
+        
+        if (sessionToken) {
+            // Session token exists, check validity first
+            try {
+                const response = await fetch('/api/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${sessionToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.user) {
+                        // Valid session - initialize app directly WITHOUT showing login screen
+                        console.log('✅ Valid session found, initializing app directly');
+                        showLoginScreenLoading(); // Show loading briefly
+                        await initializeApp();
+                        return; // Exit early - don't show login screen
+                    }
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+            
+            // Invalid session token, remove it
+            localStorage.removeItem('session_token');
+        }
+        
+        // No valid session - show login screen
+        console.log('🔐 No valid session, showing login screen');
         showLoginScreen();
         showLoginScreenLoading();
         
-        // Initialize handlers
-        initLoginScreenHandlers();
-        
-        // Check if user has session token
-        const sessionToken = localStorage.getItem('session_token');
-        
-        if (!sessionToken) {
-            // No session token, show login form
+        // Show login form after a brief loading period
+        setTimeout(() => {
             showLoginScreenForm();
-            return;
-        }
-        
-        // Check session validity
-        try {
-            const response = await fetch('/api/auth/me', {
-                headers: {
-                    'Authorization': `Bearer ${sessionToken}`
-                }
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.user) {
-                    // Valid session, initialize app in background
-                    await initializeApp();
-                    return;
-                }
-            }
-        } catch (error) {
-            console.error('Auth check failed:', error);
-        }
-        
-        // Invalid session, show login form
-        localStorage.removeItem('session_token');
-        showLoginScreenForm();
+        }, 300);
     })();
     
     return initializationPromise;
