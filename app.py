@@ -4999,7 +4999,16 @@ def api_words_count_learned():
             """, (user_id, native_language, language, native_language))
             
             row = result.fetchone()
-            count = row['count'] if row else 0
+            # Handle both dict (if row_factory worked) and tuple/list (pg8000 default)
+            if row:
+                if isinstance(row, dict):
+                    count = row.get('count', 0) or 0
+                elif isinstance(row, (tuple, list)) and len(row) > 0:
+                    count = row[0] if row[0] is not None else 0
+                else:
+                    count = 0
+            else:
+                count = 0
             
             print(f"DEBUG: PostgreSQL learned words count for user_id={user_id}, language={language}, native_language={native_language}: {count}")
             return jsonify({'count': count})
