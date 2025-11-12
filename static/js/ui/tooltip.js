@@ -1037,69 +1037,155 @@ export async function showWordDetailsPanel(anchor, word) {
     console.warn('⚠️ Could not get user ID:', e);
   }
   
-  // Load word data (same logic as openTooltip)
+  // Load word data (use EXACT same logic as openTooltip)
   const w = String(word||'').trim();
-  const lang = TT.wordContext.language;
-  const nat = TT.wordContext.native_language;
+  const lang = window.RUN?.target || TT.wordContext.language || 'en';
+  const nat = window.RUN?.native || TT.wordContext.native_language || 'de';
   
-  // Check cache first
-  const cached = getCachedWordData(w, lang, nat);
-  if (cached) {
-    console.log('✅ Using cached word data:', w);
-    renderWordDetailsPanel(panel, w, cached);
-    return;
+  console.log('🔧 Word details panel opening for word:', w, 'language:', lang, 'native:', nat);
+  
+  // CRITICAL: Check cache FIRST before any API calls for instant display (same as openTooltip)
+  let js1 = getCachedWordData(w, lang, nat);
+  if (js1) {
+    console.log('✅ Word details panel: Using cached word data for instant display:', w);
+    renderWordDetailsPanel(panel, w, js1);
+    // Continue to fetch fresh data in background (like openTooltip does)
   }
   
-  // Fetch word data
-  try {
-    const headers = { 'Content-Type': 'application/json' };
-    headers['X-Native-Language'] = nat;
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
-    }
-    
-    const url = `/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`;
-    console.log('🔧 Fetching word:', { word: w, language: lang, url });
-    
-    const response = await fetch(url, { headers });
-    console.log('🔧 Word API response:', { ok: response.ok, status: response.status, statusText: response.statusText });
-    
-    if (response.ok) {
-      const js = await response.json();
-      console.log('🔧 Word API JSON response:', js);
+  // Check if this is a custom level and try to get word data from custom level context
+  if (!js1) {
+    if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
+      console.log('🔧 Word details panel for custom level word:', w);
       
-      // Accept response if success is true (or if success field is missing, assume success for backward compatibility)
-      const isSuccess = js && (js.success === true || js.success === undefined);
-      
-      if (isSuccess) {
-        // Check if word matches (case-insensitive) or if word field is missing (use requested word)
-        const responseWord = js.word || w;
-        const wordsMatch = responseWord.toLowerCase() === w.toLowerCase() || !js.word;
-        
-        if (wordsMatch) {
-          // Use the word from response if available, otherwise use requested word
-          const wordToUse = js.word || w;
-          setCachedWordData(w, lang, nat, js);
-          renderWordDetailsPanel(panel, wordToUse, js);
-          return;
-        } else {
-          console.warn('⚠️ Word mismatch:', { requested: w, response: responseWord });
+      // For custom levels, try to get word data from the current item first
+      const currentItem = window.RUN.items[window.RUN.idx || 0];
+      if (currentItem && currentItem.words) {
+        // Look for the word in the current item's words array
+        const wordData = currentItem.words.find(word => word === w);
+        if (wordData) {
+          console.log('🔧 Found word in custom level item:', wordData);
+          // Create a basic word object for the panel
+          js1 = {
+            word: w,
+            language: lang,
+            translation: '', // Will be filled by enrichment
+            familiarity: 0,
+            pos: '',
+            ipa: '',
+            example_native: '',
+            synonyms: [],
+            collocations: [],
+            gender: 'none'
+          };
         }
-      } else {
-        console.warn('⚠️ API returned success=false:', js);
-      }
-    } else {
-      // Try to get error message from response
-      try {
-        const errorData = await response.json();
-        console.error('❌ Word API error response:', errorData);
-      } catch (e) {
-        console.error('❌ Word API error (non-JSON):', response.status, response.statusText);
       }
     }
-  } catch (e) {
-    console.error('❌ Error fetching word:', e);
+  }
+  
+  // If we don't have word data yet, try to fetch from global database (same as openTooltip)
+  if (!js1) {
+    console.log('⚠️ Word details panel: Word data not in cache, fetching for:', w);
+    
+    try {
+      // NEW: Use batch API endpoint directly (more efficient than individual calls) - same as openTooltip
+      const headers = { 'Content-Type': 'application/json' };
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+      
+      try {
+        // Use batch endpoint - even for single word, it's more efficient (same as openTooltip)
+        const batchResponse = await fetch('/api/words/batch', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            words: [w],
+            language: lang,
+            native_language: nat
+          })
+        });
+        
+        if (batchResponse.ok) {
+          const batchData = await batchResponse.json();
+          if (batchData.success && batchData.words && batchData.words[w]) {
+            js1 = batchData.words[w];
+            console.log('✅ Word details panel: Fetched word data via batch API:', w);
+            
+            // Cache the word data (sync to both caches)
+            if (js1 && js1.word) {
+              setCachedWordData(w, lang, nat, js1);
+              // Also sync to WORDS_CACHE
+              if (window.cachePut) {
+                window.cachePut(js1);
+              }
+            }
+            
+            renderWordDetailsPanel(panel, w, js1);
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Batch API failed, falling back to single API:', e);
+      }
+      
+      // Fallback to single word API if batch didn't work (same as openTooltip)
+      // IMPORTANT: Include native_language in query parameter, not just header!
+      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+        headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
+      });
+      
+      if (r1.ok) {
+        js1 = await r1.json();
+        console.log('✅ Word details panel: Fetched word data via single API:', w);
+        
+        // Cache the word data (sync to both caches)
+        if (js1 && js1.word) {
+          setCachedWordData(w, lang, nat, js1);
+          // Also sync to WORDS_CACHE
+          if (window.cachePut) {
+            window.cachePut(js1);
+          }
+        }
+        
+        renderWordDetailsPanel(panel, w, js1);
+        return;
+      } else {
+        console.error('❌ Word API error:', r1.status, r1.statusText);
+      }
+    } catch (e) {
+      console.error('❌ Error fetching word:', e);
+    }
+  } else {
+    // We have cached data, but fetch fresh data in background (like openTooltip does)
+    // This ensures we have the latest data
+    setTimeout(async () => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
+        
+        const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+          headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
+        });
+        
+        if (r1.ok) {
+          const freshData = await r1.json();
+          if (freshData && freshData.word) {
+            setCachedWordData(w, lang, nat, freshData);
+            if (window.cachePut) {
+              window.cachePut(freshData);
+            }
+            // Update panel with fresh data
+            renderWordDetailsPanel(panel, w, freshData);
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Background refresh failed:', e);
+      }
+    }, 100);
   }
   
   // Fallback: show error with more details
