@@ -331,6 +331,17 @@ class AuthManager {
     }
 
     handleAuthenticatedState() {
+        // Trigger auth state change event for other modules
+        if (typeof window.onAuthStateChange === 'function') {
+            window.onAuthStateChange(true);
+        }
+        
+        // Refresh notifications if available
+        if (typeof window.refreshNotifications === 'function') {
+            setTimeout(() => {
+                window.refreshNotifications();
+            }, 1000);
+        }
         this.emitAuthStateChange(true);
 
         const invoke = (fn) => {
@@ -367,6 +378,10 @@ class AuthManager {
     }
 
     handleUnauthenticatedState() {
+        // Trigger auth state change event for other modules
+        if (typeof window.onAuthStateChange === 'function') {
+            window.onAuthStateChange(false);
+        }
         this.emitAuthStateChange(false);
 
         setTimeout(() => {
