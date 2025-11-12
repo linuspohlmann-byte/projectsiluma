@@ -231,11 +231,11 @@ user_bp = Blueprint('user', __name__)
 custom_levels_bp = Blueprint('custom_levels', __name__)
 
 init_db()  # Initialize database tables
-  # Also initialize marketplace notification tables
-  try:
+# Also initialize marketplace notification tables
+try:
     from server.marketplace_notifications import create_marketplace_tables
     create_marketplace_tables()
-  except Exception as e:
+except Exception as e:
     print(f"⚠️ Warning: Could not initialize marketplace tables: {e}")
 
 
