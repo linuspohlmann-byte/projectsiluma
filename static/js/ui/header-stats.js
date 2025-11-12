@@ -90,9 +90,9 @@ export async function updateStats(force = false) {
   if (window.authManager) {
     isUserAuthenticated = window.authManager.isAuthenticated();
     if (window.DEBUG) {
-      console.log('🔍 UpdateStats auth debug - sessionToken:', !!window.authManager.sessionToken);
-      console.log('🔍 UpdateStats auth debug - currentUser:', !!window.authManager.currentUser);
-      console.log('🔍 UpdateStats auth debug - isAuthenticated result:', isUserAuthenticated);
+    console.log('🔍 UpdateStats auth debug - sessionToken:', !!window.authManager.sessionToken);
+    console.log('🔍 UpdateStats auth debug - currentUser:', !!window.authManager.currentUser);
+    console.log('🔍 UpdateStats auth debug - isAuthenticated result:', isUserAuthenticated);
     }
   }
   

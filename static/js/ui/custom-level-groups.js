@@ -1882,9 +1882,9 @@ async function renderCustomLevels(groupId, levels) {
             applyCustomLevelProgressData(card, cachedData);
         } else {
             // Only make individual API call if cache is missing (shouldn't happen normally)
-            setTimeout(() => {
-                applyCustomLevelProgress(card, levelNumber, groupId);
-            }, 100);
+        setTimeout(() => {
+            applyCustomLevelProgress(card, levelNumber, groupId);
+        }, 100);
         }
         
         // Note: Click handlers are already set via HTML onclick attributes

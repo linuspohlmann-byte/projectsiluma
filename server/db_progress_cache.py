@@ -540,6 +540,75 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
         print(f"❌ Error in calculate_familiarity_counts_from_user_words: {e}")
         return {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
+def update_progress_cache_incremental(user_id: int, group_id: int, level_number: int, 
+                                      word_updates: List[tuple]) -> bool:
+    """
+    Incrementally update progress cache instead of full recalculation.
+    word_updates: List of (word, old_familiarity, new_familiarity) tuples
+    """
+    try:
+        # Get current cache
+        current = get_custom_level_progress(user_id, group_id, level_number)
+        
+        if not current:
+            # First time - calculate from scratch
+            return refresh_custom_level_progress(user_id, group_id, level_number)
+        
+        # Incrementally update counts
+        new_counts = current['fam_counts'].copy()
+        
+        for word, old_fam, new_fam in word_updates:
+            old_fam = max(0, min(5, int(old_fam or 0)))
+            new_fam = max(0, min(5, int(new_fam or 0)))
+            
+            # Decrement old familiarity level
+            if old_fam in new_counts:
+                new_counts[old_fam] = max(0, new_counts[old_fam] - 1)
+            
+            # Increment new familiarity level
+            if new_fam in new_counts:
+                new_counts[new_fam] = new_counts[new_fam] + 1
+        
+        # Calculate new score based on updated counts
+        total_familiarity = sum(new_counts.values())
+        score = None
+        if total_familiarity > 0:
+            # Weight: Level 5 = 100%, Level 4 = 80%, Level 3 = 60%, Level 2 = 40%, Level 1 = 20%
+            weighted_score = (
+                new_counts.get(5, 0) * 1.0 +
+                new_counts.get(4, 0) * 0.8 +
+                new_counts.get(3, 0) * 0.6 +
+                new_counts.get(2, 0) * 0.4 +
+                new_counts.get(1, 0) * 0.2
+            ) / total_familiarity
+            score = weighted_score
+        
+        # Determine status based on score
+        status = current.get('status', 'not_started')
+        if score is not None:
+            if score >= 0.6:
+                status = 'completed'
+            elif score > 0:
+                status = 'in_progress'
+            else:
+                status = 'not_started'
+        
+        # Update cache with incremental changes
+        return update_custom_level_progress(
+            user_id, group_id, level_number,
+            new_counts,
+            score=score,
+            status=status,
+            completed_at=current.get('completed_at')
+        )
+        
+    except Exception as e:
+        print(f"❌ Error in incremental cache update: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to full refresh on error
+        return refresh_custom_level_progress(user_id, group_id, level_number)
+
 def refresh_custom_level_progress(user_id: int, group_id: int, level_number: int) -> bool:
     """Refresh cached progress data for a specific level"""
     try:

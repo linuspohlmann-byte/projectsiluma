@@ -347,21 +347,21 @@ async function speakSentenceOnce(text){
   
   // If not cached, fetch it
   if (!audioUrl) {
-    try{
-      const headers = { 'Content-Type': 'application/json' };
-      if (window.authManager && window.authManager.isAuthenticated()) {
-        Object.assign(headers, window.authManager.getAuthHeaders());
+  try{
+    const headers = { 'Content-Type': 'application/json' };
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      Object.assign(headers, window.authManager.getAuthHeaders());
       } else {
         const sessionToken = localStorage.getItem('session_token');
         if (sessionToken) {
           headers['Authorization'] = `Bearer ${sessionToken}`;
         }
-      }
-      const r = await fetch('/api/sentence/tts', {
-        method:'POST', headers,
-        body: JSON.stringify({ text, language: lang })
-      });
-      const js = await r.json();
+    }
+    const r = await fetch('/api/sentence/tts', {
+      method:'POST', headers,
+      body: JSON.stringify({ text, language: lang })
+    });
+    const js = await r.json();
       if(js && js.success && js.audio_url) {
         audioUrl = js.audio_url.trim();
         sentenceAudioCache.set(cacheKey, audioUrl);
@@ -455,8 +455,8 @@ async function speakSentenceOnce(text){
       await audio.play();
       if (window.DEBUG) console.log('✅ Sentence audio playing:', audioUrl);
     }
-    catch(e){
-      if(e && (e.name==='NotAllowedError' || e.name==='AbortError')){
+      catch(e){
+        if(e && (e.name==='NotAllowedError' || e.name==='AbortError')){
         if (window.DEBUG) console.log('🔇 Audio play blocked by browser policy, waiting for user interaction');
         const once = ()=>{ 
           document.removeEventListener('pointerdown', once, true); 
@@ -470,13 +470,13 @@ async function speakSentenceOnce(text){
             }); 
           }
         };
-        document.addEventListener('pointerdown', once, true);
+          document.addEventListener('pointerdown', once, true);
         document.addEventListener('click', once, true);
       } else {
         if (window.DEBUG) console.error('❌ Audio play failed:', e, 'URL:', audioUrl, 'Error name:', e.name, 'Error message:', e.message);
+        }
       }
     }
-  }
 }
 
 function setProgress(curr,total){
@@ -710,9 +710,9 @@ async function prewarmSentenceTTS(text){
     if (window.authManager && window.authManager.isAuthenticated()) {
       Object.assign(headers, window.authManager.getAuthHeaders());
     } else {
-      const sessionToken = localStorage.getItem('session_token');
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
       }
     }
     
@@ -1004,35 +1004,178 @@ async function preEnrichRestBackground(items, excludeIdx){
 }
 
 // Adjust familiarity helper for MC
-async function adjustFamiliarity(word, delta){
-  if(!word) return;
-  const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
-  try{
+// Batch word familiarity update queue for performance optimization
+let wordUpdateQueue = [];
+let wordUpdateBatchTimeout = null;
+const WORD_UPDATE_BATCH_DELAY = 200; // ms
+const WORD_UPDATE_BATCH_SIZE = 5; // Max items per batch
+
+// Cache for current familiarity values (optimistic updates)
+const familiarityCache = new Map();
+
+// Get cached familiarity or fetch if not cached
+async function getCachedFamiliarity(word, lang) {
+  const cacheKey = `${lang}:${word.toLowerCase()}`;
+  if (familiarityCache.has(cacheKey)) {
+    return familiarityCache.get(cacheKey);
+  }
+  
+  try {
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
       Object.assign(headers, window.authManager.getAuthHeaders());
     }
     const r = await fetch(`/api/word?word=${encodeURIComponent(word)}&language=${encodeURIComponent(lang)}`, { headers });
     const js = await r.json();
-    let fam = parseInt(js?.familiarity||0,10)||0;
-    fam = Math.max(0, Math.min(5, fam + (Number(delta)||0)));
-    // Add native language header for unauthenticated users
-    const upsertHeaders = { 'Content-Type': 'application/json' };
+    const fam = parseInt(js?.familiarity||0,10)||0;
+    familiarityCache.set(cacheKey, fam);
+    return fam;
+  } catch(_) {
+    return 0;
+  }
+}
+
+// Queue word update for batch processing
+function queueWordUpdate(word, delta, lang) {
+  if(!word) return;
+  
+  const cacheKey = `${lang}:${word.toLowerCase()}`;
+  const currentFam = familiarityCache.get(cacheKey) || 0;
+  const newFam = Math.max(0, Math.min(5, currentFam + (Number(delta)||0)));
+  
+  // Optimistic UI update (immediate feedback)
+  familiarityCache.set(cacheKey, newFam);
+  updateFamiliarityUI(word, newFam);
+  
+  // Add to batch queue
+  const existingIndex = wordUpdateQueue.findIndex(u => u.word === word && u.language === lang);
+  if (existingIndex >= 0) {
+    // Merge with existing update (sum deltas)
+    wordUpdateQueue[existingIndex].delta += delta;
+  } else {
+    wordUpdateQueue.push({ word, language: lang, delta });
+  }
+  
+  // Clear existing timeout
+  if (wordUpdateBatchTimeout) {
+    clearTimeout(wordUpdateBatchTimeout);
+  }
+  
+  // Send batch if queue is full, otherwise wait for delay
+  if (wordUpdateQueue.length >= WORD_UPDATE_BATCH_SIZE) {
+    sendBatchedWordUpdates();
+  } else {
+    wordUpdateBatchTimeout = setTimeout(() => {
+      sendBatchedWordUpdates();
+    }, WORD_UPDATE_BATCH_DELAY);
+  }
+}
+
+// Send batched word updates to server
+async function sendBatchedWordUpdates() {
+  if (wordUpdateQueue.length === 0) return;
+  
+  // Clear timeout
+  if (wordUpdateBatchTimeout) {
+    clearTimeout(wordUpdateBatchTimeout);
+    wordUpdateBatchTimeout = null;
+  }
+  
+  // Copy queue and clear it
+  const updates = [...wordUpdateQueue];
+  wordUpdateQueue = [];
+  
+  try {
+    const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
+    const headers = { 'Content-Type': 'application/json' };
     const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
-    upsertHeaders['X-Native-Language'] = nativeLanguage;
+    headers['X-Native-Language'] = nativeLanguage;
+    
     if (window.authManager && window.authManager.isAuthenticated()) {
-      Object.assign(upsertHeaders, window.authManager.getAuthHeaders());
+      Object.assign(headers, window.authManager.getAuthHeaders());
     }
     
-    await fetch('/api/word/upsert', { method:'POST', headers: upsertHeaders, body: JSON.stringify({ word, language: lang, familiarity: fam }) });
+    // Fetch current familiarities for all words in batch
+    const familiarityPromises = updates.map(u => getCachedFamiliarity(u.word, u.language));
+    const currentFams = await Promise.all(familiarityPromises);
     
-    // Invalidate words cache to ensure fresh data is loaded
-    try{
-      if (typeof window.invalidateWordsCache === 'function') {
-        window.invalidateWordsCache(lang);
+    // Calculate final familiarities
+    const batchUpdates = updates.map((u, i) => {
+      const currentFam = currentFams[i] || 0;
+      const newFam = Math.max(0, Math.min(5, currentFam + (Number(u.delta)||0)));
+      return {
+        word: u.word,
+        language: u.language,
+        familiarity: newFam,
+        delta: u.delta
+      };
+    });
+    
+    // Include level context if available
+    const levelContext = {};
+    if (RUN._customGroupId && RUN._customLevelNumber) {
+      levelContext.group_id = RUN._customGroupId;
+      levelContext.level_number = RUN._customLevelNumber;
+    }
+    
+    // Send batch update
+    const response = await fetch('/api/words/batch-update', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ 
+        updates: batchUpdates,
+        level_context: levelContext
+      })
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        // Update cache with confirmed values
+        batchUpdates.forEach(u => {
+          const cacheKey = `${u.language}:${u.word.toLowerCase()}`;
+          familiarityCache.set(cacheKey, u.familiarity);
+        });
+        
+        // Invalidate words cache once (not per word)
+        try {
+          if (typeof window.invalidateWordsCache === 'function') {
+            window.invalidateWordsCache(lang);
+          }
+        } catch(_) {}
+        
+        // Trigger level stats refresh if needed
+        if (typeof window.debouncedApplyLevelStates === 'function') {
+          window.debouncedApplyLevelStates();
+        }
       }
-    }catch(_){}
-  }catch(_){ /* ignore */ }
+    }
+  } catch(error) {
+    console.warn('Batch word update failed:', error);
+    // On error, could retry individual updates or show error message
+  }
+}
+
+// Update UI elements optimistically
+function updateFamiliarityUI(word, newFam) {
+  // Update any UI elements that show familiarity for this word
+  // This is called immediately for instant feedback
+  try {
+    document.querySelectorAll(`[data-word="${word}"]`).forEach(el => {
+      el.dataset.familiarity = newFam;
+      el.classList.remove('fam-0', 'fam-1', 'fam-2', 'fam-3', 'fam-4', 'fam-5');
+      el.classList.add(`fam-${newFam}`);
+    });
+  } catch(_) {}
+}
+
+// Legacy function - now uses batch queue
+async function adjustFamiliarity(word, delta){
+  if(!word) return;
+  const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
+  
+  // Use batch queue for better performance
+  queueWordUpdate(word, delta, lang);
 }
 
 // Deprecated: kept as shim, no longer used. Use preEnrichItemBlocking + preEnrichRestBackground.

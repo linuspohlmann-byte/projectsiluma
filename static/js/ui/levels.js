@@ -437,16 +437,16 @@ async function applyLevelStates(){
       return;
     } else {
       // Fallback to standard levels endpoint (for backwards compatibility)
-      const fetchSet = new Set(levelNumbers);
-      for(const lvl of levelNumbers){
-        if(lvl > 1) fetchSet.add(lvl - 1);
-      }
-      const sortedLevels = Array.from(fetchSet).sort((a,b)=>a-b);
-      const levelsParam = sortedLevels.join(',');
-      
+    const fetchSet = new Set(levelNumbers);
+    for(const lvl of levelNumbers){
+      if(lvl > 1) fetchSet.add(lvl - 1);
+    }
+    const sortedLevels = Array.from(fetchSet).sort((a,b)=>a-b);
+    const levelsParam = sortedLevels.join(',');
+    
       response = await fetch(`/api/levels/bulk-stats?levels=${levelsParam}&language=${encodeURIComponent(targetLang)}`, {
-        headers
-      });
+      headers
+    });
     }
     
     if (response.ok) {
@@ -2791,40 +2791,40 @@ async function openLevelTip(anchor, lvl, isDone){
   
   
   // Standard levels disabled - skip API call and use default values
-  let prevOk = (lvl===1);
-  let score = null; let words = null;
+    let prevOk = (lvl===1);
+    let score = null; let words = null;
   
   if (!DISABLE_STANDARD_LEVEL_GROUPS) {
     // Only fetch if standard levels are enabled (they're not, but keeping for completeness)
     try {
       const response = await fetch(`/api/levels/summary?language=${encodeURIComponent(currentTargetLang())}`);
       const js = await response.json();
-      if(js && js.success){
-        const byLevel = new Map((js.levels||[]).map(x=>[x.level, x]));
-        const cur = byLevel.get(lvl);
-        if(cur && (cur.status==='completed' || cur.score != null)){
-          score = (cur.last_score!=null?cur.last_score:cur.score); words = cur.words_count;
-        }
+    if(js && js.success){
+      const byLevel = new Map((js.levels||[]).map(x=>[x.level, x]));
+      const cur = byLevel.get(lvl);
+      if(cur && (cur.status==='completed' || cur.score != null)){
+        score = (cur.last_score!=null?cur.last_score:cur.score); words = cur.words_count;
       }
+    }
     } catch(err) {
       // API endpoint removed - ignore error
     }
   }
   
-  // bevorzugt: per-Level-Stats des VORHERIGEN Levels
-  if(lvl>1){
-    const prevLevelElement = document.querySelector(`[data-level="${lvl - 1}"]`);
-    if (prevLevelElement && prevLevelElement.dataset.bulkData) {
+    // bevorzugt: per-Level-Stats des VORHERIGEN Levels
+    if(lvl>1){
+      const prevLevelElement = document.querySelector(`[data-level="${lvl - 1}"]`);
+      if (prevLevelElement && prevLevelElement.dataset.bulkData) {
       try{
-        const prevJs = JSON.parse(prevLevelElement.dataset.bulkData);
+          const prevJs = JSON.parse(prevLevelElement.dataset.bulkData);
         prevOk = !!(prevJs && Number(prevJs.last_score||0) > 0.6);
-      } catch (error) {
-        console.log('Error parsing cached bulk data for previous level:', error);
+        } catch (error) {
+          console.log('Error parsing cached bulk data for previous level:', error);
+        }
       }
     }
-  }
   // Use preloaded tooltip data for practice availability if available
-  let practiceAvailable = true;
+    let practiceAvailable = true;
   const cachedTooltipData = await preloadTooltipData(lvl).catch(() => null);
   if (cachedTooltipData && cachedTooltipData.loaded) {
     practiceAvailable = cachedTooltipData.practiceAvailable;
@@ -2861,7 +2861,7 @@ async function openLevelTip(anchor, lvl, isDone){
     
     // If still not determined and user is authenticated, fetch practice availability
     if (practiceAvailable === true && window.authManager && window.authManager.isAuthenticated()) {
-      try{
+    try{
         const pr = await fetch('/api/practice/start', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
@@ -2869,61 +2869,61 @@ async function openLevelTip(anchor, lvl, isDone){
         });
         const pj = await pr.json();
         if(pj && pj.success){ const remaining = Number(pj.remaining||pj.total||0); practiceAvailable = remaining > 0; }
-      }catch(_){}
+    }catch(_){}
     }
   }
-  const title = document.getElementById('lt-title');
-  // title.textContent = `Level ${lvl}`; // already set above
-  // Only add score chip if title is not fixed
-  if(isCompleted && typeof score === 'number' && !title?.getAttribute('data-fixed-title')){
-    const chip = document.createElement('span'); chip.className='pill ok'; chip.style.marginLeft='8px'; chip.textContent = `Score ${score.toFixed(2)}`; title.appendChild(chip);
-  }
-  if(typeof words === 'number' && !title?.getAttribute('data-fixed-title')){
-    const chip2 = document.createElement('span'); chip2.className='pill'; chip2.style.marginLeft='8px'; chip2.textContent = `Wörter ${words}`; title.appendChild(chip2);
-  }
-  // Buttons removed - no longer needed
-  // if(isCompleted){ document.getElementById('lt-start').style.display='none'; document.getElementById('lt-repeat').style.display=''; }
-  // Buttons removed - no longer needed
-  // const rep = document.getElementById('lt-repeat');
-  // let pbtn = document.getElementById('lt-practice');
-  // if(rep && !pbtn){
-  //   pbtn = document.createElement('button');
-  //   pbtn.id = 'lt-practice';
-  //   pbtn.className = rep.className;
-  //   pbtn.style.marginLeft = '8px';
-  //   pbtn.textContent = window.t ? window.t('buttons.practice', 'Üben') : 'Üben';
-  //   rep.parentNode.insertBefore(pbtn, rep.nextSibling);
-  // }
-  // Buttons removed - no longer needed
-  // if(pbtn){
-  //   pbtn.style.display = isCompleted ? '' : 'none';
-  //  const gatePrev = (!prevOk && lvl>1);
-  //  const gateItems = !practiceAvailable;
-  //  pbtn.disabled = gatePrev || gateItems;
-  //  if(gatePrev) pbtn.title = 'Vorheriges Level mit > 0,6 abschließen';
-  //  else if(gateItems) pbtn.title = window.t ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)') : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
-  //  else pbtn.title = '';
-  //   pbtn.onclick = ()=>{
-  //     const t = (document.getElementById('lt-topic')?.value||'').trim();
-  //     saveLevelTopic(lvl, t);
-  //     document.getElementById('level-tip').style.display='none';
-  //     if(typeof window.startPracticeForLevel === 'function'){
-  //       window.startPracticeForLevel(lvl);
-  //     } else {
-  //       try{ window.showTab && window.showTab('practice'); }catch(_){}
-  //     }
-  //   };
-  // }
-  // Buttons removed - no longer needed
-  // const startBtn = document.getElementById('lt-start');
-  // const repBtn   = document.getElementById('lt-repeat');
-  // if(!prevOk && lvl>1 && !(anchor && anchor.dataset && anchor.dataset.allowStart==='true')){
-  //   if(startBtn){ startBtn.disabled = true; startBtn.title = 'Vorheriges Level mit > 0,6 abschließen'; }
-  //   if(repBtn){   repBtn.disabled   = true; repBtn.title   = 'Vorheriges Level mit > 0,6 abschließen'; }
-  // } else {
-  //   if(startBtn){ startBtn.disabled = false; startBtn.title = ''; }
-  //   if(repBtn){   repBtn.disabled   = false; repBtn.title   = ''; }
-  // }
+    const title = document.getElementById('lt-title');
+    // title.textContent = `Level ${lvl}`; // already set above
+    // Only add score chip if title is not fixed
+    if(isCompleted && typeof score === 'number' && !title?.getAttribute('data-fixed-title')){
+      const chip = document.createElement('span'); chip.className='pill ok'; chip.style.marginLeft='8px'; chip.textContent = `Score ${score.toFixed(2)}`; title.appendChild(chip);
+    }
+    if(typeof words === 'number' && !title?.getAttribute('data-fixed-title')){
+      const chip2 = document.createElement('span'); chip2.className='pill'; chip2.style.marginLeft='8px'; chip2.textContent = `Wörter ${words}`; title.appendChild(chip2);
+    }
+    // Buttons removed - no longer needed
+    // if(isCompleted){ document.getElementById('lt-start').style.display='none'; document.getElementById('lt-repeat').style.display=''; }
+    // Buttons removed - no longer needed
+    // const rep = document.getElementById('lt-repeat');
+    // let pbtn = document.getElementById('lt-practice');
+    // if(rep && !pbtn){
+    //   pbtn = document.createElement('button');
+    //   pbtn.id = 'lt-practice';
+    //   pbtn.className = rep.className;
+    //   pbtn.style.marginLeft = '8px';
+    //   pbtn.textContent = window.t ? window.t('buttons.practice', 'Üben') : 'Üben';
+    //   rep.parentNode.insertBefore(pbtn, rep.nextSibling);
+    // }
+    // Buttons removed - no longer needed
+    // if(pbtn){
+    //   pbtn.style.display = isCompleted ? '' : 'none';
+    //  const gatePrev = (!prevOk && lvl>1);
+    //  const gateItems = !practiceAvailable;
+    //  pbtn.disabled = gatePrev || gateItems;
+    //  if(gatePrev) pbtn.title = 'Vorheriges Level mit > 0,6 abschließen';
+    //  else if(gateItems) pbtn.title = window.t ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)') : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
+    //  else pbtn.title = '';
+    //   pbtn.onclick = ()=>{
+    //     const t = (document.getElementById('lt-topic')?.value||'').trim();
+    //     saveLevelTopic(lvl, t);
+    //     document.getElementById('level-tip').style.display='none';
+    //     if(typeof window.startPracticeForLevel === 'function'){
+    //       window.startPracticeForLevel(lvl);
+    //     } else {
+    //       try{ window.showTab && window.showTab('practice'); }catch(_){}
+    //     }
+    //   };
+    // }
+    // Buttons removed - no longer needed
+    // const startBtn = document.getElementById('lt-start');
+    // const repBtn   = document.getElementById('lt-repeat');
+    // if(!prevOk && lvl>1 && !(anchor && anchor.dataset && anchor.dataset.allowStart==='true')){
+    //   if(startBtn){ startBtn.disabled = true; startBtn.title = 'Vorheriges Level mit > 0,6 abschließen'; }
+    //   if(repBtn){   repBtn.disabled   = true; repBtn.title   = 'Vorheriges Level mit > 0,6 abschließen'; }
+    // } else {
+    //   if(startBtn){ startBtn.disabled = false; startBtn.title = ''; }
+    //   if(repBtn){   repBtn.disabled   = false; repBtn.title   = ''; }
+    // }
   // Buttons removed - no longer needed
   // document.getElementById('lt-repeat').onclick = ()=>{
   //   const t = (document.getElementById('topic')?.value||'').trim();

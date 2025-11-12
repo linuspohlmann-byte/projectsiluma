@@ -476,17 +476,17 @@ export async function playOrGenAudio(word, sentenceContext = null){
     
     // If no cached URL, fetch from API
     if (!audioUrl) {
-      const payload = { word: w, language: lang };
-      if (sentenceContext && sentenceContext.trim()) {
-        payload.sentence = sentenceContext.trim();
-      }
-      
-      const r = await fetch('/api/word/tts', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const js = await r.json();
-      if(js?.success && js.audio_url){
+    const payload = { word: w, language: lang };
+    if (sentenceContext && sentenceContext.trim()) {
+      payload.sentence = sentenceContext.trim();
+    }
+    
+    const r = await fetch('/api/word/tts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const js = await r.json();
+    if(js?.success && js.audio_url){
         audioUrl = js.audio_url;
       }
     }

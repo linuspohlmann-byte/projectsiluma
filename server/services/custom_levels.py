@@ -700,7 +700,7 @@ def get_custom_levels_for_group(group_id: int, group_info: Optional[Dict[str, An
         
         # OPTIMIZATION: Only fetch group info if not provided
         if group_info is None:
-            group_info = get_custom_level_group(group_id, None)
+        group_info = get_custom_level_group(group_id, None)
         
         description = getattr(cursor, 'description', None)
         for row in cursor.fetchall():

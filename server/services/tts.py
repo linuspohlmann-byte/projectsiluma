@@ -391,8 +391,8 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
                             # File doesn't exist in S3, fall through to regenerate
                 else:
                     # Not an S3 URL and not a local path - return as-is (might be external URL)
-                    print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
-                    return existing_url
+                print(f"✅ Found existing audio_url in DB for '{word}' ({lang}): {existing_url}")
+                return existing_url
         conn.close()
     except Exception as e:
         print(f"⚠️ Warning: Could not check DB for existing audio_url: {e}")
@@ -402,23 +402,23 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             pass
     
     # Check if file exists in S3
-    if tts_audio_exists(lang, fname, 'tts'):
+        if tts_audio_exists(lang, fname, 'tts'):
         # Return direct S3 URL for faster access (CDN)
         s3_url = get_tts_audio_url(lang, fname, 'tts')
         # Update DB with local URL path for compatibility (but return S3 URL)
-        try:
-            conn = get_db_connection()
-            now = datetime.now(UTC).isoformat()
-            execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                         (url_path, now, word, lang))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Warning: Could not update DB with URL: {e}")
             try:
+                conn = get_db_connection()
+                now = datetime.now(UTC).isoformat()
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                             (url_path, now, word, lang))
+                conn.commit()
                 conn.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️ Warning: Could not update DB with URL: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
         print(f"✅ Found audio in S3 for '{word}' ({lang}), returning direct S3 URL")
         return s3_url
 
@@ -490,27 +490,27 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
     # Upload directly to S3 (S3 is required - no local disk)
     print(f"🔵 Uploading TTS audio for '{word}' directly to S3 (from memory)...")
     s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts')
-    if s3_url:
-        print(f"✅ S3 upload successful for '{word}': {s3_url}")
+        if s3_url:
+            print(f"✅ S3 upload successful for '{word}': {s3_url}")
         # Update DB with local URL path for compatibility (but return S3 URL for faster access)
-        url_path = f'/media/tts/{lang}/{fname}'
-        try:
-            conn = get_db_connection()
-            now = datetime.now(UTC).isoformat()
-            execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                         (url_path, now, word, lang))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"⚠️ Warning: Could not update DB with URL: {e}")
+            url_path = f'/media/tts/{lang}/{fname}'
             try:
+                conn = get_db_connection()
+                now = datetime.now(UTC).isoformat()
+                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                             (url_path, now, word, lang))
+                conn.commit()
                 conn.close()
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️ Warning: Could not update DB with URL: {e}")
+                try:
+                    conn.close()
+                except:
+                    pass
         return s3_url  # Return direct S3 URL for faster CDN access
-    else:
+        else:
         print(f"❌ S3 upload failed for '{word}' - S3 is required but upload failed.")
-        return None
+            return None
 
 def ensure_tts_for_words_batch(words: List[str], language: str, max_workers: int = 3, sentence_contexts: Dict[str, str] = None) -> Dict[str, str]:
     """
@@ -588,10 +588,10 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     fname = f"{h}.mp3"
     
     # Check if file exists in S3
-    if tts_audio_exists(lang, fname, 'tts_sentences'):
-        s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
+        if tts_audio_exists(lang, fname, 'tts_sentences'):
+            s3_url = get_tts_audio_url(lang, fname, 'tts_sentences')
         print(f"✅ Found sentence audio in S3, returning direct S3 URL")
-        return s3_url
+            return s3_url
     model, voice, has_lang_voice = _pick_tts_config(lang)
     instr = _pick_tts_instructions(lang, context)
     if isinstance(instructions, str) and instructions.strip():
@@ -622,7 +622,7 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
             pass
     try:
         audio = _http_binary(f'{OPENAI_BASE}/audio/speech', payload, headers)
-        if not audio: 
+        if not audio:
             print(f"❌ OpenAI TTS API returned no audio for sentence")
             return None
         
@@ -648,12 +648,12 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     # Upload directly to S3 (S3 is required - no local disk)
     print(f"🔵 Uploading sentence TTS audio directly to S3 (from memory)...")
     s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts_sentences')
-    if s3_url:
+        if s3_url:
         print(f"✅ Sentence audio uploaded to S3, returning direct S3 URL")
         return s3_url
-    else:
+        else:
         print(f"❌ S3 upload failed for sentence - S3 is required but upload failed")
-        return None
+            return None
 
 def ensure_tts_for_alphabet_letter(letter: str, language: str, instructions: str | None = None) -> str | None:
     """

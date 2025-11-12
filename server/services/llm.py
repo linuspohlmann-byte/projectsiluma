@@ -1156,19 +1156,19 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
         if enrichment_data:
             words_to_store_multi_user.append((word, enrichment_data))
             words_to_upsert_old_db.append({
-                'word': word,
-                'language': language,
-                'native_language': native_language,
-                'translation': enrichment_data.get('translation', ''),
-                'pos': enrichment_data.get('pos', ''),
-                'ipa': enrichment_data.get('ipa', ''),
-                'example': enrichment_data.get('example', ''),
-                'example_native': enrichment_data.get('example_native', ''),
-                'synonyms': enrichment_data.get('synonyms', []),
-                'collocations': enrichment_data.get('collocations', []),
-                'gender': enrichment_data.get('gender', 'none'),
-                'familiarity': 0
-            })
+                    'word': word,
+                    'language': language,
+                    'native_language': native_language,
+                    'translation': enrichment_data.get('translation', ''),
+                    'pos': enrichment_data.get('pos', ''),
+                    'ipa': enrichment_data.get('ipa', ''),
+                    'example': enrichment_data.get('example', ''),
+                    'example_native': enrichment_data.get('example_native', ''),
+                    'synonyms': enrichment_data.get('synonyms', []),
+                    'collocations': enrichment_data.get('collocations', []),
+                    'gender': enrichment_data.get('gender', 'none'),
+                    'familiarity': 0
+                })
     
     # Batch store in Multi-User-DB
     if words_to_store_multi_user:
@@ -1179,7 +1179,7 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
                     word_hash = db_manager.add_word_to_global(word, language, native_language, enrichment_data)
                     if word_hash:
                         word_hashes[word] = word_hash
-                        enriched_count += 1
+                enriched_count += 1
                         print(f"✅ Stored enriched word '{word}' in Multi-User-DB")
                 except Exception as e:
                     print(f"❌ Error storing '{word}' in Multi-User-DB: {e}")
@@ -1192,7 +1192,7 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
             from server.db import batch_upsert_word_rows
             batch_upsert_word_rows(words_to_upsert_old_db)
             print(f"✅ Batch inserted {len(words_to_upsert_old_db)} words into old DB")
-        except Exception as e:
+            except Exception as e:
             print(f"⚠️ Warning: Batch insert failed, falling back to individual inserts: {e}")
             # Fallback to individual inserts
             from server.db import upsert_word_row

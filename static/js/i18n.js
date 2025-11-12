@@ -221,8 +221,8 @@ function performLocaleChange(locale) {
   // First try to load from API (with caching), then fallback to default translations
   loadTranslations(currentLocale).then(() => {
     if (window.DEBUG) {
-      console.log('🌍 Locale set to (API):', currentLocale);
-      console.log('📋 Loaded API translations:', Object.keys(translations).length, 'keys');
+    console.log('🌍 Locale set to (API):', currentLocale);
+    console.log('📋 Loaded API translations:', Object.keys(translations).length, 'keys');
     }
     
     // Ensure translations are available globally
@@ -238,8 +238,8 @@ function performLocaleChange(locale) {
     // Final fallback to default translations
     translations = defaultTranslations[currentLocale] || defaultTranslations['en'] || {};
     if (window.DEBUG) {
-      console.log('🌍 Locale set to (fallback):', currentLocale);
-      console.log('📋 Using fallback translations:', Object.keys(translations).length, 'keys');
+    console.log('🌍 Locale set to (fallback):', currentLocale);
+    console.log('📋 Using fallback translations:', Object.keys(translations).length, 'keys');
     }
     
     // Trigger a custom event when translations are loaded
