@@ -417,8 +417,8 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             print(f"⚠️ Warning: Could not update DB with URL: {e}")
             try:
                 conn.close()
-                except:
-                    pass
+            except:
+                pass
         print(f"✅ Found audio in S3 for '{word}' ({lang}), returning direct S3 URL")
         return s3_url
 
