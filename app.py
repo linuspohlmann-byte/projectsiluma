@@ -2256,13 +2256,13 @@ def api_get_custom_level(group_id, level_number):
                 ensure_words_exist(level_words, language, native_language)
                 
                 # Batch add words to user's familiarity database (much faster than individual calls)
-                    try:
+                try:
                     from server.db import batch_ensure_user_word_familiarity
                     batch_ensure_user_word_familiarity(
-                            user_id=user_id,
+                        user_id=user_id,
                         words=level_words,
-                            language=language,
-                            native_language=native_language,
+                        language=language,
+                        native_language=native_language,
                         default_familiarity=0
                         )
                     print(f"✅ Ensured all words from custom level {group_id}/{level_number} are in familiarity database")
