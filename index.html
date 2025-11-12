@@ -203,12 +203,19 @@
     .shell{width:100%;max-width:none;margin:0;padding:24px 20px 40px;min-height:100vh;box-sizing:border-box;background:var(--bg)}
 
     /* Make topbar sticky globally */
-    .main-navigation{position:sticky;top:0;z-index:500}
+    .main-navigation{
+      position:sticky;
+      top:0;
+      z-index:500;
+      background: var(--card) !important;
+      backdrop-filter: none !important;
+    }
 
     /* Ensure white backgrounds for key UI blocks */
-    .main-navigation{background:#ffffff}
-    .nav-tab{background:#ffffff}
-    .global-stat-bar .stat-card{background:#ffffff}
+    .main-navigation{background:var(--card) !important}
+    .nav-tabs{background:var(--card) !important}
+    .nav-tab{background:var(--card) !important}
+    .global-stat-bar .stat-card{background:var(--card) !important}
 
     /* Header */
     header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
@@ -217,11 +224,12 @@
     /* Top nav */
     /* Main Navigation Tabs */
     .main-navigation {
-      background: var(--card);
+      background: var(--card) !important;
       border-bottom: 1px solid var(--border);
       margin-bottom: 24px;
       border-radius: 12px 12px 0 0;
       box-shadow: 0 2px 8px var(--shadow);
+      opacity: 1 !important;
     }
     
     .nav-tabs {
