@@ -116,12 +116,23 @@ def create_performance_indexes():
                     print(f"✓ Index {index_name} already exists")
                 else:
                     # Create index
-                    execute_query(conn, create_sql)
-                    conn.commit()
-                    indexes_created.append(index_name)
-                    print(f"✅ Created index {index_name} on {table_name}")
+                    try:
+                        execute_query(conn, create_sql)
+                        conn.commit()
+                        indexes_created.append(index_name)
+                        print(f"✅ Created index {index_name} on {table_name}")
+                    except Exception as create_error:
+                        # Check if table exists first
+                        if 'no such table' in str(create_error).lower():
+                            print(f"⚠️  Table {table_name} does not exist - skipping index {index_name}")
+                        else:
+                            raise create_error
             except Exception as e:
-                print(f"❌ Error creating index {index_name}: {e}")
+                error_msg = str(e).lower()
+                if 'no such table' in error_msg:
+                    print(f"⚠️  Table {table_name} does not exist - skipping index {index_name}")
+                else:
+                    print(f"❌ Error creating index {index_name}: {e}")
         
         print(f"\n📊 Summary:")
         print(f"  ✅ Created: {len(indexes_created)} indexes")
