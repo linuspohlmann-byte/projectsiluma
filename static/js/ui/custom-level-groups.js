@@ -310,10 +310,10 @@ function renderCustomLevelGroups() {
         container.innerHTML = `
             <div class="no-custom-groups">
                 <div class="icon">🎯</div>
-                <h3>Noch keine benutzerdefinierten Level-Gruppen</h3>
-                <p>Erstelle deine erste Level-Gruppe mit AI-generierten Inhalten!</p>
+                <h3>📖 Noch keine Stories</h3>
+                <p>Erstelle deine erste Story mit KI-generierten Lektionen zu deinem Lieblingsthema!</p>
                 <button class="btn btn-primary" onclick="showCreateCustomGroupModal()">
-                    Level-Gruppe erstellen
+                    📖 Neue Story erstellen
                 </button>
             </div>
         `;
@@ -471,22 +471,29 @@ function showEditCustomGroupModal(group) {
         <div class="modal-overlay" id="edit-custom-group-modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>Gruppe bearbeiten</h2>
+                    <h2>📖 Story bearbeiten</h2>
                     <button class="modal-close" onclick="console.log('🔴 Close button clicked'); closeEditModal();">×</button>
                 </div>
                 <div class="modal-body">
                     <form id="edit-custom-group-form">
                         <div class="form-group">
-                            <label for="edit-group-name">Gruppenname *</label>
+                            <label for="edit-group-name">
+                                <span style="font-weight: 600;">Titel der Story</span>
+                            </label>
                             <input type="text" id="edit-group-name" name="group_name" required 
                                    value="${escapeHtml(group.group_name)}"
-                                   placeholder="z.B. Business Englisch, Reise-Französisch">
+                                   placeholder="z.B. 'Geschäftsreisen nach London' oder 'Kaffee bestellen in Italien'"
+                                   style="margin-top: 8px;">
                         </div>
                         
-                        <div class="form-group">
-                            <label for="edit-context-description">Kontext & Thema *</label>
+                        <div class="form-group" style="margin-top: 24px;">
+                            <label for="edit-context-description">
+                                <span style="font-weight: 600;">Thema & Kontext</span>
+                            </label>
                             <textarea id="edit-context-description" name="context_description" required 
-                                      placeholder="Beschreibe den Kontext oder das Thema für deine Level-Gruppe. Die AI wird basierend darauf passende Sätze und Wörter generieren. z.B. 'Geschäftsmeetings und Verhandlungen auf Englisch' oder 'Alltagssituationen beim Reisen in Frankreich'">${escapeHtml(group.context_description)}</textarea>
+                                      rows="5"
+                                      placeholder="Beschreibe, worum es in deiner Story gehen soll. Je detaillierter, desto besser!"
+                                      style="margin-top: 8px; resize: vertical;">${escapeHtml(group.context_description)}</textarea>
                         </div>
                         
                         <div class="form-group">
@@ -505,15 +512,15 @@ function showEditCustomGroupModal(group) {
                 </div>
                 <div class="modal-footer">
                     <div class="modal-footer-actions">
-                        <button type="button" class="btn btn-danger" onclick="deleteCustomGroupFromModal(${group.id})" title="Gruppe löschen">
+                        <button type="button" class="btn btn-danger" onclick="deleteCustomGroupFromModal(${group.id})" title="Story löschen">
                             🗑️ Löschen
                         </button>
                         ${group.status === 'published' ? `
-                            <button type="button" class="btn btn-warning" onclick="unpublishCustomGroup(${group.id})" title="Gruppe vom Marketplace entfernen">
+                            <button type="button" class="btn btn-warning" onclick="unpublishCustomGroup(${group.id})" title="Story vom Marketplace entfernen">
                                 🌐 Unpublishen
                             </button>
                         ` : `
-                            <button type="button" class="btn btn-warning" onclick="publishCustomGroup(${group.id})" title="Gruppe publishen">
+                            <button type="button" class="btn btn-warning" onclick="publishCustomGroup(${group.id})" title="Story publishen">
                                 🌐 Publishen
                             </button>
                         `}
@@ -574,31 +581,53 @@ async function showCreateCustomGroupModal() {
     modal.id = 'create-custom-group-modal';
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-        <div class="modal-content create-custom-group-modal">
+        <div class="modal-content create-custom-group-modal" style="max-width: 600px;">
             <div class="modal-header">
-                <h2>Neue Level-Gruppe erstellen</h2>
+                <h2>📖 Neue Story erstellen</h2>
                 <button class="btn-close" onclick="closeModal(this)">×</button>
             </div>
             <div class="modal-body">
+                <div class="story-creation-intro" style="margin-bottom: 24px; padding: 16px; background: var(--surface); border-radius: 8px; border-left: 3px solid var(--accent);">
+                    <p style="margin: 0; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                        <strong>Was ist eine Story?</strong><br>
+                        Eine Story ist eine Sammlung von Lektionen zu einem bestimmten Thema. Die KI erstellt automatisch passende Sätze und Wörter basierend auf deinem Thema.
+                    </p>
+                </div>
                 <form id="create-custom-group-form">
                     <div class="form-group">
-                        <label for="group-name">Gruppenname *</label>
+                        <label for="group-name">
+                            <span style="font-weight: 600;">Titel der Story</span>
+                            <span style="color: var(--text-secondary); font-size: 13px; font-weight: normal; display: block; margin-top: 4px;">
+                                Gib deiner Story einen aussagekräftigen Namen
+                            </span>
+                        </label>
                         <input type="text" id="group-name" name="group_name" required 
-                               placeholder="z.B. Business Englisch, Reise-Französisch">
+                               placeholder="z.B. 'Geschäftsreisen nach London' oder 'Kaffee bestellen in Italien'"
+                               style="margin-top: 8px;">
                     </div>
                     
-                    <div class="form-group">
-                        <label for="context-description">Kontext & Thema *</label>
+                    <div class="form-group" style="margin-top: 24px;">
+                        <label for="context-description">
+                            <span style="font-weight: 600;">Thema & Kontext</span>
+                            <span style="color: var(--text-secondary); font-size: 13px; font-weight: normal; display: block; margin-top: 4px;">
+                                Beschreibe, worum es in deiner Story gehen soll. Je detaillierter, desto besser!
+                            </span>
+                        </label>
                         <textarea id="context-description" name="context_description" required 
-                                  placeholder="Beschreibe den Kontext oder das Thema für deine Level-Gruppe. Die AI wird basierend darauf passende Sätze und Wörter generieren. z.B. 'Geschäftsmeetings und Verhandlungen auf Englisch' oder 'Alltagssituationen beim Reisen in Frankreich'"></textarea>
+                                  rows="5"
+                                  placeholder="Beispiel: 'Ich möchte eine Story über Geschäftsmeetings auf Englisch lernen. Die Story soll Situationen wie Vorstellungsrunden, Präsentationen und Verhandlungen abdecken. Der Fokus liegt auf professioneller Kommunikation und Business-Vokabular.'"
+                                  style="margin-top: 8px; resize: vertical;"></textarea>
+                        <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                            💡 <strong>Tipp:</strong> Erzähle eine kleine Geschichte oder beschreibe konkrete Situationen, die du lernen möchtest.
+                        </div>
                     </div>
                     
                 </form>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid var(--border);">
                 <button class="btn btn-secondary" onclick="closeModal(this)">Abbrechen</button>
-                <button class="btn btn-primary" onclick="createCustomGroup()" id="create-group-btn">
-                    Level-Gruppe erstellen
+                <button class="btn btn-primary" onclick="createCustomGroup()" id="create-group-btn" style="min-width: 160px;">
+                    ✨ Story erstellen
                 </button>
             </div>
         </div>
@@ -726,11 +755,11 @@ async function updateCustomGroup(groupId) {
             renderCustomLevelGroups();
         }
         
-        showNotification('Gruppe erfolgreich aktualisiert!', 'success');
+        showNotification('Story erfolgreich aktualisiert!', 'success');
         
     } catch (error) {
         console.error('❌ Error updating custom group:', error);
-        showNotification('Fehler beim Aktualisieren der Gruppe: ' + error.message, 'error');
+        showNotification('Fehler beim Aktualisieren der Story: ' + error.message, 'error');
     } finally {
         // Hide loading state
         if (window.hideLoader) {
@@ -821,11 +850,11 @@ async function createCustomGroup() {
                 }
             }, 1000); // Wait 1 second for the group to be fully loaded
         } else {
-            let errorMessage = result.error || 'Fehler beim Erstellen der Level-Gruppe';
+            let errorMessage = result.error || 'Fehler beim Erstellen der Story';
             
             // Handle specific error cases
             if (errorMessage.includes('UNIQUE constraint') || errorMessage.includes('already exists')) {
-                errorMessage = 'Eine Level-Gruppe mit diesem Namen existiert bereits in dieser Sprache. Bitte wähle einen anderen Namen.';
+                errorMessage = 'Eine Story mit diesem Namen existiert bereits in dieser Sprache. Bitte wähle einen anderen Namen.';
             }
             
             showNotification(errorMessage, 'error');
@@ -912,11 +941,11 @@ async function publishCustomGroup(groupId) {
             renderCustomLevelGroups();
         }
         
-        showNotification('Gruppe erfolgreich publisht! Sie ist jetzt im Marketplace verfügbar.', 'success');
+        showNotification('Story erfolgreich publisht! Sie ist jetzt im Marketplace verfügbar.', 'success');
         
     } catch (error) {
         console.error('❌ Error publishing custom group:', error);
-        showNotification('Fehler beim Publishen der Gruppe: ' + error.message, 'error');
+        showNotification('Fehler beim Publishen der Story: ' + error.message, 'error');
     } finally {
         // Hide loading state
         if (window.hideLoader) {
@@ -933,14 +962,14 @@ async function unpublishCustomGroup(groupId) {
         // Get current group data
         const group = customLevelGroups.find(g => g.id === groupId);
         if (!group) {
-            showNotification('Gruppe nicht gefunden.', 'error');
+            showNotification('Story nicht gefunden.', 'error');
             return;
         }
         
         // Show confirmation dialog
         const confirmed = confirm(
-            `Möchtest du die Level-Gruppe "${group.group_name}" wirklich unpublishen?\n\n` +
-            `Diese Gruppe wird dann nicht mehr im Marketplace verfügbar sein. ` +
+            `Möchtest du die Story "${group.group_name}" wirklich unpublishen?\n\n` +
+            `Diese Story wird dann nicht mehr im Marketplace verfügbar sein. ` +
             `Du kannst sie jederzeit wieder publishen.`
         );
         
@@ -996,11 +1025,11 @@ async function unpublishCustomGroup(groupId) {
             renderCustomLevelGroups();
         }
         
-        showNotification('Gruppe erfolgreich unpublisht! Sie ist nicht mehr im Marketplace verfügbar.', 'success');
+        showNotification('Story erfolgreich unpublisht! Sie ist nicht mehr im Marketplace verfügbar.', 'success');
         
     } catch (error) {
         console.error('❌ Error unpublishing custom group:', error);
-        showNotification('Fehler beim Unpublishen der Gruppe: ' + error.message, 'error');
+        showNotification('Fehler beim Unpublishen der Story: ' + error.message, 'error');
     } finally {
         // Hide loading state
         if (window.hideLoader) {
@@ -1059,7 +1088,7 @@ async function deleteCustomGroup(groupId) {
     const group = customLevelGroups.find(g => g.id === groupId);
     if (!group) return;
     
-    if (!confirm(`Möchtest du die Level-Gruppe "${group.group_name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
+    if (!confirm(`Möchtest du die Story "${group.group_name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) {
         return;
     }
     
@@ -1077,7 +1106,7 @@ async function deleteCustomGroup(groupId) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('Level-Gruppe wurde gelöscht.', 'success');
+            showNotification('Story wurde gelöscht.', 'success');
             
             // Immediately reload custom level groups and refresh overview
             console.log('🔄 Reloading custom level groups after deletion...');
