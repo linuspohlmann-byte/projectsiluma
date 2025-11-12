@@ -2036,57 +2036,68 @@ async function startCustomLevel(groupId, levelNumber) {
         let level = data.level;
         console.log('📖 Custom level loaded:', level);
         
-        // OPTIMIZATION: Check if level content needs generation, but don't block
+        // Check if level content needs generation - WAIT for it before starting level
         const levelContent = level.content;
         const isEmpty = !levelContent || !levelContent.items || levelContent.items.length === 0;
         const isUltraLazy = levelContent && levelContent.ultra_lazy_loading && !levelContent.sentences_generated;
         
         if (isEmpty || isUltraLazy) {
-            console.log('🚀 Level content is empty or ultra-lazy, generating in background...');
+            console.log('🚀 Level content is empty or ultra-lazy, generating content...');
             
-            // OPTIMIZATION: Start generation in background, don't block UI
-            // Show loading message but continue with what we have
+            // Show loading message
             if (window.showLoader) {
-                window.showLoader('Lade Level...');
+                window.showLoader('Generiere Level-Inhalt...');
             }
             
-            // Start generation in background (non-blocking)
-            const generatePromise = fetch(`/api/custom-levels/${groupId}/${levelNumber}/generate-content`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                }
-            }).then(async (generateResponse) => {
-                if (generateResponse.ok) {
-                    const generateData = await generateResponse.json();
-                    if (generateData.success) {
-                        console.log('✅ Level content generated successfully');
-                        // Reload level data in background
-                        const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}/levels/${levelNumber}`, {
-                            headers: {
-                                'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                            }
-                        });
-                        
-                        if (reloadResponse.ok) {
-                            const reloadData = await reloadResponse.json();
-                            if (reloadData.success && reloadData.level) {
-                                // Update level data if lesson hasn't started yet
-                                if (window.RUN && !window.RUN.items || window.RUN.items.length === 0) {
-                                    level = reloadData.level;
-                                    console.log('📖 Level content updated');
-                                }
-                            }
-                        }
+            // WAIT for content generation before proceeding
+            try {
+                const generateResponse = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/generate-content`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
                     }
+                });
+                
+                if (!generateResponse.ok) {
+                    throw new Error('Failed to generate level content');
                 }
-            }).catch(err => {
-                console.error('Background generation error:', err);
-            });
-            
-            // Don't wait for generation - continue with empty content
-            // The lesson will show a loading state until content is ready
+                
+                const generateData = await generateResponse.json();
+                if (!generateData.success) {
+                    throw new Error(generateData.error || 'Failed to generate level content');
+                }
+                
+                console.log('✅ Level content generated successfully, reloading...');
+                
+                // Reload level data with generated content
+                const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}/levels/${levelNumber}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                    }
+                });
+                
+                if (!reloadResponse.ok) {
+                    throw new Error('Failed to reload level data');
+                }
+                
+                const reloadData = await reloadResponse.json();
+                if (!reloadData.success || !reloadData.level) {
+                    throw new Error('Failed to reload level data');
+                }
+                
+                // Update level with generated content
+                level = reloadData.level;
+                console.log('📖 Level content loaded with generated content');
+                
+            } catch (err) {
+                console.error('❌ Error generating level content:', err);
+                if (window.hideLoader) {
+                    window.hideLoader();
+                }
+                alert('Fehler beim Generieren des Level-Inhalts. Bitte versuche es erneut.');
+                return; // Don't start level if content generation failed
+            }
         }
         
         // Store custom level context
