@@ -917,11 +917,18 @@ async function createCustomGroup() {
             Object.assign(headers, window.authManager.getAuthHeaders());
         }
         
-        const response = await fetch('/api/custom-level-groups/create', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(data)
-        });
+        let response;
+        try {
+            response = await fetch('/api/custom-level-groups/create', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(data)
+            });
+        } catch (fetchError) {
+            // Handle network errors (fetch completely failed)
+            console.error('Fetch error:', fetchError);
+            throw new Error('Netzwerkfehler: Bitte überprüfe deine Internetverbindung und versuche es erneut.');
+        }
         
         // Check if response is ok before parsing JSON
         if (!response.ok) {
@@ -936,7 +943,13 @@ async function createCustomGroup() {
             throw new Error(errorMessage);
         }
         
-        const result = await response.json();
+        let result;
+        try {
+            result = await response.json();
+        } catch (jsonError) {
+            console.error('JSON parse error:', jsonError);
+            throw new Error('Ungültige Antwort vom Server. Bitte versuche es erneut.');
+        }
         
         if (result.success) {
             groupId = result.group_id || result.id;
