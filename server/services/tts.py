@@ -402,21 +402,21 @@ def ensure_tts_for_word(word: str, language: str, instructions: str | None = Non
             pass
     
     # Check if file exists in S3
-        if tts_audio_exists(lang, fname, 'tts'):
+    if tts_audio_exists(lang, fname, 'tts'):
         # Return direct S3 URL for faster access (CDN)
         s3_url = get_tts_audio_url(lang, fname, 'tts')
         # Update DB with local URL path for compatibility (but return S3 URL)
+        try:
+            conn = get_db_connection()
+            now = datetime.now(UTC).isoformat()
+            execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
+                         (url_path, now, word, lang))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"⚠️ Warning: Could not update DB with URL: {e}")
             try:
-                conn = get_db_connection()
-                now = datetime.now(UTC).isoformat()
-                execute_query(conn, 'UPDATE words SET audio_url=?, updated_at=? WHERE word=? AND language=?',
-                             (url_path, now, word, lang))
-                conn.commit()
                 conn.close()
-            except Exception as e:
-                print(f"⚠️ Warning: Could not update DB with URL: {e}")
-                try:
-                    conn.close()
                 except:
                     pass
         print(f"✅ Found audio in S3 for '{word}' ({lang}), returning direct S3 URL")
