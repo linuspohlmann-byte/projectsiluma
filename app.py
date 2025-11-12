@@ -5000,11 +5000,12 @@ def api_words_count_learned():
             
             row = result.fetchone()
             # Handle both dict (if row_factory worked) and tuple/list (pg8000 default)
+            # pg8000 doesn't support row_factory like SQLite, so fetchone() returns a tuple
             if row:
                 if isinstance(row, dict):
-                    count = row.get('count', 0) or 0
+                    count = int(row.get('count', 0) or 0)
                 elif isinstance(row, (tuple, list)) and len(row) > 0:
-                    count = row[0] if row[0] is not None else 0
+                    count = int(row[0]) if row[0] is not None else 0
                 else:
                     count = 0
             else:
