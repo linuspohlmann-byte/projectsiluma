@@ -33,6 +33,167 @@
     *{box-sizing:border-box}
     html{background:var(--bg) !important;min-height:100vh}
     body{background:var(--bg) !important;min-height:100vh}
+    
+    /* Login Screen Styles */
+    .login-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg, #f8fafc);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    
+    .login-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    
+    .login-screen-content {
+      width: 100%;
+      max-width: 400px;
+      padding: 40px 24px;
+      background: var(--card, #ffffff);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      margin: 20px;
+    }
+    
+    .login-screen-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .login-screen-title {
+      font-size: 36px;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      color: var(--fg, #0f172a);
+    }
+    
+    .login-screen-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary, #64748b);
+      margin: 0;
+    }
+    
+    .login-screen-loading {
+      text-align: center;
+      padding: 20px 0;
+    }
+    
+    .login-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--surface, #f1f5f9);
+      border-top-color: var(--accent, #2563eb);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .login-loading-text {
+      color: var(--text-secondary, #64748b);
+      font-size: 14px;
+      margin: 0;
+    }
+    
+    .login-screen-form {
+      animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .login-screen-field {
+      margin-bottom: 20px;
+    }
+    
+    .login-screen-field label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--fg, #0f172a);
+      margin-bottom: 8px;
+    }
+    
+    .login-screen-field input {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 14px;
+      border: 1px solid var(--border, #e2e8f0);
+      border-radius: 8px;
+      background: var(--card, #ffffff);
+      color: var(--fg, #0f172a);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .login-screen-field input:focus {
+      outline: none;
+      border-color: var(--accent, #2563eb);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    
+    .login-screen-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    .login-screen-btn {
+      width: 100%;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .login-screen-btn-primary {
+      background: var(--accent, #2563eb);
+      color: white;
+    }
+    
+    .login-screen-btn-primary:hover {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+    
+    .login-screen-btn-secondary {
+      background: var(--surface, #f1f5f9);
+      color: var(--fg, #0f172a);
+    }
+    
+    .login-screen-btn-secondary:hover {
+      background: var(--surface-hover, #e2e8f0);
+    }
+    
+    .login-screen-error {
+      margin-top: 16px;
+      padding: 12px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      color: var(--warn, #ea580c);
+      font-size: 14px;
+      text-align: center;
+    }
     /* Ensure scrollable areas have correct background */
     main, section, article, aside, nav, footer, header{background:var(--bg)}
     /* Override any potential white backgrounds */
@@ -5478,7 +5639,61 @@
     <div class="loader-box"><div class="spinner"></div><div class="loader-text" data-i18n="ui.loading_result">Lade Ergebnis…</div></div>
   </div>
   <div id="dbg" style="position:fixed;left:8px;bottom:8px;font:12px/1.2 system-ui;background:var(--surface);color:var(--text-secondary);padding:6px 8px;border:1px solid var(--border);border-radius:6px;z-index:2000" data-i18n="ui.rendered">rendered</div>
-  <div class="shell">
+  
+  <!-- Login Screen -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-screen-content">
+      <div class="login-screen-header">
+        <h1 class="login-screen-title">🎓 Polo</h1>
+        <p class="login-screen-subtitle">Sprachlern-App</p>
+      </div>
+      
+      <div id="login-screen-loading" class="login-screen-loading">
+        <div class="login-spinner"></div>
+        <p class="login-loading-text">Lade App...</p>
+      </div>
+      
+      <div id="login-screen-form" class="login-screen-form" style="display: none;">
+        <form id="login-screen-login-form">
+          <div class="login-screen-field">
+            <label for="login-screen-username">Benutzername oder E-Mail</label>
+            <input type="text" id="login-screen-username" required autocomplete="username">
+          </div>
+          <div class="login-screen-field">
+            <label for="login-screen-password">Passwort</label>
+            <input type="password" id="login-screen-password" required autocomplete="current-password">
+          </div>
+          <div class="login-screen-actions">
+            <button type="submit" class="login-screen-btn login-screen-btn-primary">Anmelden</button>
+            <button type="button" class="login-screen-btn login-screen-btn-secondary" id="login-screen-register-btn">Registrieren</button>
+          </div>
+        </form>
+        
+        <form id="login-screen-register-form" style="display: none;">
+          <div class="login-screen-field">
+            <label for="login-screen-register-username">Benutzername</label>
+            <input type="text" id="login-screen-register-username" required minlength="3" autocomplete="username">
+          </div>
+          <div class="login-screen-field">
+            <label for="login-screen-register-email">E-Mail</label>
+            <input type="email" id="login-screen-register-email" required autocomplete="email">
+          </div>
+          <div class="login-screen-field">
+            <label for="login-screen-register-password">Passwort</label>
+            <input type="password" id="login-screen-register-password" required minlength="6" autocomplete="new-password">
+          </div>
+          <div class="login-screen-actions">
+            <button type="submit" class="login-screen-btn login-screen-btn-primary">Registrieren</button>
+            <button type="button" class="login-screen-btn login-screen-btn-secondary" id="login-screen-back-to-login-btn">Zurück zum Login</button>
+          </div>
+        </form>
+        
+        <div id="login-screen-error" class="login-screen-error" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="shell" id="app-shell" style="display: none;">
     <!-- Combined Navigation Bar -->
     <div id="main-navigation" class="main-navigation">
       <div class="nav-tabs">
@@ -8560,4 +8775,5 @@
   <script src="/static/js/onboarding.js"></script>
   <script src="/static/js/ui/words-learning.js"></script>
   <script src="/static/js/ui/custom-level-groups.js"></script>
+  <script type="module" src="/static/js/login-screen.js"></script>
   <script type="module" src="/static/js/main.js"></script>

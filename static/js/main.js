@@ -15,10 +15,16 @@ import './settings.js';
 import './ui/marketplace.js';
 import './ui/custom-level-groups.js';
 import { initNotifications } from './ui/notifications.js';
+import './login-screen.js'; // Load login screen first
 
 // Statistics cards are now non-clickable - just display stats
 
-document.addEventListener('DOMContentLoaded', async () => {
+/**
+ * Initialize app content (called after authentication check)
+ */
+export async function initializeAppContent() {
+  console.log('🚀 Initializing app content...');
+  
   // Tooltip
   setupTooltipSaveClose();
   observeTooltipClose();
@@ -98,7 +104,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.showTab = showTab;
     window.setNativeDropdownVisible = setNativeDropdownVisible;
   }
-});
+  
+  console.log('✅ App content initialized');
+}
+
+// Don't auto-initialize on DOMContentLoaded - login-screen.js handles that
+// The login screen will call initializeAppContent() after auth check
 
 // Initialize navigation buttons to handle special cases
 function initNavigationHomeButtons() {
