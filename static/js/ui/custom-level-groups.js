@@ -246,8 +246,11 @@ async function loadCustomLevelGroups() {
         const loadTime = performance.now() - startTime;
         
         if (result.success) {
+            // Preserve any placeholders that are currently generating
+            const existingPlaceholders = customLevelGroups.filter(g => g._isPlaceholder);
+            
             // Map summary data to expected format
-            customLevelGroups = result.groups.map(group => ({
+            const loadedGroups = result.groups.map(group => ({
                 id: group.id,
                 group_name: group.name,
                 language: group.language,
@@ -261,7 +264,19 @@ async function loadCustomLevelGroups() {
                 num_levels: group.level_count,
                 created_at: new Date().toISOString()
             }));
-            console.log(`✅ Loaded ${customLevelGroups.length} custom level groups from summary API in ${loadTime.toFixed(0)}ms`);
+            
+            // Combine: placeholders first, then loaded groups (but exclude placeholders that match loaded groups by ID)
+            const placeholderIds = new Set(existingPlaceholders.map(p => p.id).filter(Boolean));
+            const loadedGroupIds = new Set(loadedGroups.map(g => g.id));
+            
+            // Keep placeholders that don't have a matching loaded group yet
+            const activePlaceholders = existingPlaceholders.filter(p => {
+                const pId = p.id || p._realId;
+                return pId && !loadedGroupIds.has(pId);
+            });
+            
+            customLevelGroups = [...activePlaceholders, ...loadedGroups];
+            console.log(`✅ Loaded ${loadedGroups.length} custom level groups from summary API in ${loadTime.toFixed(0)}ms (${activePlaceholders.length} active placeholders preserved)`);
         } else {
             console.error('Failed to load custom level groups:', result.error);
             customLevelGroups = [];
@@ -434,10 +449,12 @@ function renderCustomGroupCard(group) {
     const isPlaceholder = group._isPlaceholder || group.status === 'generating';
     const genStatus = group._generationStatus;
     
-    if (isPlaceholder && genStatus) {
+    // Show placeholder if it's marked as placeholder, even without status (will show initial state)
+    if (isPlaceholder) {
         // Render placeholder with progress
-        const progress = Math.round((genStatus.progress || 0) * 100);
+        const progress = Math.round((genStatus?.progress || 0) * 100);
         const stepMessages = {
+            'starting': 'Starte Story-Erstellung...',
             'enriching': 'Bereichere Input mit KI...',
             'creating_group': 'Erstelle Story-Gruppe...',
             'topics': 'Generiere Topics...',
@@ -446,7 +463,7 @@ function renderCustomGroupCard(group) {
             'completed': 'Fertig!',
             'failed': 'Fehler'
         };
-        const stepMessage = genStatus.message || stepMessages[genStatus.step] || 'Wird erstellt...';
+        const stepMessage = genStatus?.message || stepMessages[genStatus?.step] || 'Wird erstellt...';
         
         return `
             <div class="level-group-card custom-level-group generating-placeholder" data-group-id="${group.id}" style="opacity: 0.8; cursor: wait;">
@@ -891,7 +908,13 @@ async function createCustomGroup() {
         total_words: 0,
         completed_levels: 0,
         status: 'generating',
-        _isPlaceholder: true
+        _isPlaceholder: true,
+        _generationStatus: {
+            status: 'generating',
+            step: 'starting',
+            progress: 0.0,
+            message: 'Starte Story-Erstellung...'
+        }
     };
     
     // Add placeholder to the beginning of the list
@@ -1036,10 +1059,12 @@ async function createCustomGroup() {
 
 // Start polling for generation status
 function startStatusPolling(groupId, placeholderId) {
+    console.log('🔄 Starting status polling for group:', groupId, 'placeholder:', placeholderId);
     let pollCount = 0;
     const maxPolls = 120; // Max 2 minutes (120 * 1 second)
     
-    const pollInterval = setInterval(async () => {
+    // Start polling immediately (don't wait 1 second for first poll)
+    const pollOnce = async () => {
         pollCount++;
         
         try {
@@ -1121,7 +1146,11 @@ function startStatusPolling(groupId, placeholderId) {
             clearInterval(pollInterval);
             handleGenerationComplete(groupId, placeholderId, false, 'Timeout beim Abrufen des Status');
         }
-    }, 1000); // Poll every second
+    };
+    
+    // Poll immediately, then every second
+    pollOnce();
+    const pollInterval = setInterval(pollOnce, 1000);
     
     return pollInterval;
 }
@@ -1129,15 +1158,21 @@ function startStatusPolling(groupId, placeholderId) {
 // Update placeholder card with status
 function updatePlaceholderStatus(groupId, placeholderId, statusData) {
     const placeholderIndex = customLevelGroups.findIndex(g => 
-        g.id === groupId || g.id === placeholderId || g._realId === groupId || g._isPlaceholder
+        g.id === groupId || g.id === placeholderId || g._realId === groupId || (g._isPlaceholder && (g.id === placeholderId || g._realId === groupId))
     );
     
     if (placeholderIndex !== -1) {
         const placeholder = customLevelGroups[placeholderIndex];
         placeholder._generationStatus = statusData;
         
+        // Ensure placeholder is still marked
+        placeholder._isPlaceholder = true;
+        placeholder.status = 'generating';
+        
         // Re-render to show updated status
         renderCustomLevelGroups();
+    } else {
+        console.warn('⚠️ Placeholder not found for status update:', { groupId, placeholderId, customLevelGroupsLength: customLevelGroups.length });
     }
 }
 
