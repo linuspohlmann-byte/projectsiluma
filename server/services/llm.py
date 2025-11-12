@@ -1179,7 +1179,7 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
                     word_hash = db_manager.add_word_to_global(word, language, native_language, enrichment_data)
                     if word_hash:
                         word_hashes[word] = word_hash
-                enriched_count += 1
+                        enriched_count += 1
                         print(f"✅ Stored enriched word '{word}' in Multi-User-DB")
                 except Exception as e:
                     print(f"❌ Error storing '{word}' in Multi-User-DB: {e}")
