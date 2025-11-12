@@ -604,10 +604,125 @@ async function speakSentenceOnce(text){
 }
 
 function setProgress(curr,total){
-  const el=document.getElementById('progress'); if(!el) return;
-  const tot = (typeof total==='number' && total>0) ? total : (RUN.queue && RUN.queue.length ? RUN.queue.length : (RUN.items?.length||1));
-  const pct = Math.max(0, Math.min(100, Math.round(100*curr/Math.max(tot,1))));
-  el.style.width = pct+'%';
+  // Legacy progress bar (keep for compatibility)
+  const el=document.getElementById('progress'); 
+  if(el) {
+    const tot = (typeof total==='number' && total>0) ? total : (RUN.queue && RUN.queue.length ? RUN.queue.length : (RUN.items?.length||1));
+    const pct = Math.max(0, Math.min(100, Math.round(100*curr/Math.max(tot,1))));
+    el.style.width = pct+'%';
+  }
+  
+  // Enhanced dot-based progress bar
+  updateProgressDots(curr, total);
+}
+
+// Update enhanced progress bar with dots
+function updateProgressDots(currentIndex, totalTasks) {
+  const container = document.getElementById('progress-dots-container');
+  const fillBar = document.getElementById('progress-bar-fill');
+  const progressBlock = document.getElementById('progress-block');
+  
+  // Show progress block if it exists
+  if (progressBlock) {
+    progressBlock.style.display = '';
+  }
+  
+  if (!container) return;
+  
+  const tasks = RUN.queue || [];
+  const total = totalTasks || tasks.length;
+  const current = typeof currentIndex === 'number' ? currentIndex : (RUN.idx || 0);
+  
+  // Clear container
+  container.innerHTML = '';
+  
+  if (tasks.length === 0) {
+    // Hide progress if no tasks
+    if (progressBlock) progressBlock.style.display = 'none';
+    return;
+  }
+  
+  // Create dots for each task
+  tasks.forEach((task, index) => {
+    const dot = document.createElement('div');
+    dot.className = 'progress-dot';
+    
+    // Determine task type and icon
+    let taskType = 'tr'; // default
+    let taskName = 'Übersetzen';
+    let icon = '🔄';
+    
+    if (task.type === 'mc') {
+      taskType = 'mc';
+      taskName = 'Wort auswählen';
+      icon = '🎯';
+    } else if (task.type === 'sb') {
+      taskType = 'sb';
+      taskName = 'Satz bauen';
+      icon = '🧩';
+    } else if (task.type === 'tr' || task.type === 'translate') {
+      taskType = 'tr';
+      taskName = 'Übersetzen';
+      icon = '🔄';
+    }
+    
+    dot.classList.add(`task-${taskType}`);
+    dot.textContent = icon;
+    
+    // Set state
+    if (index < current) {
+      dot.classList.add('completed');
+    } else if (index === current) {
+      dot.classList.add('current');
+    } else {
+      dot.classList.add('pending');
+    }
+    
+    // Add tooltip
+    const tooltip = document.createElement('div');
+    tooltip.className = 'progress-dot-tooltip';
+    tooltip.textContent = `${taskName} (${index + 1}/${total})`;
+    dot.appendChild(tooltip);
+    
+    container.appendChild(dot);
+  });
+  
+  // Add evaluation dot at the end
+  const evalDot = document.createElement('div');
+  evalDot.className = 'progress-dot task-eval';
+  evalDot.textContent = '✅';
+  
+  if (current >= total) {
+    evalDot.classList.add('completed');
+  } else if (current === total - 1) {
+    evalDot.classList.add('current');
+  } else {
+    evalDot.classList.add('pending');
+  }
+  
+  const evalTooltip = document.createElement('div');
+  evalTooltip.className = 'progress-dot-tooltip';
+  evalTooltip.textContent = 'Auswertung';
+  evalDot.appendChild(evalTooltip);
+  
+  container.appendChild(evalDot);
+  
+  // Update fill bar - fill up to current task
+  if (fillBar) {
+    const totalDots = tasks.length + 1; // +1 for evaluation
+    // Fill up to completed tasks, then partial fill for current task
+    let progressPercent = 0;
+    if (current > 0) {
+      // Fill completed tasks fully
+      progressPercent = ((current) / totalDots) * 100;
+    }
+    // Add partial fill for current task (50% of one dot)
+    if (current < totalDots) {
+      progressPercent += (0.5 / totalDots) * 100;
+    }
+    progressPercent = Math.max(0, Math.min(100, progressPercent));
+    fillBar.style.width = progressPercent + '%';
+  }
 }
 
 function uniqWords(arr){
@@ -686,6 +801,9 @@ function buildTaskQueue(){
   // global mischen und auf 15 begrenzen
   for(let k=q.length-1;k>0;k--){ const r=Math.floor(Math.random()*(k+1)); [q[k],q[r]]=[q[r],q[k]]; }
   RUN.queue = q.slice(0, Math.min(15, q.length));
+  
+  // Initialize progress dots after queue is built
+  updateProgressDots(0, RUN.queue.length);
 }
 
 async function highlightWordsByFamiliarity(it){

@@ -2992,10 +2992,157 @@
       display: block;
     }
     #user-translation::placeholder{ white-space: normal; }
-    /* Progress Block - consistent spacing */
-    #progress-block{
-      margin-bottom:16px;
-      padding:0;
+    /* Enhanced Progress Block with Dots */
+    .progress-block-enhanced {
+      margin-bottom: 20px;
+      padding: 0;
+      width: 100%;
+    }
+    
+    .progress-bar-container {
+      position: relative;
+      width: 100%;
+      padding: 8px 0 40px 0;
+    }
+    
+    .progress-bar-track {
+      position: absolute;
+      top: 20px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--surface);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #1d4ed8);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    
+    .progress-dots-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      width: 100%;
+      padding: 0 12px;
+    }
+    
+    .progress-dot {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+    
+    .progress-dot.completed {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+    }
+    
+    .progress-dot.current {
+      background: var(--card);
+      border-color: var(--accent);
+      border-width: 3px;
+      transform: scale(1.15);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+    }
+    
+    .progress-dot.pending {
+      background: var(--surface);
+      border-color: var(--border);
+      color: var(--text-secondary);
+      opacity: 0.6;
+    }
+    
+    .progress-dot.evaluation {
+      background: linear-gradient(135deg, #10b981, #059669);
+      border-color: #10b981;
+      color: white;
+    }
+    
+    .progress-dot:hover {
+      transform: scale(1.1);
+      z-index: 3;
+    }
+    
+    .progress-dot-tooltip {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 8px;
+      padding: 6px 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg);
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 1000;
+    }
+    
+    .progress-dot:hover .progress-dot-tooltip {
+      opacity: 1;
+    }
+    
+    .progress-dot-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--card);
+    }
+    
+    /* Task type icons - icons are set via textContent in JS, not ::before */
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .progress-dot {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+      }
+      
+      .progress-dots-container {
+        padding: 0 8px;
+      }
+    }
+    
+    @media (max-width: 560px) {
+      .progress-dot {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+      }
+      
+      .progress-bar-container {
+        padding: 8px 0 36px 0;
+      }
     }
 
     /* Table */
@@ -6606,8 +6753,16 @@
       <!-- Main Lesson Content -->
       <section id="lesson" class="card" style="flex:1; min-width:0;">
         <!-- Progress only inside lesson -->
-        <div id="progress-block" class="row" style="display:none; margin-bottom:12px">
-          <div class="bar" id="progress-wrap"><i id="progress"></i></div>
+        <!-- Enhanced Progress Bar with Task Dots -->
+        <div id="progress-block" class="progress-block-enhanced" style="display:none; margin-bottom:20px">
+          <div class="progress-bar-container">
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="progress-bar-fill"></div>
+            </div>
+            <div class="progress-dots-container" id="progress-dots-container">
+              <!-- Dots will be dynamically generated -->
+            </div>
+          </div>
         </div>
         <!-- Enhanced Instruction Panel - moved to top for better UX -->
         <div id="result" class="hint" style="margin-bottom:8px; display:none;"></div>
