@@ -3589,12 +3589,12 @@ def api_enrich_custom_level_words(group_id, level_number):
             return jsonify({'success': True, 'enriched_count': 0, 'total_words': 0})
         
         # Check which words already exist (batch query)
-                from server.db_config import get_database_config, get_db_connection, execute_query
-                config = get_database_config()
-                conn = get_db_connection()
-                
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        config = get_database_config()
+        conn = get_db_connection()
+        
         existing_words = set()
-                try:
+        try:
                     if config['type'] == 'postgresql':
                 # OPTIMIZATION: Use ANY with array instead of multiple OR conditions
                 # This is much more efficient for PostgreSQL
