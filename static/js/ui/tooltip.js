@@ -400,7 +400,7 @@ export async function openTooltip(anchor, word){
     if (!js1) {
       console.log('🔧 Fetching word data for:', w);
       
-      // Check cache first - use cached data immediately for instant display
+      // OPTIMIZED: Check cache first - use cached data immediately for instant display
       const cachedData = getCachedWordData(w, lang, nat);
       if (cachedData) {
         console.log('🔧 Using cached word data for:', w);
@@ -408,42 +408,52 @@ export async function openTooltip(anchor, word){
         // Fill immediately with cached data for instant display
         fill(js1);
       } else {
-        // Add authentication headers for user-specific data
-        const headers = {};
+        // NEW: Use batch API endpoint directly (more efficient than individual calls)
+        const headers = { 'Content-Type': 'application/json' };
         const sessionToken = localStorage.getItem('session_token');
         if (sessionToken) {
           headers['Authorization'] = `Bearer ${sessionToken}`;
         }
         
-        // Use batch endpoint if available for better performance
-        let js = null;
-        if (window.batchGetWords && typeof window.batchGetWords === 'function') {
-          try {
-            const batchResult = await window.batchGetWords([w], lang);
-            if (batchResult && batchResult[w]) {
-              js = batchResult[w];
-              console.log('🔧 Fetched word data via batch API:', js);
+        try {
+          // Use batch endpoint - even for single word, it's more efficient
+          const batchResponse = await fetch('/api/words/batch', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              words: [w],
+              language: lang,
+              native_language: nat
+            })
+          });
+          
+          if (batchResponse.ok) {
+            const batchData = await batchResponse.json();
+            if (batchData.success && batchData.words && batchData.words[w]) {
+              js1 = batchData.words[w];
+              console.log('🔧 Fetched word data via batch API:', js1);
+              
+              // Cache the word data
+              if (js1 && js1.word) {
+                setCachedWordData(w, lang, nat, js1);
+              }
             }
-          } catch (e) {
-            console.log('⚠️ Batch fetch failed, falling back to single API:', e);
+          }
+        } catch (e) {
+          console.log('⚠️ Batch API failed, falling back to single API:', e);
+          
+          // Fallback to single word API if batch didn't work
+          const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+            headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
+          });
+          js1 = await r1.json();
+          console.log('🔧 Fetched word data via single API:', js1);
+          
+          // Cache the word data
+          if (js1 && js1.word) {
+            setCachedWordData(w, lang, nat, js1);
           }
         }
-        
-        // Fallback to single word API if batch didn't work
-        if (!js) {
-          const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
-            headers
-          });
-          js = await r1.json();
-          console.log('🔧 Fetched word data:', js);
-        }
-        
-        // Cache the word data
-        if (js && js.word) {
-          setCachedWordData(w, lang, nat, js);
-        }
-        
-        js1 = js;
       }
     }
     

@@ -250,6 +250,86 @@ async function batchGetWords(words, lang){
   }).filter(Boolean);
 }
 
+// Comprehensive preload function for a single task
+// Loads ALL data needed for a task: words, tooltip data, audio, enrichment
+async function preloadTaskData(taskIndex, progressCallback = null) {
+  if (!RUN.items || !RUN.items[taskIndex]) {
+    console.log(`⚠️ Task ${taskIndex} does not exist`);
+    return;
+  }
+  
+  const task = RUN.items[taskIndex];
+  const lang = RUN.target || (document.getElementById('target-lang')?.value || 'en');
+  const nativeLang = RUN.native || localStorage.getItem('siluma_native') || 'de';
+  
+  // Extract words from task
+  const words = uniqWords(task.words || []);
+  if (!words.length) {
+    console.log(`⚠️ Task ${taskIndex} has no words`);
+    return;
+  }
+  
+  console.log(`🚀 Preloading task ${taskIndex}: ${words.length} words`);
+  
+  if (progressCallback) progressCallback(`Loading ${words.length} words...`);
+  
+  // Parallel loading of all required data
+  const promises = [];
+  
+  // 1. Load all word data + tooltip data (batch API)
+  promises.push(
+    preloadWordsBatch(words, lang, nativeLang).then(() => {
+      if (progressCallback) progressCallback('Word data loaded');
+      console.log(`✅ Task ${taskIndex}: Word data loaded`);
+    }).catch(err => {
+      console.error(`❌ Task ${taskIndex}: Word data loading failed:`, err);
+    })
+  );
+  
+  // 2. Preload sentence audio
+  const sentenceText = String(task.text_target || '').trim();
+  if (sentenceText) {
+    promises.push(
+      prewarmSentenceTTS(sentenceText).then(() => {
+        if (progressCallback) progressCallback('Sentence audio ready');
+        console.log(`✅ Task ${taskIndex}: Sentence audio ready`);
+      }).catch(err => {
+        console.error(`❌ Task ${taskIndex}: Sentence audio failed:`, err);
+      })
+    );
+  }
+  
+  // 3. Preload word audio (non-blocking, happens after word data is loaded)
+  promises.push(
+    preloadWordsBatch(words, lang, nativeLang).then(() => {
+      return preloadWordsAudio(words, lang);
+    }).then(() => {
+      if (progressCallback) progressCallback('Word audio ready');
+      console.log(`✅ Task ${taskIndex}: Word audio ready`);
+    }).catch(err => {
+      console.error(`❌ Task ${taskIndex}: Word audio failed:`, err);
+    })
+  );
+  
+  // 4. Enrich words if needed (batch enrichment)
+  const sentenceContext = String(task.text_target || '');
+  const sentenceNative = String(task.text_native_ref || '');
+  promises.push(
+    batchEnrichWords(words, lang, nativeLang, sentenceContext, sentenceNative).then(() => {
+      if (progressCallback) progressCallback('Word enrichment complete');
+      console.log(`✅ Task ${taskIndex}: Word enrichment complete`);
+    }).catch(err => {
+      console.error(`❌ Task ${taskIndex}: Word enrichment failed:`, err);
+    })
+  );
+  
+  // Wait for all preloading to complete
+  await Promise.allSettled(promises);
+  
+  console.log(`✅ Task ${taskIndex}: All data preloaded`);
+  if (progressCallback) progressCallback('Ready!');
+}
+
 // --- Audio replay button helper ---
 function bindReplayFor(text){
   const btn = document.getElementById('lesson-replay');
@@ -1630,6 +1710,22 @@ async function submitAnswer(){
     setProgress(RUN.idx+1, RUN.queue?.length||RUN.items.length);
     RUN.answered=true;
     const btn=$('#check'); if(btn){ btn.textContent=window.t ? window.t('buttons.continue', 'Weiter') : 'Weiter'; btn.onclick=nextItem; btn.disabled=false; btn.style.opacity='1'; btn.classList.add('continue'); btn.classList.remove('ready'); }
+    
+    // NEW: Preload next task immediately after answer submission (non-blocking)
+    const nextTaskIndex = RUN.idx + 1;
+    if (nextTaskIndex < (RUN.queue?.length || RUN.items.length)) {
+      const nextTask = RUN.queue && RUN.queue[nextTaskIndex];
+      if (nextTask) {
+        preloadTaskData(nextTask.i).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      } else if (RUN.items[nextTaskIndex]) {
+        preloadTaskData(nextTaskIndex).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      }
+    }
+    
     return;
   }
   else if(task && task.type==='sb'){
@@ -1675,6 +1771,22 @@ async function submitAnswer(){
       box.innerHTML = (ok ? (window.t ? window.t('results.correct', 'Richtig') : 'Richtig') : (window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch')) + ` <i>${escapeHtml(translation)}</i>`; 
     }
     const btnNext=$('#check'); if(btnNext){ const continueLabel = tt('buttons.continue', 'Continue'); btnNext.textContent=continueLabel; btnNext.disabled=false; btnNext.style.opacity='1'; btnNext.classList.add('continue'); btnNext.classList.remove('ready'); btnNext.onclick=nextItem; }
+    
+    // NEW: Preload next task immediately after answer submission (non-blocking)
+    const nextTaskIndex = RUN.idx + 1;
+    if (nextTaskIndex < (RUN.queue?.length || RUN.items.length)) {
+      const nextTask = RUN.queue && RUN.queue[nextTaskIndex];
+      if (nextTask) {
+        preloadTaskData(nextTask.i).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      } else if (RUN.items[nextTaskIndex]) {
+        preloadTaskData(nextTaskIndex).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      }
+    }
+    
     return;
   }
   // Translation branch as before
@@ -1825,6 +1937,21 @@ async function submitAnswer(){
 
     RUN.answered=true;
     const btn2=$('#check'); if(btn2){ const continueLabel2 = tt('buttons.continue', 'Continue'); btn2.textContent=continueLabel2; btn2.onclick=nextItem; btn2.disabled=false; btn2.style.opacity='1'; btn2.classList.add('continue'); btn2.classList.remove('ready'); }
+    
+    // NEW: Preload next task immediately after answer submission (non-blocking)
+    const nextTaskIndex = RUN.idx + 1;
+    if (nextTaskIndex < (RUN.queue?.length || RUN.items.length)) {
+      const nextTask = RUN.queue && RUN.queue[nextTaskIndex];
+      if (nextTask) {
+        preloadTaskData(nextTask.i).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      } else if (RUN.items[nextTaskIndex]) {
+        preloadTaskData(nextTaskIndex).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      }
+    }
   } finally { const b=$('#check'); if(b){ b.disabled=false; b.style.opacity=''; } }
 }
 
@@ -1929,6 +2056,22 @@ function nextItem(){
   const lastIdx = (RUN.queue?.length||RUN.items.length) - 1;
   if(RUN.idx < lastIdx){
     RUN.idx++;
+    
+    // NEW: Preload next task after advancing (non-blocking)
+    const nextTaskIndex = RUN.idx + 1;
+    if (nextTaskIndex <= lastIdx) {
+      const nextTask = RUN.queue && RUN.queue[nextTaskIndex];
+      if (nextTask) {
+        preloadTaskData(nextTask.i).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      } else if (RUN.items[nextTaskIndex]) {
+        preloadTaskData(nextTaskIndex).catch(err => {
+          console.log(`Next-task preload failed:`, err);
+        });
+      }
+    }
+    
     renderCurrent();
   } else {
     finishLevel();
@@ -1967,67 +2110,47 @@ async function startLevel(lvl){
       const firstTask = RUN.queue && RUN.queue[0];
       const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
       
-      // Hide loader immediately
+      // NEW: Preload first task COMPLETELY before showing
+      if (firstItem) {
+        const firstTaskIndex = firstTask ? firstTask.i : 0;
+        showLoader('Preparing first task...');
+        
+        // Preload with progress updates
+        await preloadTaskData(firstTaskIndex, (progress) => {
+          if (window.showLoader) {
+            window.showLoader(`Preparing first task... ${progress}`);
+          }
+        });
+      }
+      
+      // Hide loader after preloading is complete
       hideLoader();
       
-      // Render the first item
+      // Render the first item (now everything is ready!)
       renderCurrent();
       
       // Keep custom level context for API calls during the lesson
       // RUN._customGroupId and RUN._customLevelNumber will be cleared in finishLevel()
       
-      // Preload first N words immediately for instant tooltip access
-      const PRELOAD_WORD_COUNT = 10;
-      const firstWords = [];
-      for (let i = 0; i < Math.min(PRELOAD_WORD_COUNT, RUN.items.length); i++) {
-        const item = RUN.items[i];
-        if (item.words && Array.isArray(item.words)) {
-          firstWords.push(...item.words);
-        }
-      }
-      const uniqueFirstWords = [...new Set(firstWords)].slice(0, PRELOAD_WORD_COUNT);
-      
-      // Preload first words immediately using batch endpoint
-      if (uniqueFirstWords.length > 0) {
-        preloadWordsBatch(uniqueFirstWords, RUN.target, RUN.native).catch(err => {
-          console.log('Preload words batch error:', err);
-        });
-      }
-      
-      // Enrichment in background
+      // NEW: Preload next tasks in background (non-blocking, low priority)
       setTimeout(() => {
-        Promise.all([
-          preEnrichItemBlocking(firstItem),
-          preEnrichRestBackground(RUN.items, firstTask ? firstTask.i : 0)
-        ]).catch(err => console.log('Background enrichment error:', err));
-      }, 50);
-      
-      // Ensure words are loaded for tooltips (use batch endpoint for better performance)
-      setTimeout(async () => {
-        try {
-          const allWords = [];
-          RUN.items.forEach(item => {
-            if (item.words && Array.isArray(item.words)) {
-              allWords.push(...item.words);
-            }
-          });
-          const uniqueWords = [...new Set(allWords)];
-          console.log('🔧 Loading words for tooltips:', uniqueWords);
-          // Use optimized batch endpoint
-          await preloadWordsBatch(uniqueWords, RUN.target, RUN.native);
-          
-      // Skip redundant enrichment for tooltips - words are already enriched in preEnrichItemBlocking
-      // This prevents duplicate enrichment requests that cause performance issues
-      console.log('🔧 Tooltips will use existing enriched words from cache');
-      
-      // Set up tooltip context for custom levels
-      if (RUN._customGroupId && RUN._customLevelNumber) {
-        console.log('🔧 Setting up tooltip context for custom level');
-        // The tooltip system will now use the custom level context
-      }
-        } catch (err) {
-          console.log('Error loading words for tooltips:', err);
+        // Preload next 2-3 tasks ahead
+        const nextTaskIndices = [];
+        for (let i = 1; i <= 3 && i < RUN.items.length; i++) {
+          const nextTask = RUN.queue && RUN.queue.find(t => t.i === i);
+          if (nextTask) {
+            nextTaskIndices.push(nextTask.i);
+          } else if (RUN.items[i]) {
+            nextTaskIndices.push(i);
+          }
         }
+        
+        // Preload next tasks in background (non-blocking)
+        nextTaskIndices.forEach(taskIndex => {
+          preloadTaskData(taskIndex).catch(err => {
+            console.log(`Background preload for task ${taskIndex} failed:`, err);
+          });
+        });
       }, 100);
       
       return; // Exit early for custom levels
@@ -2111,59 +2234,48 @@ async function startLevel(lvl){
       const firstTask = RUN.queue && RUN.queue[0];
       const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
       
-      // OPTIMIZATION: Preload first sentence audio immediately (non-blocking)
-      if (firstItem && firstItem.text_target) {
-        prewarmSentenceTTS(firstItem.text_target).catch(() => {});
+      // NEW: Preload first task COMPLETELY before showing
+      if (firstItem) {
+        const firstTaskIndex = firstTask ? firstTask.i : 0;
+        showLoader('Preparing first task...');
+        
+        // Preload with progress updates
+        await preloadTaskData(firstTaskIndex, (progress) => {
+          if (window.showLoader) {
+            window.showLoader(`Preparing first task... ${progress}`);
+          }
+        });
       }
       
-      // Hide loader immediately
+      // Hide loader after preloading is complete
       hideLoader();
       
-      // Render the first item
+      // Render the first item (now everything is ready!)
       renderCurrent();
       
       // Keep custom level data for API calls during the lesson
       // RUN._customGroupId and RUN._customLevelNumber will be cleared in finishLevel()
       
-      // OPTIMIZATION: Preload first N words immediately for instant tooltip access
-      const PRELOAD_WORD_COUNT = 10;
-      const firstWords = [];
-      for (let i = 0; i < Math.min(PRELOAD_WORD_COUNT, RUN.items.length); i++) {
-        const item = RUN.items[i];
-        if (item.words && Array.isArray(item.words)) {
-          firstWords.push(...item.words);
-        }
-      }
-      const uniqueFirstWords = [...new Set(firstWords)].slice(0, PRELOAD_WORD_COUNT);
-      
-      // Preload first words immediately using batch endpoint (non-blocking)
-      if (uniqueFirstWords.length > 0) {
-        preloadWordsBatch(uniqueFirstWords, RUN.target, RUN.native).catch(err => {
-          console.log('Preload words batch error:', err);
-        });
-      }
-      
-      // OPTIMIZATION: Preload all words for tooltips in background (non-blocking)
+      // NEW: Preload next tasks in background (non-blocking, low priority)
       setTimeout(() => {
-        const allWords = [];
-        RUN.items.forEach(item => {
-          if (item.words && Array.isArray(item.words)) {
-            allWords.push(...item.words);
+        // Preload next 2-3 tasks ahead
+        const nextTaskIndices = [];
+        for (let i = 1; i <= 3 && i < RUN.items.length; i++) {
+          const nextTask = RUN.queue && RUN.queue.find(t => t.i === i);
+          if (nextTask) {
+            nextTaskIndices.push(nextTask.i);
+          } else if (RUN.items[i]) {
+            nextTaskIndices.push(i);
           }
-        });
-        const uniqueWords = [...new Set(allWords)];
-        if (uniqueWords.length > 0) {
-          preloadWordsBatch(uniqueWords, RUN.target, RUN.native).catch(() => {});
         }
+        
+        // Preload next tasks in background (non-blocking)
+        nextTaskIndices.forEach(taskIndex => {
+          preloadTaskData(taskIndex).catch(err => {
+            console.log(`Background preload for task ${taskIndex} failed:`, err);
+          });
+        });
       }, 100);
-      
-      // Enrichment in background (non-blocking)
-      setTimeout(() => {
-        Promise.all([
-          preEnrichItemBlocking(firstItem),
-          preEnrichRestBackground(RUN.items, firstTask ? firstTask.i : 0)
-        ]).catch(err => console.log('Background enrichment error:', err));
-      }, 50);
       
       return; // Exit early for custom levels
     } catch (e) {
