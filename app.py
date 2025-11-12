@@ -6594,45 +6594,146 @@ def api_get_available_languages():
 def api_get_available_courses():
     """Get all available courses (languages with show_course=Yes) with names in the specified native language"""
     try:
-        # Simple hardcoded list for now to get the app working
-        courses = [
-            {'code': 'en', 'name': 'English', 'native_name': 'English', 'english_name': 'English'},
-            {'code': 'de', 'name': 'Deutsch', 'native_name': 'Deutsch', 'english_name': 'German'},
-            {'code': 'fr', 'name': 'Français', 'native_name': 'Français', 'english_name': 'French'},
-            {'code': 'es', 'name': 'Español', 'native_name': 'Español', 'english_name': 'Spanish'},
-            {'code': 'it', 'name': 'Italiano', 'native_name': 'Italiano', 'english_name': 'Italian'},
-            {'code': 'pt', 'name': 'Português', 'native_name': 'Português', 'english_name': 'Portuguese'},
-            {'code': 'ru', 'name': 'Русский', 'native_name': 'Русский', 'english_name': 'Russian'},
-            {'code': 'ja', 'name': '日本語', 'native_name': '日本語', 'english_name': 'Japanese'},
-            {'code': 'ko', 'name': '한국어', 'native_name': '한국어', 'english_name': 'Korean'},
-            {'code': 'zh', 'name': '中文', 'native_name': '中文', 'english_name': 'Chinese'},
-            {'code': 'ar', 'name': 'العربية', 'native_name': 'العربية', 'english_name': 'Arabic'},
-            {'code': 'hi', 'name': 'हिन्दी', 'native_name': 'हिन्दी', 'english_name': 'Hindi'},
-            {'code': 'tr', 'name': 'Türkçe', 'native_name': 'Türkçe', 'english_name': 'Turkish'},
-            {'code': 'pl', 'name': 'Polski', 'native_name': 'Polski', 'english_name': 'Polish'},
-            {'code': 'nl', 'name': 'Nederlands', 'native_name': 'Nederlands', 'english_name': 'Dutch'},
-            {'code': 'sv', 'name': 'Svenska', 'native_name': 'Svenska', 'english_name': 'Swedish'},
-            {'code': 'da', 'name': 'Dansk', 'native_name': 'Dansk', 'english_name': 'Danish'},
-            {'code': 'no', 'name': 'Norsk', 'native_name': 'Norsk', 'english_name': 'Norwegian'},
-            {'code': 'fi', 'name': 'Suomi', 'native_name': 'Suomi', 'english_name': 'Finnish'},
-            {'code': 'is', 'name': 'Íslenska', 'native_name': 'Íslenska', 'english_name': 'Icelandic'},
-            {'code': 'ka', 'name': 'ქართული', 'native_name': 'ქართული', 'english_name': 'Georgian'},
-            {'code': 'sr', 'name': 'Српски', 'native_name': 'Српски', 'english_name': 'Serbian'},
-            {'code': 'sw', 'name': 'Kiswahili', 'native_name': 'Kiswahili', 'english_name': 'Swahili'},
-            {'code': 'fa', 'name': 'فارسی', 'native_name': 'فارسی', 'english_name': 'Persian'},
-            {'code': 'th', 'name': 'ไทย', 'native_name': 'ไทย', 'english_name': 'Thai'},
-            {'code': 'vi', 'name': 'Tiếng Việt', 'native_name': 'Tiếng Việt', 'english_name': 'Vietnamese'},
-            {'code': 'id', 'name': 'Bahasa Indonesia', 'native_name': 'Bahasa Indonesia', 'english_name': 'Indonesian'},
-            {'code': 'mr', 'name': 'मराठी', 'native_name': 'मराठी', 'english_name': 'Marathi'},
-            {'code': 'gu', 'name': 'ગુજરાતી', 'native_name': 'ગુજરાતી', 'english_name': 'Gujarati'},
-            {'code': 'ta', 'name': 'தமிழ்', 'native_name': 'தமிழ்', 'english_name': 'Tamil'},
-            {'code': 'te', 'name': 'తెలుగు', 'native_name': 'తెలుగు', 'english_name': 'Telugu'},
-            {'code': 'bn', 'name': 'বাংলা', 'native_name': 'বাংলা', 'english_name': 'Bengali'},
-            {'code': 'ur', 'name': 'اردو', 'native_name': 'اردو', 'english_name': 'Urdu'},
-            {'code': 'ro', 'name': 'Română', 'native_name': 'Română', 'english_name': 'Romanian'},
-            {'code': 'hu', 'name': 'Magyar', 'native_name': 'Magyar', 'english_name': 'Hungarian'},
-            {'code': 'uk', 'name': 'Українська', 'native_name': 'Українська', 'english_name': 'Ukrainian'}
+        # Get native language from query parameter
+        native_lang = request.args.get('native_lang', 'en').lower()
+        
+        # Language name mappings: {language_code: {native_lang: translated_name}}
+        # This maps each language to its name in different native languages
+        language_names = {
+            'en': {
+                'en': 'English', 'de': 'Englisch', 'fr': 'Anglais', 'es': 'Inglés', 'it': 'Inglese',
+                'pt': 'Inglês', 'ru': 'Английский', 'ja': '英語', 'ko': '영어', 'zh': '英语',
+                'ar': 'الإنجليزية', 'hi': 'अंग्रेजी', 'tr': 'İngilizce', 'pl': 'Angielski',
+                'nl': 'Engels', 'sv': 'Engelska', 'da': 'Engelsk', 'no': 'Engelsk', 'fi': 'Englanti',
+                'is': 'Enska', 'ka': 'ინგლისური', 'sr': 'Енглески', 'sw': 'Kiingereza',
+                'fa': 'انگلیسی', 'th': 'ภาษาอังกฤษ', 'vi': 'Tiếng Anh', 'id': 'Bahasa Inggris',
+                'mr': 'इंग्रजी', 'gu': 'અંગ્રેજી', 'ta': 'ஆங்கிலம்', 'te': 'ఆంగ్లం',
+                'bn': 'ইংরেজি', 'ur': 'انگریزی', 'ro': 'Engleză', 'hu': 'Angol', 'uk': 'Англійська'
+            },
+            'de': {
+                'en': 'German', 'de': 'Deutsch', 'fr': 'Allemand', 'es': 'Alemán', 'it': 'Tedesco',
+                'pt': 'Alemão', 'ru': 'Немецкий', 'ja': 'ドイツ語', 'ko': '독일어', 'zh': '德语',
+                'ar': 'الألمانية', 'hi': 'जर्मन', 'tr': 'Almanca', 'pl': 'Niemiecki',
+                'nl': 'Duits', 'sv': 'Tyska', 'da': 'Tysk', 'no': 'Tysk', 'fi': 'Saksa',
+                'is': 'Þýska', 'ka': 'გერმანული', 'sr': 'Немачки', 'sw': 'Kijerumani',
+                'fa': 'آلمانی', 'th': 'ภาษาเยอรมัน', 'vi': 'Tiếng Đức', 'id': 'Bahasa Jerman',
+                'mr': 'जर्मन', 'gu': 'જર્મન', 'ta': 'ஜெர்மன்', 'te': 'జర్మన్',
+                'bn': 'জার্মান', 'ur': 'جرمن', 'ro': 'Germană', 'hu': 'Német', 'uk': 'Німецька'
+            },
+            'fr': {
+                'en': 'French', 'de': 'Französisch', 'fr': 'Français', 'es': 'Francés', 'it': 'Francese',
+                'pt': 'Francês', 'ru': 'Французский', 'ja': 'フランス語', 'ko': '프랑스어', 'zh': '法语',
+                'ar': 'الفرنسية', 'hi': 'फ्रेंच', 'tr': 'Fransızca', 'pl': 'Francuski',
+                'nl': 'Frans', 'sv': 'Franska', 'da': 'Fransk', 'no': 'Fransk', 'fi': 'Ranska',
+                'is': 'Franska', 'ka': 'ფრანგული', 'sr': 'Француски', 'sw': 'Kifaransa',
+                'fa': 'فرانسوی', 'th': 'ภาษาฝรั่งเศส', 'vi': 'Tiếng Pháp', 'id': 'Bahasa Prancis',
+                'mr': 'फ्रेंच', 'gu': 'ફ્રેંચ', 'ta': 'பிரஞ்சு', 'te': 'ఫ్రెంచ్',
+                'bn': 'ফরাসি', 'ur': 'فرانسیسی', 'ro': 'Franceză', 'hu': 'Francia', 'uk': 'Французька'
+            },
+            'es': {
+                'en': 'Spanish', 'de': 'Spanisch', 'fr': 'Espagnol', 'es': 'Español', 'it': 'Spagnolo',
+                'pt': 'Espanhol', 'ru': 'Испанский', 'ja': 'スペイン語', 'ko': '스페인어', 'zh': '西班牙语',
+                'ar': 'الإسبانية', 'hi': 'स्पेनिश', 'tr': 'İspanyolca', 'pl': 'Hiszpański',
+                'nl': 'Spaans', 'sv': 'Spanska', 'da': 'Spansk', 'no': 'Spansk', 'fi': 'Espanja',
+                'is': 'Spænska', 'ka': 'ესპანური', 'sr': 'Шпански', 'sw': 'Kihispania',
+                'fa': 'اسپانیایی', 'th': 'ภาษาสเปน', 'vi': 'Tiếng Tây Ban Nha', 'id': 'Bahasa Spanyol',
+                'mr': 'स्पॅनिश', 'gu': 'સ્પેનિશ', 'ta': 'ஸ்பானிஷ்', 'te': 'స్పానిష్',
+                'bn': 'স্প্যানিশ', 'ur': 'ہسپانوی', 'ro': 'Spaniolă', 'hu': 'Spanyol', 'uk': 'Іспанська'
+            },
+            'it': {
+                'en': 'Italian', 'de': 'Italienisch', 'fr': 'Italien', 'es': 'Italiano', 'it': 'Italiano',
+                'pt': 'Italiano', 'ru': 'Итальянский', 'ja': 'イタリア語', 'ko': '이탈리아어', 'zh': '意大利语',
+                'ar': 'الإيطالية', 'hi': 'इतालवी', 'tr': 'İtalyanca', 'pl': 'Włoski',
+                'nl': 'Italiaans', 'sv': 'Italienska', 'da': 'Italiensk', 'no': 'Italiensk', 'fi': 'Italia',
+                'is': 'Ítalska', 'ka': 'იტალიური', 'sr': 'Италијански', 'sw': 'Kiitaliano',
+                'fa': 'ایتالیایی', 'th': 'ภาษาอิตาลี', 'vi': 'Tiếng Ý', 'id': 'Bahasa Italia',
+                'mr': 'इटालियन', 'gu': 'ઇટાલિયન', 'ta': 'இத்தாலியன்', 'te': 'ఇటాలియన్',
+                'bn': 'ইতালীয়', 'ur': 'اطالوی', 'ro': 'Italiană', 'hu': 'Olasz', 'uk': 'Італійська'
+            },
+            'pt': {
+                'en': 'Portuguese', 'de': 'Portugiesisch', 'fr': 'Portugais', 'es': 'Portugués', 'it': 'Portoghese',
+                'pt': 'Português', 'ru': 'Португальский', 'ja': 'ポルトガル語', 'ko': '포르투갈어', 'zh': '葡萄牙语',
+                'ar': 'البرتغالية', 'hi': 'पुर्तगाली', 'tr': 'Portekizce', 'pl': 'Portugalski',
+                'nl': 'Portugees', 'sv': 'Portugisiska', 'da': 'Portugisisk', 'no': 'Portugisisk', 'fi': 'Portugali',
+                'is': 'Portúgalska', 'ka': 'პორტუგალიური', 'sr': 'Португалски', 'sw': 'Kireno',
+                'fa': 'پرتغالی', 'th': 'ภาษาโปรตุเกส', 'vi': 'Tiếng Bồ Đào Nha', 'id': 'Bahasa Portugis',
+                'mr': 'पोर्तुगीज', 'gu': 'પોર્ટુગીઝ', 'ta': 'போர்த்துகீசியம்', 'te': 'పోర్చుగీస్',
+                'bn': 'পর্তুগিজ', 'ur': 'پرتگالی', 'ro': 'Portugheză', 'hu': 'Portugál', 'uk': 'Португальська'
+            },
+            'ru': {
+                'en': 'Russian', 'de': 'Russisch', 'fr': 'Russe', 'es': 'Ruso', 'it': 'Russo',
+                'pt': 'Russo', 'ru': 'Русский', 'ja': 'ロシア語', 'ko': '러시아어', 'zh': '俄语',
+                'ar': 'الروسية', 'hi': 'रूसी', 'tr': 'Rusça', 'pl': 'Rosyjski',
+                'nl': 'Russisch', 'sv': 'Ryska', 'da': 'Russisk', 'no': 'Russisk', 'fi': 'Venäjä',
+                'is': 'Rússneska', 'ka': 'რუსული', 'sr': 'Руски', 'sw': 'Kirusi',
+                'fa': 'روسی', 'th': 'ภาษารัสเซีย', 'vi': 'Tiếng Nga', 'id': 'Bahasa Rusia',
+                'mr': 'रशियन', 'gu': 'રશિયન', 'ta': 'ரஷியன்', 'te': 'రష్యన్',
+                'bn': 'রাশিয়ান', 'ur': 'روسی', 'ro': 'Rusă', 'hu': 'Orosz', 'uk': 'Російська'
+            },
+            'ja': {
+                'en': 'Japanese', 'de': 'Japanisch', 'fr': 'Japonais', 'es': 'Japonés', 'it': 'Giapponese',
+                'pt': 'Japonês', 'ru': 'Японский', 'ja': '日本語', 'ko': '일본어', 'zh': '日语',
+                'ar': 'اليابانية', 'hi': 'जापानी', 'tr': 'Japonca', 'pl': 'Japoński',
+                'nl': 'Japans', 'sv': 'Japanska', 'da': 'Japansk', 'no': 'Japansk', 'fi': 'Japani',
+                'is': 'Japanska', 'ka': 'იაპონური', 'sr': 'Јапански', 'sw': 'Kijapani',
+                'fa': 'ژاپنی', 'th': 'ภาษาญี่ปุ่น', 'vi': 'Tiếng Nhật', 'id': 'Bahasa Jepang',
+                'mr': 'जपानी', 'gu': 'જાપાનીઝ', 'ta': 'ஜப்பானியம்', 'te': 'జపనీస్',
+                'bn': 'জাপানি', 'ur': 'جاپانی', 'ro': 'Japoneză', 'hu': 'Japán', 'uk': 'Японська'
+            },
+            'ko': {
+                'en': 'Korean', 'de': 'Koreanisch', 'fr': 'Coréen', 'es': 'Coreano', 'it': 'Coreano',
+                'pt': 'Coreano', 'ru': 'Корейский', 'ja': '韓国語', 'ko': '한국어', 'zh': '韩语',
+                'ar': 'الكورية', 'hi': 'कोरियाई', 'tr': 'Korece', 'pl': 'Koreański',
+                'nl': 'Koreaans', 'sv': 'Koreanska', 'da': 'Koreansk', 'no': 'Koreansk', 'fi': 'Korea',
+                'is': 'Kóreska', 'ka': 'კორეული', 'sr': 'Корејски', 'sw': 'Kikorea',
+                'fa': 'کره‌ای', 'th': 'ภาษาเกาหลี', 'vi': 'Tiếng Hàn', 'id': 'Bahasa Korea',
+                'mr': 'कोरियन', 'gu': 'કોરિયન', 'ta': 'கொரியன்', 'te': 'కొరియన్',
+                'bn': 'কোরিয়ান', 'ur': 'کوریائی', 'ro': 'Coreeană', 'hu': 'Koreai', 'uk': 'Корейська'
+            },
+            'zh': {
+                'en': 'Chinese', 'de': 'Chinesisch', 'fr': 'Chinois', 'es': 'Chino', 'it': 'Cinese',
+                'pt': 'Chinês', 'ru': 'Китайский', 'ja': '中国語', 'ko': '중국어', 'zh': '中文',
+                'ar': 'الصينية', 'hi': 'चीनी', 'tr': 'Çince', 'pl': 'Chiński',
+                'nl': 'Chinees', 'sv': 'Kinesiska', 'da': 'Kinesisk', 'no': 'Kinesisk', 'fi': 'Kiina',
+                'is': 'Kínverska', 'ka': 'ჩინური', 'sr': 'Кинески', 'sw': 'Kichina',
+                'fa': 'چینی', 'th': 'ภาษาจีน', 'vi': 'Tiếng Trung', 'id': 'Bahasa Mandarin',
+                'mr': 'चीनी', 'gu': 'ચાઇનીઝ', 'ta': 'சீனம்', 'te': 'చైనీస్',
+                'bn': 'চীনা', 'ur': 'چینی', 'ro': 'Chineză', 'hu': 'Kínai', 'uk': 'Китайська'
+            },
+            'ka': {
+                'en': 'Georgian', 'de': 'Georgisch', 'fr': 'Géorgien', 'es': 'Georgiano', 'it': 'Georgiano',
+                'pt': 'Georgiano', 'ru': 'Грузинский', 'ja': 'グルジア語', 'ko': '조지아어', 'zh': '格鲁吉亚语',
+                'ar': 'الجورجية', 'hi': 'जॉर्जियाई', 'tr': 'Gürcüce', 'pl': 'Gruziński',
+                'nl': 'Georgisch', 'sv': 'Georgiska', 'da': 'Georgisk', 'no': 'Georgisk', 'fi': 'Georgia',
+                'is': 'Georgíska', 'ka': 'ქართული', 'sr': 'Грузијски', 'sw': 'Kigeorgia',
+                'fa': 'گرجی', 'th': 'ภาษาจอร์เจีย', 'vi': 'Tiếng Gruzia', 'id': 'Bahasa Georgia',
+                'mr': 'जॉर्जियन', 'gu': 'જ્યોર્જિયન', 'ta': 'ஜார்ஜியன்', 'te': 'జార్జియన్',
+                'bn': 'জর্জিয়ান', 'ur': 'جارجیائی', 'ro': 'Georgiană', 'hu': 'Grúz', 'uk': 'Грузинська'
+            }
+        }
+        
+        # Base course list with all languages
+        base_courses = [
+            {'code': 'en'}, {'code': 'de'}, {'code': 'fr'}, {'code': 'es'}, {'code': 'it'},
+            {'code': 'pt'}, {'code': 'ru'}, {'code': 'ja'}, {'code': 'ko'}, {'code': 'zh'},
+            {'code': 'ar'}, {'code': 'hi'}, {'code': 'tr'}, {'code': 'pl'}, {'code': 'nl'},
+            {'code': 'sv'}, {'code': 'da'}, {'code': 'no'}, {'code': 'fi'}, {'code': 'is'},
+            {'code': 'ka'}, {'code': 'sr'}, {'code': 'sw'}, {'code': 'fa'}, {'code': 'th'},
+            {'code': 'vi'}, {'code': 'id'}, {'code': 'mr'}, {'code': 'gu'}, {'code': 'ta'},
+            {'code': 'te'}, {'code': 'bn'}, {'code': 'ur'}, {'code': 'ro'}, {'code': 'hu'}, {'code': 'uk'}
         ]
+        
+        # Map courses with names in the user's native language
+        courses = []
+        for course in base_courses:
+            lang_code = course['code']
+            # Get the name in the user's native language, fallback to English if not available
+            name_in_native = language_names.get(lang_code, {}).get(native_lang) or language_names.get(lang_code, {}).get('en') or lang_code.upper()
+            courses.append({
+                'code': lang_code,
+                'name': name_in_native,
+                'native_name': name_in_native  # Use same name for consistency
+            })
         
         return jsonify({'success': True, 'languages': courses})
         
