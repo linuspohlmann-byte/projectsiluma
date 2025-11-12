@@ -287,21 +287,64 @@ async function initializeApp() {
     
     console.log('🚀 Starting app initialization...');
     
-    // Import main initialization
-    const { initializeAppContent } = await import('./main.js');
-    
-    // Also trigger custom level groups loading in background
-    if (typeof window.showCustomLevelGroupsInLibrary === 'function') {
-        // This will be called after topbar is initialized
-        setTimeout(() => {
-            try {
-                window.showCustomLevelGroupsInLibrary();
-            } catch (error) {
-                console.warn('Could not load custom level groups:', error);
+    // Start loading custom level groups in background (before showing app)
+    // This happens while login screen is still visible
+    const customGroupsPromise = (async () => {
+        try {
+            // Check if user is authenticated before loading
+            const sessionToken = localStorage.getItem('session_token');
+            if (!sessionToken) {
+                return; // Skip if not authenticated
             }
-        }, 500);
-    }
+            
+            // Load groups data directly via API (but don't render yet)
+            const headers = {};
+            if (sessionToken) {
+                headers['Authorization'] = `Bearer ${sessionToken}`;
+            }
+            
+            const response = await fetch('/api/custom-levels/groups/summary', {
+                headers: headers
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                // Cache the result for later use
+                if (result.groups) {
+                    localStorage.setItem('custom_level_groups_cache', JSON.stringify({
+                        groups: result.groups,
+                        timestamp: Date.now()
+                    }));
+                }
+            }
+        } catch (error) {
+            console.warn('Could not preload custom level groups:', error);
+        }
+    })();
     
+    // Start loading localization in background
+    const localizationPromise = (async () => {
+        try {
+            const { applyI18n } = await import('./i18n.js');
+            // Load localization entries
+            const response = await fetch('/api/localization/entries');
+            if (response.ok) {
+                await response.json();
+            }
+        } catch (error) {
+            console.warn('Could not preload localization:', error);
+        }
+    })();
+    
+    // Wait for background loading to complete (or timeout)
+    await Promise.allSettled([
+        customGroupsPromise,
+        localizationPromise,
+        new Promise(resolve => setTimeout(resolve, 500)) // Minimum loading time for smooth UX
+    ]);
+    
+    // Import and run main initialization
+    const { initializeAppContent } = await import('./main.js');
     await initializeAppContent();
     
     isInitialized = true;
