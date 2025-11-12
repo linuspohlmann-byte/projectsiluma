@@ -218,7 +218,7 @@ function showCustomLevelGroupsInLibrary() {
     });
 }
 
-// Load custom level groups from API
+// Load custom level groups from API - optimized with summary endpoint
 async function loadCustomLevelGroups() {
     try {
         // Check if user is authenticated first
@@ -228,14 +228,12 @@ async function loadCustomLevelGroups() {
             return;
         }
         
-        // Get current course language (target) and native language from localStorage
-        const targetLanguage = localStorage.getItem('siluma_target') || 'en';
-        const nativeLanguage = localStorage.getItem('siluma_native') || 'de';
-        
         const headers = {};
         Object.assign(headers, window.authManager.getAuthHeaders());
         
-        const response = await fetch(`/api/custom-level-groups?language=${targetLanguage}&native_language=${nativeLanguage}`, {
+        // Use optimized summary endpoint for faster loading (only metadata, no full content)
+        const startTime = performance.now();
+        const response = await fetch('/api/custom-levels/groups/summary', {
             headers: headers
         });
         
@@ -249,28 +247,56 @@ async function loadCustomLevelGroups() {
         }
         
         const result = await response.json();
+        const loadTime = performance.now() - startTime;
         
         if (result.success) {
-            customLevelGroups = result.groups;
-            console.log(`✅ Loaded ${customLevelGroups.length} custom level groups from API`);
+            // Map summary data to expected format
+            customLevelGroups = result.groups.map(group => ({
+                id: group.id,
+                group_name: group.name,
+                language: group.language,
+                native_language: group.native_language,
+                level_count: group.level_count,
+                total_words: group.total_words,
+                completed_levels: group.completed_levels,
+                // Add placeholder fields for compatibility
+                context_description: '',
+                cefr_level: 'A1',
+                num_levels: group.level_count,
+                created_at: new Date().toISOString()
+            }));
+            console.log(`✅ Loaded ${customLevelGroups.length} custom level groups from summary API in ${loadTime.toFixed(0)}ms`);
         } else {
             console.error('Failed to load custom level groups:', result.error);
             customLevelGroups = [];
         }
     } catch (error) {
         console.error('Error loading custom level groups:', error);
-        // Fallback: Show a test group for demonstration
-        customLevelGroups = [{
-            id: 1,
-            group_name: "Im Supermarkt",
-            language: "en",
-            native_language: "de",
-            context_description: "Einkaufen im Supermarkt - Englisch lernen",
-            cefr_level: "A1",
-            num_levels: 10,
-            created_at: new Date().toISOString()
-        }];
-        console.log('Using fallback custom level groups:', customLevelGroups);
+        // Fallback: Try old endpoint if summary endpoint fails
+        try {
+            const targetLanguage = localStorage.getItem('siluma_target') || 'en';
+            const nativeLanguage = localStorage.getItem('siluma_native') || 'de';
+            const headers = {};
+            Object.assign(headers, window.authManager.getAuthHeaders());
+            
+            const fallbackResponse = await fetch(`/api/custom-level-groups?language=${targetLanguage}&native_language=${nativeLanguage}`, {
+                headers: headers
+            });
+            
+            if (fallbackResponse.ok) {
+                const fallbackResult = await fallbackResponse.json();
+                if (fallbackResult.success) {
+                    customLevelGroups = fallbackResult.groups;
+                    console.log(`✅ Loaded ${customLevelGroups.length} custom level groups from fallback API`);
+                    return;
+                }
+            }
+        } catch (fallbackError) {
+            console.error('Fallback API also failed:', fallbackError);
+        }
+        
+        // Last resort: empty array
+        customLevelGroups = [];
     }
 }
 
@@ -409,15 +435,15 @@ function renderCustomGroupCard(group) {
             </div>
             <div class="level-group-meta">
                 <div class="level-group-stat">
-                    <div class="level-group-stat-value">${group.num_levels}</div>
+                    <div class="level-group-stat-value">${group.level_count || group.num_levels || 0}</div>
                     <div>Level</div>
                 </div>
                 <div class="level-group-stat">
-                    <div class="level-group-stat-value">${group.cefr_level}</div>
-                    <div>CEFR</div>
+                    <div class="level-group-stat-value">${group.total_words || 0}</div>
+                    <div>Wörter</div>
                 </div>
                 <div class="level-group-stat">
-                    <div class="level-group-stat-value">0</div>
+                    <div class="level-group-stat-value">${group.completed_levels || 0}</div>
                     <div>Abgeschlossen</div>
                 </div>
             </div>
