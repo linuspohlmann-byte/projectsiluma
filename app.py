@@ -3794,8 +3794,8 @@ def api_enrich_custom_level_words(group_id, level_number):
                 import traceback
                 traceback.print_exc()
                 conn.rollback()
-                    finally:
-                        conn.close()
+            finally:
+                conn.close()
                     
         # Generate audio for all words (including existing ones) in batch
         try:
