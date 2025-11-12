@@ -692,9 +692,11 @@ function updateProgressDots(currentIndex, totalTasks) {
   evalDot.className = 'progress-dot task-eval';
   evalDot.textContent = '✅';
   
+  // Evaluation dot state: current when on last task, completed when all tasks done
   if (current >= total) {
     evalDot.classList.add('completed');
   } else if (current === total - 1) {
+    // On last task, evaluation is next
     evalDot.classList.add('current');
   } else {
     evalDot.classList.add('pending');
@@ -1481,6 +1483,7 @@ async function renderCurrent(){
   if(!it) return;
   // Cancel any previous playback sequence
   SPEAK_GEN++; // cancel any previous playback sequence
+  // Update progress: RUN.idx is the current task index (0-based)
   setProgress(RUN.idx, RUN.queue?.length||RUN.items.length);
 
   const wrap = $('#sentence-wrap'); if(!wrap) return; wrap.innerHTML='';
