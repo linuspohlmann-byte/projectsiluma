@@ -1764,35 +1764,35 @@ def serve_tts_audio(lang, fname):
         print(f"❌ S3 storage not configured for {fname}")
         return Response("S3 storage not configured", status=503, mimetype='text/plain')
     
-        s3_key = f"media/tts/{lang}/{fname}"
-        try:
-            print(f"🔵 Fetching audio from S3: {s3_key}")
-            # Get file from S3
-            s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
-            
-            # Read the entire file into memory for more reliable serving
-            # This is acceptable for audio files which are typically small (< 1MB)
-            audio_data = s3_obj['Body'].read()
-            print(f"✅ Loaded {len(audio_data)} bytes from S3: {s3_key}")
-            
-            return Response(
-                audio_data,
-                mimetype='audio/mpeg',
-                headers={
-                    'Content-Type': 'audio/mpeg',
+    s3_key = f"media/tts/{lang}/{fname}"
+    try:
+        print(f"🔵 Fetching audio from S3: {s3_key}")
+        # Get file from S3
+        s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
+        
+        # Read the entire file into memory for more reliable serving
+        # This is acceptable for audio files which are typically small (< 1MB)
+        audio_data = s3_obj['Body'].read()
+        print(f"✅ Loaded {len(audio_data)} bytes from S3: {s3_key}")
+        
+        return Response(
+            audio_data,
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
                 'Content-Length': str(len(audio_data)),
-                    'Cache-Control': 'public, max-age=31536000',
+                'Cache-Control': 'public, max-age=31536000',
                 'Access-Control-Allow-Origin': '*',
                 'Accept-Ranges': 'bytes'
-                }
-            )
-        except s3_storage.s3_client.exceptions.NoSuchKey:
-            print(f"❌ File not found in S3: {s3_key}")
-            return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
-        except Exception as e:
-            import traceback
-            print(f"❌ Could not load {s3_key} from S3: {e}")
-            print(f"❌ Traceback: {traceback.format_exc()}")
+            }
+        )
+    except s3_storage.s3_client.exceptions.NoSuchKey:
+        print(f"❌ File not found in S3: {s3_key}")
+        return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
+    except Exception as e:
+        import traceback
+        print(f"❌ Could not load {s3_key} from S3: {e}")
+        print(f"❌ Traceback: {traceback.format_exc()}")
         return Response(f"Error loading audio: {str(e)}", status=500, mimetype='text/plain')
 
 # Add symmetric route for sentence TTS
@@ -1803,35 +1803,35 @@ def serve_tts_sentence(lang, fname):
         print(f"❌ S3 storage not configured for {fname}")
         return Response("S3 storage not configured", status=503, mimetype='text/plain')
     
-        s3_key = f"media/tts_sentences/{lang}/{fname}"
-        try:
-            print(f"🔵 Fetching sentence audio from S3: {s3_key}")
-            # Get file from S3
-            s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
-            
-            # Read the entire file into memory for more reliable serving
-            # This is acceptable for audio files which are typically small (< 1MB)
-            audio_data = s3_obj['Body'].read()
-            print(f"✅ Loaded {len(audio_data)} bytes from S3: {s3_key}")
-            
-            return Response(
+    s3_key = f"media/tts_sentences/{lang}/{fname}"
+    try:
+        print(f"🔵 Fetching sentence audio from S3: {s3_key}")
+        # Get file from S3
+        s3_obj = s3_storage.s3_client.get_object(Bucket=s3_storage.bucket_name, Key=s3_key)
+        
+        # Read the entire file into memory for more reliable serving
+        # This is acceptable for audio files which are typically small (< 1MB)
+        audio_data = s3_obj['Body'].read()
+        print(f"✅ Loaded {len(audio_data)} bytes from S3: {s3_key}")
+        
+        return Response(
             audio_data,
-                mimetype='audio/mpeg',
-                headers={
-                    'Content-Type': 'audio/mpeg',
+            mimetype='audio/mpeg',
+            headers={
+                'Content-Type': 'audio/mpeg',
                 'Content-Length': str(len(audio_data)),
-                    'Cache-Control': 'public, max-age=31536000',
+                'Cache-Control': 'public, max-age=31536000',
                 'Access-Control-Allow-Origin': '*',
                 'Accept-Ranges': 'bytes'
-                }
-            )
-        except s3_storage.s3_client.exceptions.NoSuchKey:
-            print(f"❌ File not found in S3: {s3_key}")
-            return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
-        except Exception as e:
-            import traceback
-            print(f"❌ Could not load {s3_key} from S3: {e}")
-            print(f"❌ Traceback: {traceback.format_exc()}")
+            }
+        )
+    except s3_storage.s3_client.exceptions.NoSuchKey:
+        print(f"❌ File not found in S3: {s3_key}")
+        return Response(f"Audio file not found: {s3_key}", status=404, mimetype='text/plain')
+    except Exception as e:
+        import traceback
+        print(f"❌ Could not load {s3_key} from S3: {e}")
+        print(f"❌ Traceback: {traceback.format_exc()}")
         return Response(f"Error loading audio: {str(e)}", status=500, mimetype='text/plain')
 
 
@@ -2942,9 +2942,20 @@ def api_generate_all_custom_levels_content(group_id):
         # Filter levels that need content generation
         levels_needing_generation = []
         for level in levels:
-            content = level.get('content', {})
-            if content.get('ultra_lazy_loading', False) and not content.get('sentences_generated', False):
+            content = level.get('content')
+            # Check if content is None (ultra-lazy loading) or if sentences haven't been generated
+            # Also check if content is empty dict or missing sentences
+            if content is None:
+                # Ultra-lazy loading: content not loaded yet, needs generation
                 levels_needing_generation.append(level)
+            elif isinstance(content, dict):
+                # Check if sentences have been generated
+                sentences = content.get('sentences', [])
+                if not sentences or len(sentences) == 0:
+                    levels_needing_generation.append(level)
+                # Also check the ultra_lazy_loading flag
+                elif content.get('ultra_lazy_loading', False) and not content.get('sentences_generated', False):
+                    levels_needing_generation.append(level)
         
         if not levels_needing_generation:
             return jsonify({'success': True, 'message': 'All levels already have content generated'})
@@ -4962,10 +4973,12 @@ def api_words_batch():
                 familiarity_map = {}
                 if user_id:
                     try:
+                        # JOIN with words table to get word text (user_word_familiarity uses word_id, not word)
                         fam_result = execute_query(conn, '''
-                            SELECT word, familiarity, seen_count, correct_count, user_comment
-                            FROM user_word_familiarity
-                            WHERE user_id = %s AND word = ANY(%s) AND language = %s AND native_language = %s
+                            SELECT w.word, uwf.familiarity, uwf.seen_count, uwf.correct_count, uwf.user_comment
+                            FROM user_word_familiarity uwf
+                            JOIN words w ON uwf.word_id = w.id
+                            WHERE uwf.user_id = %s AND w.word = ANY(%s) AND w.language = %s AND w.native_language = %s
                         ''', (user_id, words, language, native_language))
                         for row in fam_result.fetchall():
                             if isinstance(row, dict):
@@ -4998,8 +5011,12 @@ def api_words_batch():
                 familiarity_map = {}
                 if user_id:
                     try:
+                        # SQLite: JOIN with words table to get word text (user_word_familiarity uses word_id, not word)
                         fam_result = cur.execute(
-                            f'SELECT word, familiarity, seen_count, correct_count, user_comment FROM user_word_familiarity WHERE user_id=? AND word IN ({placeholders}) AND language=? AND native_language=?',
+                            f'''SELECT w.word, uwf.familiarity, uwf.seen_count, uwf.correct_count, uwf.user_comment 
+                            FROM user_word_familiarity uwf
+                            JOIN words w ON uwf.word_id = w.id
+                            WHERE uwf.user_id=? AND w.word IN ({placeholders}) AND w.language=? AND w.native_language=?''',
                             (user_id, *words, language, native_language)
                         )
                         for row in fam_result.fetchall():
