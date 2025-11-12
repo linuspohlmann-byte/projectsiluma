@@ -1,0 +1,26 @@
+# Cursor AI Rules for ProjectSiluma
+
+## Pre-Deploy Checklist
+
+Before deploying to Railway, ALWAYS:
+1. Run syntax check: `python3 -m py_compile <file>` for any modified Python files
+2. Run full syntax check: `./pre_deploy_check.sh` before `railway up`
+3. Check for linter errors: `read_lints` tool for modified files
+
+## Deployment Workflow
+
+When deploying:
+1. Make code changes
+2. Run syntax check on modified files
+3. Fix any syntax errors
+4. Commit changes
+5. Run `./pre_deploy_check.sh` to verify all files
+6. Deploy with `railway up`
+
+## Python Syntax Check
+
+Always validate Python syntax before committing/deploying:
+- Use `python3 -m py_compile <file>` for individual files
+- Use `./pre_deploy_check.sh` for all files
+- Common issues: IndentationError, SyntaxError
+
