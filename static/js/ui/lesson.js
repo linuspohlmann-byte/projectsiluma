@@ -2,7 +2,7 @@
 // Public API: initLesson(), startLevelWithTopic(level, topic)
 // Legacy: window.startLevelWithTopic / window.startLevel / window.abortLevel
 
-import { openTooltip, playOrGenAudio } from './tooltip.js';
+import { openTooltip, playOrGenAudio, showWordDetailsPanel, showInstructionPanel } from './tooltip.js';
 import { showTab, showLoader, hideLoader } from './levels.js';
 import { populateEvaluationScore, populateEvaluationStatus } from './evaluation.js';
 
@@ -1410,7 +1410,7 @@ async function renderCurrent(){
       }
       const span=document.createElement('span');
       span.className='word'; span.textContent=w; span.dataset.word=w;
-      span.onclick=async(ev)=>{ ev.stopPropagation(); await openTooltip(ev.currentTarget,w); playOrGenAudio(w); };
+      span.onclick=async(ev)=>{ ev.stopPropagation(); await showWordDetailsPanel(ev.currentTarget,w); playOrGenAudio(w); };
       frag.appendChild(span); last=re.lastIndex;
     }
     if(last<txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
@@ -1468,6 +1468,7 @@ async function renderCurrent(){
     RUN.answered = false;
     // Enhanced instruction display for MC tasks
     displayEnhancedInstruction('mc', resBox);
+    showInstructionPanel('mc');
     // Familiarity auch für MC-Satz
     highlightWordsByFamiliarity(it);
     // Auto-play full sentence once (gap uses the real word)
@@ -1604,6 +1605,7 @@ async function renderCurrent(){
     RUN.answered = false;
     // Enhanced instruction display for SB tasks
     displayEnhancedInstruction('sb', resBox);
+    showInstructionPanel('sb');
     try{ await speakSentenceOnce(original); }catch(_){ }
     if(btn){ btn.textContent=window.t ? window.t('buttons.check_answer', 'Antwort prüfen') : 'Antwort prüfen'; btn.onclick=submitAnswer; btn.disabled=true; btn.style.opacity='0.6'; }
   } else {
@@ -1618,7 +1620,7 @@ async function renderCurrent(){
       const w=m[0];
       const span=document.createElement('span');
       span.className='word'; span.textContent=w; span.dataset.word=w;
-      span.onclick=async(ev)=>{ ev.stopPropagation(); await openTooltip(ev.currentTarget,w); playOrGenAudio(); };
+      span.onclick=async(ev)=>{ ev.stopPropagation(); await showWordDetailsPanel(ev.currentTarget,w); playOrGenAudio(); };
       frag.appendChild(span); last=re.lastIndex;
     }
     if(last<original.length) frag.appendChild(document.createTextNode(original.slice(last)));
@@ -1647,6 +1649,7 @@ async function renderCurrent(){
     
     // Enhanced instruction display for translation tasks
     displayEnhancedInstruction('translate', resBox, { nativeName });
+    showInstructionPanel('translate', { nativeName });
     RUN.answered=false;
     if(btn){ btn.textContent=window.t ? window.t('buttons.check_answer', 'Antwort prüfen') : 'Antwort prüfen'; btn.onclick=submitAnswer; }
     // Lazy loading - nur bei Bedarf enrichieren
@@ -2432,6 +2435,7 @@ function startLevelWithTopic(lvl,topic,reuse=false){
 function abortLevel(){
   if(!confirm('Level wirklich abbrechen? Fortschritt in diesem Durchlauf geht verloren.')) return;
   const les=document.getElementById('lesson'); if(les) les.style.display='none';
+  const lessonContainer=document.getElementById('lesson-container'); if(lessonContainer) lessonContainer.style.display='none';
   const levels=document.getElementById('levels-card'); if(levels) levels.style.display='';
   RUN = { id:null, items:[], idx:0, target: $('#target-lang')?.value||'en', native: localStorage.getItem('siluma_native')||'de', answered:false, queue:[], selectedOption:null, mcCorrect:0, mcTotal:0 };
   if(typeof window!=='undefined'){ window.RUN = RUN; window._mc_ratio = null; window._mc_inject = false; }

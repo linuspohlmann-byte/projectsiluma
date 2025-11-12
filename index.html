@@ -5300,7 +5300,223 @@
     }
 
     /* ---- Layout polish v1 ---- */
-    #lesson.card{ width:100%; max-width:none; margin-left:auto; margin-right:auto; box-sizing:border-box; overflow:hidden }
+    /* Lesson Container Layout */
+    #lesson-container {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    #lesson-container[style*="display:none"] {
+      display: none !important;
+    }
+    
+    #lesson.card{ 
+      flex: 1;
+      min-width: 0;
+      width:100%; 
+      max-width:none; 
+      margin-left:auto; 
+      margin-right:auto; 
+      box-sizing:border-box; 
+      overflow:hidden 
+    }
+    
+    /* Word Details Panel */
+    .word-details-panel {
+      width: 380px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 24px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    }
+    
+    .word-details-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .word-details-panel-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--fg);
+      margin: 0;
+    }
+    
+    .word-details-panel-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    
+    .word-details-instruction {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 20px;
+      background: var(--surface);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    
+    .word-details-instruction-icon {
+      font-size: 32px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    
+    .word-details-instruction-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--fg);
+      margin: 0;
+      text-align: center;
+    }
+    
+    .word-details-instruction-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin: 0;
+      text-align: center;
+    }
+    
+    .word-details-instruction-hint {
+      margin-top: 12px;
+      padding: 12px;
+      background: var(--accent);
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.05));
+      border-radius: 8px;
+      border: 1px solid rgba(37, 99, 235, 0.2);
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+    
+    .word-details-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      gap: 16px;
+    }
+    
+    .word-details-loading-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    .word-details-loading-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .word-details-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .word-details-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .word-details-field-value {
+      font-size: 14px;
+      color: var(--fg);
+      padding: 10px 12px;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      min-height: 20px;
+    }
+    
+    .word-details-field-value.empty {
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+    
+    .word-details-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .word-details-btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--fg);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .word-details-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--accent);
+    }
+    
+    .word-details-btn.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    
+    .word-details-btn.primary:hover {
+      background: #1d4ed8;
+    }
+    
+    /* Responsive: Hide panel on mobile, show below lesson */
+    @media (max-width: 1200px) {
+      #lesson-container {
+        flex-direction: column;
+        gap: 16px;
+      }
+      
+      .word-details-panel {
+        width: 100%;
+        position: relative;
+        top: 0;
+        max-height: none;
+      }
+    }
+    
+    @media (max-width: 560px) {
+      #lesson-container {
+        padding: 0;
+      }
+      
+      .word-details-panel {
+        border-radius: 12px;
+        padding: 16px;
+      }
+    }
     :root{ --s1:8px; --s2:12px; --s3:16px }
     #sentence-wrap{ gap: var(--s2) }
 
@@ -6191,23 +6407,32 @@
   }
   </script>
 
-    <section id="lesson" class="card" style="display:none">
-      <!-- Progress only inside lesson -->
-      <div id="progress-block" class="row" style="display:none; margin-bottom:12px">
-        <div class="bar" id="progress-wrap"><i id="progress"></i></div>
-      </div>
-      <!-- Enhanced Instruction Panel - moved to top for better UX -->
-      <div id="result" class="hint" style="margin-bottom:8px"></div>
-      <div id="sentence-wrap" class="sentence"></div>
-      <div class="row" style="margin-top:12px">
-        <textarea id="user-translation" data-i18n-placeholder="labels.translation" placeholder="Ihre Übersetzung hier…"></textarea>
-      </div>
-      <div class="row actions" style="margin-top:8px">
-        <button id="abort-level" class="secondary" data-i18n="buttons.abort">Cancel</button>
-        <div class="grow"></div>
-        <button id="check" data-i18n="buttons.check_answer">Check Answer</button>
-      </div>
-    </section>
+    <!-- Lesson Container with Side Panel -->
+    <div id="lesson-container" style="display:none; gap:24px; align-items:flex-start; max-width:1400px; margin:0 auto;">
+      <!-- Main Lesson Content -->
+      <section id="lesson" class="card" style="flex:1; min-width:0;">
+        <!-- Progress only inside lesson -->
+        <div id="progress-block" class="row" style="display:none; margin-bottom:12px">
+          <div class="bar" id="progress-wrap"><i id="progress"></i></div>
+        </div>
+        <!-- Enhanced Instruction Panel - moved to top for better UX -->
+        <div id="result" class="hint" style="margin-bottom:8px; display:none;"></div>
+        <div id="sentence-wrap" class="sentence"></div>
+        <div class="row" style="margin-top:12px">
+          <textarea id="user-translation" data-i18n-placeholder="labels.translation" placeholder="Ihre Übersetzung hier…"></textarea>
+        </div>
+        <div class="row actions" style="margin-top:8px">
+          <button id="abort-level" class="secondary" data-i18n="buttons.abort">Cancel</button>
+          <div class="grow"></div>
+          <button id="check" data-i18n="buttons.check_answer">Check Answer</button>
+        </div>
+      </section>
+      
+      <!-- Fixed Word Details Panel -->
+      <aside id="word-details-panel" class="word-details-panel" style="width:380px; flex-shrink:0; position:sticky; top:24px; max-height:calc(100vh - 48px); overflow-y:auto;">
+        <!-- Panel will be populated by JavaScript -->
+      </aside>
+    </div>
     <section id="evaluation-card" class="card eval" style="display:none">
       <!-- Success Header -->
       <div class="eval-header" style="text-align: center; margin-bottom: 32px;">

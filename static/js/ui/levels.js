@@ -2172,13 +2172,18 @@ export function showTab(tab){
     
     // Original tab handling for legacy tabs
     // hide all views including practice (words-card removed - now a modern tab)
-    ['#levels-card','#lesson','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
+    ['#levels-card','#lesson','#lesson-container','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
     // hide level tooltip as well
     const lt = document.getElementById('level-tip'); if(lt) lt.style.display='none';
     // progress only in lesson
     showProgress(tab==='lesson');
     // show target view
     const sel = ids[tab]; if(sel){ const el=$(sel); if(el) el.style.display=''; }
+    // Show lesson container when lesson tab is active
+    if(tab==='lesson'){
+      const lessonContainer=document.getElementById('lesson-container'); 
+      if(lessonContainer) lessonContainer.style.display='flex';
+    }
     if(tab==='lesson' || tab==='evaluation'){
       const abEntry=document.getElementById('alphabet-entry'); if(abEntry) abEntry.style.display='none';
       const abCard=document.getElementById('alphabet-card'); if(abCard) abCard.style.display='none';

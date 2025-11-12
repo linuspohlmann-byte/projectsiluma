@@ -916,4 +916,284 @@ if(typeof window !== 'undefined'){
   window.openTooltip = openTooltip;
   window.playOrGenAudio = playOrGenAudio;
   window.closeTooltip = closeTooltip;
+  window.showWordDetailsPanel = showWordDetailsPanel;
+  window.showInstructionPanel = showInstructionPanel;
+  window.showLoadingPanel = showLoadingPanel;
 }
+
+// ===== Word Details Panel Functions =====
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Show instruction panel when no word is selected
+export function showInstructionPanel(taskType, options = {}) {
+  const panel = document.getElementById('word-details-panel');
+  if (!panel) return;
+  
+  let instructionText = '';
+  let icon = '';
+  let hintText = 'Klicke auf ein Wort, um Details zu sehen';
+  
+  switch (taskType) {
+    case 'mc':
+      instructionText = window.t ? 
+        window.t('instructions.choose_word', 'Wähle das fehlende Wort aus und setze es in die Lücke.') : 
+        'Wähle das fehlende Wort aus und setze es in die Lücke.';
+      icon = '🎯';
+      hintText = 'Klicke auf ein Wort im Satz, um Details zu sehen';
+      break;
+      
+    case 'sb':
+      instructionText = window.t ? 
+        window.t('instructions.build_sentence', 'Baue den Satz aus den Wörtern in der richtigen Reihenfolge.') : 
+        'Baue den Satz aus den Wörtern in der richtigen Reihenfolge.';
+      icon = '🧩';
+      hintText = 'Klicke auf ein Wort, um Details zu sehen';
+      break;
+      
+    case 'translate':
+      const nativeName = options.nativeName || 'Deutsch';
+      instructionText = window.t ? 
+        window.t('instructions.translate_sentence', 'Übersetze den folgenden Satz nach {nativeName}').replace('{nativeName}', nativeName) :
+        `Übersetze den folgenden Satz nach ${escapeHtml(nativeName)}.`;
+      icon = '🔄';
+      hintText = 'Klicke auf ein Wort im Satz, um Übersetzung, Audio und Details zu sehen';
+      break;
+      
+    default:
+      instructionText = 'Bereite dich auf die Aufgabe vor...';
+      icon = '📚';
+      break;
+  }
+  
+  panel.innerHTML = `
+    <div class="word-details-instruction">
+      <div class="word-details-instruction-icon">${icon}</div>
+      <h3 class="word-details-instruction-title">${instructionText}</h3>
+      <div class="word-details-instruction-hint">💡 ${hintText}</div>
+    </div>
+  `;
+}
+
+// Show loading state while fetching word details
+export function showLoadingPanel(word) {
+  const panel = document.getElementById('word-details-panel');
+  if (!panel) return;
+  
+  panel.innerHTML = `
+    <div class="word-details-loading">
+      <div class="word-details-loading-spinner"></div>
+      <div class="word-details-loading-text">Lade Details für "${escapeHtml(word)}"...</div>
+    </div>
+  `;
+}
+
+// Show word details in the panel
+export async function showWordDetailsPanel(anchor, word) {
+  const panel = document.getElementById('word-details-panel');
+  if (!panel) return;
+  
+  // Show loading state
+  showLoadingPanel(word);
+  
+  // Save current tooltip data before opening new one
+  if (TT.word && TT.word !== word) {
+    console.log('🔧 Opening new word details, saving previous data...');
+    await ttSave();
+  }
+  
+  TT.word = word;
+  TT.anchor = anchor;
+  
+  // Extract and store context
+  TT.wordContext = {
+    word: word,
+    language: window.RUN?.target || document.getElementById('target-lang')?.value || 'en',
+    native_language: localStorage.getItem('siluma_native') || 'en',
+    user_id: null
+  };
+  
+  // Get user ID
+  try {
+    if (window.authManager && window.authManager.currentUser) {
+      TT.wordContext.user_id = window.authManager.currentUser.id;
+    } else {
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        try {
+          const userInfo = JSON.parse(atob(sessionToken.split('.')[1]));
+          TT.wordContext.user_id = userInfo.user_id || userInfo.id;
+        } catch (e) {
+          console.warn('⚠️ Could not decode session token:', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Could not get user ID:', e);
+  }
+  
+  // Load word data (same logic as openTooltip)
+  const w = String(word||'').trim();
+  const lang = TT.wordContext.language;
+  const nat = TT.wordContext.native_language;
+  
+  // Check cache first
+  const cached = getCachedWordData(w, lang, nat);
+  if (cached) {
+    console.log('✅ Using cached word data:', w);
+    renderWordDetailsPanel(panel, w, cached);
+    return;
+  }
+  
+  // Fetch word data
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    headers['X-Native-Language'] = nat;
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+    
+    const response = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}`, { headers });
+    if (response.ok) {
+      const js = await response.json();
+      if (js && js.success && js.word === w) {
+        setCachedWordData(w, lang, nat, js);
+        renderWordDetailsPanel(panel, w, js);
+        return;
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching word:', e);
+  }
+  
+  // Fallback: show error
+  panel.innerHTML = `
+    <div class="word-details-instruction">
+      <div class="word-details-instruction-icon">⚠️</div>
+      <h3 class="word-details-instruction-title">Wort nicht gefunden</h3>
+      <div class="word-details-instruction-text">Details für "${escapeHtml(w)}" konnten nicht geladen werden.</div>
+    </div>
+  `;
+}
+
+// Render word details in the panel
+function renderWordDetailsPanel(panel, word, data) {
+  const translation = data.translation || '';
+  const ipa = data.ipa || '';
+  const gender = data.gender || '';
+  const exampleNative = data.example_native || '';
+  const synonyms = data.synonyms || '';
+  const pos = data.pos || '';
+  const familiarity = data.familiarity || 0;
+  const userComment = data.user_comment || '';
+  const audioUrl = data.audio_url || '';
+  
+  // Format synonym list
+  const synonymList = synonyms ? synonyms.split(',').map(s => s.trim()).filter(Boolean).join(', ') : '';
+  
+  panel.innerHTML = `
+    <div class="word-details-panel-header">
+      <h3 class="word-details-panel-title">${escapeHtml(word)}</h3>
+    </div>
+    <div class="word-details-panel-content">
+      ${translation ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Übersetzung</label>
+          <div class="word-details-field-value">${escapeHtml(translation)}</div>
+        </div>
+      ` : ''}
+      
+      ${ipa ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Aussprache (IPA)</label>
+          <div class="word-details-field-value">${escapeHtml(ipa)}</div>
+        </div>
+      ` : ''}
+      
+      ${gender ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Genus</label>
+          <div class="word-details-field-value">${escapeHtml(gender)}</div>
+        </div>
+      ` : ''}
+      
+      ${exampleNative ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Beispiel-Übersetzung</label>
+          <div class="word-details-field-value">${escapeHtml(exampleNative)}</div>
+        </div>
+      ` : ''}
+      
+      ${synonymList ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Synonyme</label>
+          <div class="word-details-field-value">${escapeHtml(synonymList)}</div>
+        </div>
+      ` : ''}
+      
+      ${pos ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Wortart</label>
+          <div class="word-details-field-value">${escapeHtml(pos)}</div>
+        </div>
+      ` : ''}
+      
+      <div class="word-details-field">
+        <label class="word-details-field-label">Bekanntheit</label>
+        <select id="wd-fam" class="word-details-field-value" style="padding: 10px 12px;">
+          <option value="0" ${familiarity === 0 ? 'selected' : ''}>Unbekannt</option>
+          <option value="1" ${familiarity === 1 ? 'selected' : ''}>Gesehen</option>
+          <option value="2" ${familiarity === 2 ? 'selected' : ''}>Lernen</option>
+          <option value="3" ${familiarity === 3 ? 'selected' : ''}>Vertraut</option>
+          <option value="4" ${familiarity === 4 ? 'selected' : ''}>Stark</option>
+          <option value="5" ${familiarity === 5 ? 'selected' : ''}>Auswendig</option>
+        </select>
+      </div>
+      
+      ${userComment ? `
+        <div class="word-details-field">
+          <label class="word-details-field-label">Kommentar</label>
+          <div class="word-details-field-value">${escapeHtml(userComment)}</div>
+        </div>
+      ` : ''}
+      
+      <div class="word-details-buttons">
+        ${audioUrl ? `
+          <button class="word-details-btn" onclick="playAudioFromPanel('${escapeHtml(audioUrl)}')">
+            🔊 Audio
+          </button>
+        ` : ''}
+        <button class="word-details-btn primary" onclick="saveWordDetailsFromPanel()">
+          💾 Speichern
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // Hook up familiarity change handler
+  const famSelect = panel.querySelector('#wd-fam');
+  if (famSelect) {
+    famSelect.addEventListener('change', () => {
+      TT.wordContext.familiarity = parseInt(famSelect.value);
+    });
+  }
+}
+
+// Play audio from panel
+window.playAudioFromPanel = function(audioUrl) {
+  if (audioUrl && audioUrl.trim()) {
+    const audio = new Audio(audioUrl);
+    audio.play().catch(e => console.error('Audio play failed:', e));
+  }
+};
+
+// Save word details from panel
+window.saveWordDetailsFromPanel = async function() {
+  await ttSave();
+};
