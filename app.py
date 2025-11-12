@@ -2266,10 +2266,10 @@ def api_get_custom_level(group_id, level_number):
                         default_familiarity=0
                         )
                     print(f"✅ Ensured all words from custom level {group_id}/{level_number} are in familiarity database")
-                    except Exception as e:
+                except Exception as e:
                     print(f"⚠️ Error batch adding words to familiarity database: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    import traceback
+                    traceback.print_exc()
             
         except Exception as e:
             print(f"⚠️ Error ensuring words in familiarity database: {e}")
