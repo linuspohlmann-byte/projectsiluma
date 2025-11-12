@@ -126,8 +126,23 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
         now = datetime.now(UTC).isoformat()
         
         try:
+            # Convert score to integer (0-100) if it's a float (0.0-1.0)
+            int_score = None
+            if score is not None:
+                try:
+                    score_float = float(score)
+                    if score_float <= 1.1:
+                        # Score is in 0.0-1.0 range, convert to 0-100
+                        int_score = int(round(score_float * 100))
+                    else:
+                        # Score is already in 0-100 range
+                        int_score = int(round(score_float))
+                    int_score = max(0, min(100, int_score))
+                except (ValueError, TypeError):
+                    int_score = 0
+            
             if config['type'] == 'postgresql':
-                print(f"📝 cache: upsert row user={user_id} group={group_id} level={level_number} counts={familiarity_counts} score={score} status={status}")
+                print(f"📝 cache: upsert row user={user_id} group={group_id} level={level_number} counts={familiarity_counts} score={int_score} status={status}")
                 execute_query(conn, """
                     INSERT INTO custom_level_progress 
                     (user_id, group_id, level_number, total_words, 
@@ -157,7 +172,7 @@ def update_custom_level_progress(user_id: int, group_id: int, level_number: int,
                     familiarity_counts.get(3, 0),
                     familiarity_counts.get(4, 0),
                     familiarity_counts.get(5, 0),
-                    score, status, completed_at,
+                    int_score, status, completed_at,
                     now, now
                 ))
                 conn.commit()

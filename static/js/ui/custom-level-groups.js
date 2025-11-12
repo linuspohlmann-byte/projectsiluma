@@ -1129,24 +1129,29 @@ async function deleteCustomGroup(groupId) {
 async function startCustomGroup(groupId) {
     try {
         console.log('🎯 Starting custom group:', groupId);
+        const startTime = performance.now();
         
         // Show loading state
         if (window.showLoader) {
             window.showLoader();
         }
         
-        // Get custom level group details
-        const response = await fetch(`/api/custom-level-groups/${groupId}`, {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-            }
-        });
+        const headers = {
+            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+        };
         
-        if (!response.ok) {
+        // OPTIMIZATION: Load group data and bulk-stats in parallel
+        console.log('⚡ Loading group data and bulk-stats in parallel...');
+        const [groupResponse, bulkStatsResponse] = await Promise.all([
+            fetch(`/api/custom-level-groups/${groupId}`, { headers }),
+            fetch(`/api/custom-levels/${groupId}/bulk-stats`, { headers }).catch(() => null) // Don't fail if bulk-stats fails
+        ]);
+        
+        if (!groupResponse.ok) {
             throw new Error('Failed to load custom level group');
         }
         
-        const data = await response.json();
+        const data = await groupResponse.json();
         if (!data.success) {
             throw new Error(data.error || 'Failed to load custom level group');
         }
@@ -1154,67 +1159,46 @@ async function startCustomGroup(groupId) {
         const group = data.group;
         const levels = data.levels;
         
-        console.log('📚 Custom group loaded:', group);
+        // Process bulk-stats if available
+        if (bulkStatsResponse && bulkStatsResponse.ok) {
+            try {
+                const bulkData = await bulkStatsResponse.json();
+                if (bulkData.success && bulkData.levels) {
+                    // Cache bulk stats for immediate use
+                    window.cachedGroupProgress = bulkData.levels;
+                    console.log('✅ Bulk stats loaded and cached');
+                }
+            } catch (e) {
+                console.log('⚠️ Could not process bulk-stats:', e);
+            }
+        }
+        
+        const loadTime = performance.now() - startTime;
+        console.log(`📚 Custom group loaded in ${loadTime.toFixed(0)}ms:`, group);
         console.log('📖 Levels found:', levels.length);
         console.log('⚡ Ultra-lazy loading: Levels loaded without content (content loaded on-demand)');
         
-        // With ultra-lazy loading, levels don't have content yet - it's loaded when level is opened
-        // Check if any levels need content generation (only check level_number, not content)
+        // OPTIMIZATION: Don't block on content generation - show UI immediately
+        // Content will be generated on-demand when level is opened
         const levelsNeedingGeneration = levels.filter(level => {
-            // If level has no content property or content is null, it needs generation
             return !level.content || level.content === null;
         });
         
+        // Start content generation in background (non-blocking)
         if (levelsNeedingGeneration.length > 0) {
-            console.log(`🚀 Smart loading: ${levelsNeedingGeneration.length} levels need generation`);
+            console.log(`🚀 ${levelsNeedingGeneration.length} levels need generation - starting in background`);
             
-            // Determine which levels to generate based on user progress
-            const levelsToGenerate = await determineLevelsToGenerate(groupId, levels, levelsNeedingGeneration);
-            
-            if (levelsToGenerate.immediate.length > 0) {
-                console.log(`⚡ Generating ${levelsToGenerate.immediate.length} relevant levels immediately...`);
-                
-                // Show smart progress message
-                if (window.showLoader) {
-                    const levelNumbers = levelsToGenerate.immediate.map(l => l.level_number).join(', ');
-                    window.showLoader(`Generiere Level ${levelNumbers}...`);
-                }
-                
-                try {
-                    // Generate only relevant levels for immediate availability using specific API
-                    const generationResult = await generateSpecificCustomLevelsContent(groupId, levelsToGenerate.immediate);
-                    
-                    if (generationResult.successful > 0) {
-                        console.log(`✅ Generated ${generationResult.successful} relevant levels for immediate use`);
-                    }
-                    
-                    // Reload the group data to get updated levels
-                    const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}`, {
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                        }
+            // Determine which levels to generate (non-blocking)
+            determineLevelsToGenerate(groupId, levels, levelsNeedingGeneration).then(levelsToGenerate => {
+                if (levelsToGenerate.immediate.length > 0) {
+                    // Generate in background without blocking UI
+                    generateSpecificCustomLevelsContent(groupId, levelsToGenerate.immediate).catch(err => {
+                        console.error('Background generation error:', err);
                     });
-                    
-                    if (reloadResponse.ok) {
-                        const reloadData = await reloadResponse.json();
-                        if (reloadData.success) {
-                            levels.splice(0, levels.length, ...reloadData.levels);
-                            console.log('✅ Reloaded levels with smart-generated content');
-                        }
-                    }
-                } catch (error) {
-                    console.error('❌ Error during smart content generation:', error);
                 }
-            }
-            
-            // DISABLED: Don't generate locked levels in background
-            // Only generate levels when user actually unlocks them
-            // This saves resources and prevents unnecessary generation
-            if (levelsToGenerate.background.length > 0) {
-                console.log(`⏸️ Skipping background generation for ${levelsToGenerate.background.length} locked levels (will generate when unlocked)`);
-            }
-        } else {
-            console.log(`✅ All levels already generated - fast loading!`);
+            }).catch(err => {
+                console.error('Error determining levels to generate:', err);
+            });
         }
         
         // Store custom group context for level rendering
@@ -1224,13 +1208,12 @@ async function startCustomGroup(groupId) {
             levels: levels
         };
         
-        // Switch to levels tab
+        // Switch to levels tab IMMEDIATELY (don't wait for content generation)
         if (window.showTab) {
             window.showTab('levels');
         }
         
         // Use the same system as standard level groups
-        // Set the selected level group to trigger level view
         if (window.SELECTED_LEVEL_GROUP !== undefined) {
             window.SELECTED_LEVEL_GROUP = {
                 id: `custom-${groupId}`,
@@ -1245,15 +1228,20 @@ async function startCustomGroup(groupId) {
             };
         }
         
-        // Show levels container (same as standard groups)
+        // Show levels container immediately
         showLevelsContainer();
         
-        // Load cached progress data for all levels (ultra-fast)
-        await loadCachedGroupProgress(groupId);
+        // Load cached progress data (already loaded from bulk-stats if available)
+        if (!window.cachedGroupProgress || Object.keys(window.cachedGroupProgress).length === 0) {
+            await loadCachedGroupProgress(groupId);
+        }
         
-        // Render custom levels with preloading for optimal performance
-        console.log('🎨 Calling renderCustomLevelsWithPreloading...');
+        // Render custom levels immediately (don't wait for content generation)
+        console.log('🎨 Rendering levels immediately...');
         renderCustomLevelsWithPreloading(groupId, levels);
+        
+        const totalTime = performance.now() - startTime;
+        console.log(`✅ Group opened in ${totalTime.toFixed(0)}ms`);
         
     } catch (error) {
         console.error('❌ Error starting custom group:', error);
@@ -1951,34 +1939,33 @@ async function startCustomLevel(groupId, levelNumber) {
         let level = data.level;
         console.log('📖 Custom level loaded:', level);
         
-        // Check if level content is empty (ultra-lazy loading)
+        // OPTIMIZATION: Check if level content needs generation, but don't block
         const levelContent = level.content;
         const isEmpty = !levelContent || !levelContent.items || levelContent.items.length === 0;
         const isUltraLazy = levelContent && levelContent.ultra_lazy_loading && !levelContent.sentences_generated;
         
         if (isEmpty || isUltraLazy) {
-            console.log('🚀 Level content is empty or ultra-lazy, generating sentences...');
+            console.log('🚀 Level content is empty or ultra-lazy, generating in background...');
             
-            // Show loading message
+            // OPTIMIZATION: Start generation in background, don't block UI
+            // Show loading message but continue with what we have
             if (window.showLoader) {
-                window.showLoader('Generiere Level-Inhalt...');
+                window.showLoader('Lade Level...');
             }
             
-            try {
-                // Trigger sentence generation via API
-                const generateResponse = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/generate-content`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('session_token')}`
-                    }
-                });
-                
+            // Start generation in background (non-blocking)
+            const generatePromise = fetch(`/api/custom-levels/${groupId}/${levelNumber}/generate-content`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('session_token')}`
+                }
+            }).then(async (generateResponse) => {
                 if (generateResponse.ok) {
                     const generateData = await generateResponse.json();
                     if (generateData.success) {
                         console.log('✅ Level content generated successfully');
-                        // Reload the level data
+                        // Reload level data in background
                         const reloadResponse = await fetch(`/api/custom-level-groups/${groupId}/levels/${levelNumber}`, {
                             headers: {
                                 'Authorization': `Bearer ${localStorage.getItem('session_token')}`
@@ -1987,30 +1974,22 @@ async function startCustomLevel(groupId, levelNumber) {
                         
                         if (reloadResponse.ok) {
                             const reloadData = await reloadResponse.json();
-                            if (reloadData.success) {
-                                level = reloadData.level;
-                                console.log('📖 Custom level reloaded with generated content:', level);
+                            if (reloadData.success && reloadData.level) {
+                                // Update level data if lesson hasn't started yet
+                                if (window.RUN && !window.RUN.items || window.RUN.items.length === 0) {
+                                    level = reloadData.level;
+                                    console.log('📖 Level content updated');
+                                }
                             }
                         }
-                    } else {
-                        console.error('❌ Failed to generate level content:', generateData.error);
-                        showNotification('Fehler beim Generieren des Level-Inhalts: ' + generateData.error, 'error');
-                        return;
                     }
-                } else {
-                    console.error('❌ Failed to call generate content API');
-                    showNotification('Fehler beim Generieren des Level-Inhalts', 'error');
-                    return;
                 }
-            } catch (error) {
-                console.error('❌ Error generating level content:', error);
-                showNotification('Fehler beim Generieren des Level-Inhalts: ' + error.message, 'error');
-                return;
-            } finally {
-                if (window.hideLoader) {
-                    window.hideLoader();
-                }
-            }
+            }).catch(err => {
+                console.error('Background generation error:', err);
+            });
+            
+            // Don't wait for generation - continue with empty content
+            // The lesson will show a loading state until content is ready
         }
         
         // Store custom level context
@@ -2133,6 +2112,31 @@ async function startCustomLevel(groupId, levelNumber) {
             // Also set these for API calls (redundant but ensures they're set)
             window.RUN._customGroupId = groupId;
             window.RUN._customLevelNumber = levelNumber;
+            
+            // OPTIMIZATION: Preload first sentence audio immediately (non-blocking)
+            if (formattedContent.length > 0 && formattedContent[0].text_target) {
+                const firstSentence = formattedContent[0].text_target;
+                const lang = group.language || 'en';
+                // Preload sentence audio in background
+                if (window.prewarmSentenceTTS) {
+                    window.prewarmSentenceTTS(firstSentence).catch(() => {});
+                }
+            }
+            
+            // OPTIMIZATION: Preload first 10 words immediately for instant tooltips
+            const firstWords = [];
+            for (let i = 0; i < Math.min(10, formattedContent.length); i++) {
+                const item = formattedContent[i];
+                if (item.words && Array.isArray(item.words)) {
+                    firstWords.push(...item.words);
+                }
+            }
+            const uniqueFirstWords = [...new Set(firstWords)].slice(0, 10);
+            if (uniqueFirstWords.length > 0 && window.preloadWordsBatch) {
+                const lang = group.language || 'en';
+                const nativeLang = group.native_language || 'de';
+                window.preloadWordsBatch(uniqueFirstWords, lang, nativeLang).catch(() => {});
+            }
             
             // Start lesson with custom data
             window.startLevelWithTopic(levelNumber, levelTitle, false);

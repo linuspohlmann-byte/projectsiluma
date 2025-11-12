@@ -2111,6 +2111,11 @@ async function startLevel(lvl){
       const firstTask = RUN.queue && RUN.queue[0];
       const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
       
+      // OPTIMIZATION: Preload first sentence audio immediately (non-blocking)
+      if (firstItem && firstItem.text_target) {
+        prewarmSentenceTTS(firstItem.text_target).catch(() => {});
+      }
+      
       // Hide loader immediately
       hideLoader();
       
@@ -2120,7 +2125,7 @@ async function startLevel(lvl){
       // Keep custom level data for API calls during the lesson
       // RUN._customGroupId and RUN._customLevelNumber will be cleared in finishLevel()
       
-      // Preload first N words immediately for instant tooltip access
+      // OPTIMIZATION: Preload first N words immediately for instant tooltip access
       const PRELOAD_WORD_COUNT = 10;
       const firstWords = [];
       for (let i = 0; i < Math.min(PRELOAD_WORD_COUNT, RUN.items.length); i++) {
@@ -2131,14 +2136,28 @@ async function startLevel(lvl){
       }
       const uniqueFirstWords = [...new Set(firstWords)].slice(0, PRELOAD_WORD_COUNT);
       
-      // Preload first words immediately using batch endpoint
+      // Preload first words immediately using batch endpoint (non-blocking)
       if (uniqueFirstWords.length > 0) {
         preloadWordsBatch(uniqueFirstWords, RUN.target, RUN.native).catch(err => {
           console.log('Preload words batch error:', err);
         });
       }
       
-      // Enrichment in background
+      // OPTIMIZATION: Preload all words for tooltips in background (non-blocking)
+      setTimeout(() => {
+        const allWords = [];
+        RUN.items.forEach(item => {
+          if (item.words && Array.isArray(item.words)) {
+            allWords.push(...item.words);
+          }
+        });
+        const uniqueWords = [...new Set(allWords)];
+        if (uniqueWords.length > 0) {
+          preloadWordsBatch(uniqueWords, RUN.target, RUN.native).catch(() => {});
+        }
+      }, 100);
+      
+      // Enrichment in background (non-blocking)
       setTimeout(() => {
         Promise.all([
           preEnrichItemBlocking(firstItem),
