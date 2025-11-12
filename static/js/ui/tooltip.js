@@ -1121,6 +1121,7 @@ function renderWordDetailsPanel(panel, word, data) {
   const translation = data.translation || '';
   const ipa = data.ipa || '';
   const gender = data.gender || '';
+  const example = data.example || '';
   const exampleNative = data.example_native || '';
   const synonyms = data.synonyms || '';
   const pos = data.pos || '';
@@ -1128,67 +1129,91 @@ function renderWordDetailsPanel(panel, word, data) {
   const userComment = data.user_comment || '';
   const audioUrl = data.audio_url || '';
   
+  // Format gender display
+  const genderMap = {
+    'masc': 'Maskulin',
+    'fem': 'Feminin', 
+    'neut': 'Neutrum',
+    'common': 'Utrum',
+    'none': 'Kein Genus'
+  };
+  const genderDisplay = genderMap[gender] || gender || '–';
+  
+  // Format POS display
+  const posMap = {
+    'NOUN': 'Nomen',
+    'VERB': 'Verb',
+    'ADJ': 'Adjektiv',
+    'ADV': 'Adverb',
+    'PRON': 'Pronomen',
+    'DET': 'Artikel/Det',
+    'PREP': 'Präposition',
+    'CONJ': 'Konjunktion',
+    'NUM': 'Numerale',
+    'PART': 'Partikel',
+    'INTJ': 'Interjektion'
+  };
+  const posDisplay = posMap[pos] || pos || '–';
+  
   // Format synonym list - handle both array and string formats
-  let synonymList = '';
+  let synonymList = '–';
   if (synonyms) {
     if (Array.isArray(synonyms)) {
       // Already an array - join with commas
-      synonymList = synonyms.map(s => String(s).trim()).filter(Boolean).join(', ');
+      const syns = synonyms.map(s => String(s).trim()).filter(Boolean);
+      synonymList = syns.length > 0 ? syns.join(', ') : '–';
     } else if (typeof synonyms === 'string') {
       // String format - split by comma
-      synonymList = synonyms.split(',').map(s => s.trim()).filter(Boolean).join(', ');
+      const syns = synonyms.split(',').map(s => s.trim()).filter(Boolean);
+      synonymList = syns.length > 0 ? syns.join(', ') : '–';
     } else {
       // Try to convert to string
-      synonymList = String(synonyms).trim();
+      synonymList = String(synonyms).trim() || '–';
     }
   }
   
+  // Always show all fields (like old tooltip), even if empty
   panel.innerHTML = `
     <div class="word-details-panel-header">
       <h3 class="word-details-panel-title">${escapeHtml(word)}</h3>
     </div>
     <div class="word-details-panel-content">
-      ${translation ? `
+      <div class="word-details-field">
+        <label class="word-details-field-label">Übersetzung</label>
+        <div class="word-details-field-value">${escapeHtml(translation || '–')}</div>
+      </div>
+      
+      <div class="word-details-field">
+        <label class="word-details-field-label">Aussprache (IPA)</label>
+        <div class="word-details-field-value">${escapeHtml(ipa || '–')}</div>
+      </div>
+      
+      <div class="word-details-field">
+        <label class="word-details-field-label">Genus</label>
+        <div class="word-details-field-value">${escapeHtml(genderDisplay)}</div>
+      </div>
+      
+      ${example ? `
         <div class="word-details-field">
-          <label class="word-details-field-label">Übersetzung</label>
-          <div class="word-details-field-value">${escapeHtml(translation)}</div>
+          <label class="word-details-field-label">Beispielsatz</label>
+          <div class="word-details-field-value">${escapeHtml(example)}</div>
         </div>
       ` : ''}
       
-      ${ipa ? `
-        <div class="word-details-field">
-          <label class="word-details-field-label">Aussprache (IPA)</label>
-          <div class="word-details-field-value">${escapeHtml(ipa)}</div>
-        </div>
-      ` : ''}
+      <div class="word-details-field">
+        <label class="word-details-field-label">Beispiel-Übersetzung</label>
+        <div class="word-details-field-value">${escapeHtml(exampleNative || '–')}</div>
+      </div>
       
-      ${gender ? `
-        <div class="word-details-field">
-          <label class="word-details-field-label">Genus</label>
-          <div class="word-details-field-value">${escapeHtml(gender)}</div>
-        </div>
-      ` : ''}
+      <div class="word-details-field">
+        <label class="word-details-field-label">Synonyme</label>
+        <div class="word-details-field-value">${escapeHtml(synonymList)}</div>
+      </div>
       
-      ${exampleNative ? `
-        <div class="word-details-field">
-          <label class="word-details-field-label">Beispiel-Übersetzung</label>
-          <div class="word-details-field-value">${escapeHtml(exampleNative)}</div>
-        </div>
-      ` : ''}
-      
-      ${synonymList ? `
-        <div class="word-details-field">
-          <label class="word-details-field-label">Synonyme</label>
-          <div class="word-details-field-value">${escapeHtml(synonymList)}</div>
-        </div>
-      ` : ''}
-      
-      ${pos ? `
-        <div class="word-details-field">
-          <label class="word-details-field-label">Wortart</label>
-          <div class="word-details-field-value">${escapeHtml(pos)}</div>
-        </div>
-      ` : ''}
+      <div class="word-details-field">
+        <label class="word-details-field-label">Wortart</label>
+        <div class="word-details-field-value">${escapeHtml(posDisplay)}</div>
+      </div>
       
       <div class="word-details-field">
         <label class="word-details-field-label">Bekanntheit</label>
