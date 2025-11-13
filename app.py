@@ -2000,6 +2000,10 @@ def api_alphabet_ensure():
             # Generate audio with alphabet context (phonetic pronunciation)
             audio_url = ensure_tts_for_alphabet_letter(letter, language)
             
+            # Convert S3 URL to proxy URL to avoid CORS issues
+            if audio_url:
+                audio_url = convert_s3_url_to_proxy_url(audio_url)
+            
             result.append({
                 'char': letter,
                 'letter': letter,  # alias for compatibility
