@@ -1489,9 +1489,12 @@ function bindPracticeActionButtons(){
 }
 
 async function startSmartPractice(){
+  console.log('🎯 startSmartPractice called');
   const practiceBtn = document.getElementById('smart-practice-btn');
   if(practiceBtn){
     practiceBtn.disabled = true;
+  } else {
+    console.warn('⚠️ Practice button not found!');
   }
 
   try{
@@ -1511,10 +1514,14 @@ async function startSmartPractice(){
                 `isCustomLevelView:`, isCustomLevelView, 
                 `isStoryOverview:`, isStoryOverview);
     if(activeLevelCard){
-      const groupId = parseInt(activeLevelCard.dataset.customGroupId);
-      const levelNumber = parseInt(activeLevelCard.dataset.level);
+      const groupIdStr = activeLevelCard.dataset.customGroupId;
+      const levelNumberStr = activeLevelCard.dataset.level;
+      const groupId = groupIdStr ? parseInt(groupIdStr, 10) : NaN;
+      const levelNumber = levelNumberStr ? parseInt(levelNumberStr, 10) : NaN;
       
-      if(groupId && levelNumber){
+      console.log(`🔍 Parsed IDs - groupId: ${groupId}, levelNumber: ${levelNumber} (from "${groupIdStr}", "${levelNumberStr}")`);
+      
+      if(!isNaN(groupId) && !isNaN(levelNumber) && groupId > 0 && levelNumber > 0){
         console.log(`🎯 Practice for specific custom level: group ${groupId}, level ${levelNumber}`);
         // Fetch words from this specific level
         const headers = { 'Content-Type': 'application/json' };
@@ -1560,9 +1567,12 @@ async function startSmartPractice(){
     else if(isCustomLevelView){
       const firstLevelCard = document.querySelector('.level-card[data-custom-group-id]');
       if(firstLevelCard){
-        const groupId = parseInt(firstLevelCard.dataset.customGroupId);
+        const groupIdStr = firstLevelCard.dataset.customGroupId;
+        const groupId = groupIdStr ? parseInt(groupIdStr, 10) : NaN;
         
-        if(groupId){
+        console.log(`🔍 Custom level group view - groupId: ${groupId} (from "${groupIdStr}")`);
+        
+        if(!isNaN(groupId) && groupId > 0){
           console.log(`🎯 Practice for custom level group (story): ${groupId}`);
           // Fetch words from all levels in this group
           const headers = { 'Content-Type': 'application/json' };
@@ -1630,8 +1640,9 @@ async function startSmartPractice(){
           
           // Fetch words from all levels in all groups
           for(const group of js.groups){
-            const groupId = group.id || group.group_id;
-            if(!groupId) continue;
+            const groupIdRaw = group.id || group.group_id;
+            const groupId = groupIdRaw ? parseInt(String(groupIdRaw), 10) : NaN;
+            if(isNaN(groupId) || groupId <= 0) continue;
             
             // Fetch words from all 10 levels in this group
             for(let levelNum = 1; levelNum <= 10; levelNum++){
