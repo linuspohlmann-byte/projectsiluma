@@ -6396,6 +6396,7 @@ def bug_reports_viewer():
 # Standard level function removed: def api_levels_summary_fs():
 
 @practice_bp.post('/api/practice/start')
+@require_auth()
 def api_practice_start():
     """Start a practice session with custom words or level-based words"""
     try:
@@ -6483,6 +6484,7 @@ def api_practice_start():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @practice_bp.post('/api/practice/grade')
+@require_auth()
 def api_practice_grade():
     """Grade a practice word and get the next word"""
     try:
