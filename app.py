@@ -6431,21 +6431,35 @@ def api_practice_start():
                         continue
                     
                     # Get familiarity for this word
+                    # First, get word_id from words table
                     cursor = execute_query(conn, """
-                        SELECT familiarity 
-                        FROM user_word_familiarity 
-                        WHERE user_id = %s AND word = %s AND language = %s AND native_language = %s
+                        SELECT id FROM words 
+                        WHERE word = %s AND language = %s AND native_language = %s
                         LIMIT 1
-                    """, (user_id, word, language, native_language))
-                    row = cursor.fetchone()
+                    """, (word, language, native_language))
+                    word_row = cursor.fetchone()
                     
-                    if row:
-                        if isinstance(row, dict):
-                            fam = int(row.get('familiarity', 0) or 0)
+                    if word_row:
+                        word_id = word_row[0] if isinstance(word_row, (tuple, list)) else word_row.get('id')
+                        
+                        # Then get familiarity from user_word_familiarity using word_id
+                        cursor = execute_query(conn, """
+                            SELECT familiarity 
+                            FROM user_word_familiarity 
+                            WHERE user_id = %s AND word_id = %s
+                            LIMIT 1
+                        """, (user_id, word_id))
+                        row = cursor.fetchone()
+                        
+                        if row:
+                            if isinstance(row, dict):
+                                fam = int(row.get('familiarity', 0) or 0)
+                            else:
+                                fam = int(row[0] or 0)
                         else:
-                            fam = int(row[0] or 0)
+                            fam = 0  # Word exists but no familiarity record
                     else:
-                        fam = 0  # Unknown word
+                        fam = 0  # Word doesn't exist in words table
                     
                     # Include if exclude_max is False or familiarity is 1-4
                     if not exclude_max or (fam >= 1 and fam <= 4):
@@ -6521,43 +6535,58 @@ def api_practice_grade():
             if word and mark:
                 # Map mark to familiarity change
                 # 'bad' = decrease, 'okay' = no change, 'good' = increase
+                # First, get word_id from words table
                 cursor = execute_query(conn, """
-                    SELECT familiarity 
-                    FROM user_word_familiarity 
-                    WHERE user_id = %s AND word = %s AND language = %s AND native_language = %s
+                    SELECT id FROM words 
+                    WHERE word = %s AND language = %s AND native_language = %s
                     LIMIT 1
-                """, (user_id, word, language, native_language))
-                row = cursor.fetchone()
+                """, (word, language, native_language))
+                word_row = cursor.fetchone()
                 
-                current_fam = 0
-                if row:
-                    if isinstance(row, dict):
-                        current_fam = int(row.get('familiarity', 0) or 0)
-                    else:
-                        current_fam = int(row[0] or 0)
-                
-                # Calculate new familiarity
-                if mark == 'bad':
-                    new_fam = max(0, current_fam - 1)
-                elif mark == 'okay':
-                    new_fam = min(5, current_fam + 1)
-                elif mark == 'good':
-                    new_fam = min(5, current_fam + 2)
+                if not word_row:
+                    # Word doesn't exist - skip update
+                    pass
                 else:
-                    new_fam = current_fam
-                
-                # Update or insert familiarity
-                from datetime import datetime
-                from server.db_config import UTC
-                now = datetime.now(UTC).isoformat()
-                
-                execute_query(conn, """
-                    INSERT INTO user_word_familiarity (user_id, word, language, native_language, familiarity, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id, word, language, native_language)
-                    DO UPDATE SET familiarity = %s, updated_at = %s
-                """, (user_id, word, language, native_language, new_fam, now, new_fam, now))
-                conn.commit()
+                    word_id = word_row[0] if isinstance(word_row, (tuple, list)) else word_row.get('id')
+                    
+                    # Get current familiarity
+                    cursor = execute_query(conn, """
+                        SELECT familiarity 
+                        FROM user_word_familiarity 
+                        WHERE user_id = %s AND word_id = %s
+                        LIMIT 1
+                    """, (user_id, word_id))
+                    row = cursor.fetchone()
+                    
+                    current_fam = 0
+                    if row:
+                        if isinstance(row, dict):
+                            current_fam = int(row.get('familiarity', 0) or 0)
+                        else:
+                            current_fam = int(row[0] or 0)
+                    
+                    # Calculate new familiarity
+                    if mark == 'bad':
+                        new_fam = max(0, current_fam - 1)
+                    elif mark == 'okay':
+                        new_fam = min(5, current_fam + 1)
+                    elif mark == 'good':
+                        new_fam = min(5, current_fam + 2)
+                    else:
+                        new_fam = current_fam
+                    
+                    # Update or insert familiarity
+                    from datetime import datetime
+                    from server.db_config import UTC
+                    now = datetime.now(UTC).isoformat()
+                    
+                    execute_query(conn, """
+                        INSERT INTO user_word_familiarity (user_id, word_id, familiarity, updated_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (user_id, word_id)
+                        DO UPDATE SET familiarity = %s, updated_at = %s
+                    """, (user_id, word_id, new_fam, now, new_fam, now))
+                    conn.commit()
             
             # For custom words practice, we can't determine next word without storing the list
             # Return empty response - frontend should handle queue management
