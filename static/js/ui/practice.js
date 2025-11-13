@@ -374,6 +374,10 @@ export async function startPracticeWithWordList(wordList, label = 'custom'){
     return;
   }
 
+  // Store word list in queue for custom words practice
+  PR._queue = [...normalizedWords];
+  PR._qi = 0;
+
   const targetLang = $('#target-lang')?.value || 'en';
   const headers = { 'Content-Type': 'application/json' };
   if (window.authManager && window.authManager.isAuthenticated()) {
