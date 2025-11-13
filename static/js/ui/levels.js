@@ -1498,14 +1498,26 @@ function bindPracticeActionButtons(){
 
 async function startSmartPractice(){
   console.log('🎯 startSmartPractice called');
+  console.log('🎯 Stack trace:', new Error().stack);
   const practiceBtn = document.getElementById('smart-practice-btn');
   if(practiceBtn){
     practiceBtn.disabled = true;
+    console.log('✅ Practice button found and disabled');
   } else {
     console.warn('⚠️ Practice button not found!');
+    return; // Early return if button doesn't exist
   }
 
   try{
+    console.log('🎯 Checking if startPracticeWithWordList is available...');
+    console.log('🎯 typeof window.startPracticeWithWordList:', typeof window.startPracticeWithWordList);
+    if(typeof window.startPracticeWithWordList !== 'function'){
+      console.error('❌ startPracticeWithWordList is not a function!');
+      console.error('❌ window.startPracticeWithWordList:', window.startPracticeWithWordList);
+      alert('Practice-Modul nicht initialisiert. Bitte Seite neu laden.');
+      if(practiceBtn) practiceBtn.disabled = false;
+      return;
+    }
     let practiceCandidates = [];
     let scopeLabel = 'course';
     
@@ -1757,14 +1769,25 @@ async function startSmartPractice(){
     console.log(`🎯 Starting practice with ${practiceCandidates.length} words (scope: ${scopeLabel})`);
     console.log(`🎯 First 5 words:`, practiceCandidates.slice(0, 5));
     
-    if(typeof window.startPracticeWithWordList === 'function'){
-      console.log('✅ Calling startPracticeWithWordList...');
-      await window.startPracticeWithWordList(practiceCandidates, scopeLabel);
-      console.log('✅ startPracticeWithWordList completed');
-    }else{
+    // Double-check that function exists before calling
+    if(typeof window.startPracticeWithWordList !== 'function'){
       console.error('❌ startPracticeWithWordList helper is not available. Practice module may not be initialized.');
       console.error('❌ Available window functions:', Object.keys(window).filter(k => k.includes('Practice')));
+      console.error('❌ window.startPracticeWithWordList value:', window.startPracticeWithWordList);
       alert('Practice-Modul nicht verfügbar. Bitte Seite neu laden.');
+      if(practiceBtn) practiceBtn.disabled = false;
+      return;
+    }
+    
+    console.log('✅ Calling startPracticeWithWordList...');
+    try {
+      await window.startPracticeWithWordList(practiceCandidates, scopeLabel);
+      console.log('✅ startPracticeWithWordList completed successfully');
+    } catch (practiceError) {
+      console.error('❌ Error in startPracticeWithWordList:', practiceError);
+      console.error('❌ Error stack:', practiceError.stack);
+      alert('Fehler beim Starten der Übung: ' + (practiceError?.message || practiceError));
+      throw practiceError; // Re-throw to be caught by outer catch
     }
   }catch(error){
     console.error('Error starting smart practice:', error);
