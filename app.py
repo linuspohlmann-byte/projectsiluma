@@ -6481,6 +6481,99 @@ def api_practice_start():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@practice_bp.post('/api/practice/grade')
+def api_practice_grade():
+    """Grade a practice word and get the next word"""
+    try:
+        from server.db_config import get_db_connection, execute_query
+        from server.auth import get_user_id_from_request
+        
+        data = request.get_json(silent=True) or {}
+        word = data.get('word', '').strip()
+        mark = data.get('mark', '')
+        language = data.get('language', 'en').strip()
+        run_id = data.get('run_id')  # May be None for custom words
+        
+        user_id = get_user_id_from_request()
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        # Get native language from header or default
+        native_language = request.headers.get('X-Native-Language', 'de').strip()
+        
+        # If mark is 'peek', just return next word without updating familiarity
+        if mark == 'peek':
+            # For custom words practice, we can't peek without storing the word list
+            # Return empty response - frontend should handle this
+            return jsonify({
+                'success': True,
+                'next': None,
+                'remaining': 0
+            })
+        
+        conn = get_db_connection()
+        try:
+            # Update familiarity based on mark
+            if word and mark:
+                # Map mark to familiarity change
+                # 'bad' = decrease, 'okay' = no change, 'good' = increase
+                cursor = execute_query(conn, """
+                    SELECT familiarity 
+                    FROM user_word_familiarity 
+                    WHERE user_id = %s AND word = %s AND language = %s AND native_language = %s
+                    LIMIT 1
+                """, (user_id, word, language, native_language))
+                row = cursor.fetchone()
+                
+                current_fam = 0
+                if row:
+                    if isinstance(row, dict):
+                        current_fam = int(row.get('familiarity', 0) or 0)
+                    else:
+                        current_fam = int(row[0] or 0)
+                
+                # Calculate new familiarity
+                if mark == 'bad':
+                    new_fam = max(0, current_fam - 1)
+                elif mark == 'okay':
+                    new_fam = min(5, current_fam + 1)
+                elif mark == 'good':
+                    new_fam = min(5, current_fam + 2)
+                else:
+                    new_fam = current_fam
+                
+                # Update or insert familiarity
+                from datetime import datetime
+                from server.db_config import UTC
+                now = datetime.now(UTC).isoformat()
+                
+                execute_query(conn, """
+                    INSERT INTO user_word_familiarity (user_id, word, language, native_language, familiarity, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id, word, language, native_language)
+                    DO UPDATE SET familiarity = %s, updated_at = %s
+                """, (user_id, word, language, native_language, new_fam, now, new_fam, now))
+                conn.commit()
+            
+            # For custom words practice, we can't determine next word without storing the list
+            # Return empty response - frontend should handle queue management
+            return jsonify({
+                'success': True,
+                'next': None,
+                'remaining': 0,
+                'seen': data.get('seen', 0),
+                'done': False
+            })
+                
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error grading practice: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @levels_bp.post('/api/language/validate')
 def api_language_validate():
     """Validate and add a new language through AI"""
