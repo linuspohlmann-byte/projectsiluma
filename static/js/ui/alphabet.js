@@ -379,5 +379,8 @@ export function initAlphabet(){
   ensureAlphabetEntry();
 }
 
-// Legacy
-if(typeof window!== 'undefined'){ window.startAlphabet = startAlphabet; }
+// Export stopAlphabetPractice for use in showTab
+if(typeof window!== 'undefined'){ 
+  window.startAlphabet = startAlphabet;
+  window.stopAlphabetPractice = stopAlphabetPractice;
+}

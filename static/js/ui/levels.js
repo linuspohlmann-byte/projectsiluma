@@ -2292,7 +2292,7 @@ export function showTab(tab){
             window.resetLevelUI();
         } else {
             // Fallback: Hide legacy single-view screens
-            ['#lesson','#lesson-container','#evaluation-card','#practice-card'].forEach(id=>{ 
+            ['#lesson','#lesson-container','#evaluation-card','#practice-card','#alphabet-card'].forEach(id=>{ 
                 const el=$(id); 
                 if(el) el.style.display='none'; 
             });
@@ -2302,6 +2302,12 @@ export function showTab(tab){
                 wordDetailsPanel.innerHTML = '';
             }
         }
+        
+        // Stop alphabet practice when switching tabs
+        if (typeof window.stopAlphabetPractice === 'function') {
+            window.stopAlphabetPractice();
+        }
+        
         const levelsCard = document.getElementById('levels-card');
         if(levelsCard) levelsCard.style.display='';
         
@@ -2376,8 +2382,13 @@ export function showTab(tab){
         window.resetLevelUI();
     }
     
+    // Stop alphabet practice if switching away from it
+    if(tab !== 'alphabet' && typeof window.stopAlphabetPractice === 'function') {
+        window.stopAlphabetPractice();
+    }
+    
     // hide all views including practice (words-card removed - now a modern tab)
-    ['#levels-card','#lesson','#lesson-container','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
+    ['#levels-card','#lesson','#lesson-container','#evaluation-card','#practice-card','#alphabet-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
     // hide level tooltip as well
     const lt = document.getElementById('level-tip'); if(lt) lt.style.display='none';
     // progress only in lesson
