@@ -1590,6 +1590,9 @@ async function startSmartPractice(){
     console.log('  - isCustomLevelView:', isCustomLevelView);
     console.log('  - isStoryOverview:', isStoryOverview);
     
+    // Check for specific custom level (level card clicked or practice button clicked)
+    const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
+    
     // Use /api/words/learning API for all contexts (same as words tab)
     // This API already filters by familiarity 1-4
     const targetLang = $('#target-lang')?.value || 'en';
