@@ -2620,19 +2620,46 @@ async function startLevel(lvl){
     buildTaskQueue();
     const firstTask = RUN.queue && RUN.queue[0];
     const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
-    // Ladebildschirm sofort verstecken
+    
+    // NEW: Preload first task COMPLETELY before showing (same as custom levels)
+    if (firstItem) {
+      const firstTaskIndex = firstTask ? firstTask.i : 0;
+      showLoader('Preparing first task...');
+      
+      // Preload with progress updates
+      await preloadTaskData(firstTaskIndex, (progress) => {
+        if (window.showLoader) {
+          window.showLoader(`Preparing first task... ${progress}`);
+        }
+      });
+    }
+    
+    // Hide loader after preloading is complete
     hideLoader();
     
-    // UI sofort freigeben - Enrichment im Hintergrund
+    // Render the first item (now everything is ready!)
     renderCurrent();
     
-    // Enrichment parallel im Hintergrund starten (nicht blockierend)
+    // NEW: Preload next tasks in background (non-blocking, low priority)
     setTimeout(() => {
-      Promise.all([
-        preEnrichItemBlocking(firstItem),
-        preEnrichRestBackground(RUN.items, firstTask ? firstTask.i : 0)
-      ]).catch(err => console.log('Background enrichment error:', err));
-    }, 50); // Minimale Verzögerung
+      // Preload next 2-3 tasks ahead
+      const nextTaskIndices = [];
+      for (let i = 1; i <= 3 && i < RUN.items.length; i++) {
+        const nextTask = RUN.queue && RUN.queue.find(t => t.i === i);
+        if (nextTask) {
+          nextTaskIndices.push(nextTask.i);
+        } else if (RUN.items[i]) {
+          nextTaskIndices.push(i);
+        }
+      }
+      
+      // Preload next tasks in background (non-blocking)
+      nextTaskIndices.forEach(taskIndex => {
+        preloadTaskData(taskIndex).catch(err => {
+          console.log(`Background preload for task ${taskIndex} failed:`, err);
+        });
+      });
+    }, 100);
   } catch (e) {
     hideLoader();
     throw e;
