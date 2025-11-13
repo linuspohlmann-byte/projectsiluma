@@ -393,44 +393,44 @@ export async function openTooltip(anchor, word){
     
     // Check if this is a custom level and try to get word data from custom level context
     if (!js1) {
-      if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
-        console.log('🔧 Tooltip for custom level word:', w);
-        
-        // For custom levels, try to get word data from the current item first
-        const currentItem = window.RUN.items[window.RUN.idx || 0];
-        if (currentItem && currentItem.words) {
-          // Look for the word in the current item's words array
-          const wordData = currentItem.words.find(word => word === w);
-          if (wordData) {
-            console.log('🔧 Found word in custom level item:', wordData);
-            // Create a basic word object for the tooltip
-            js1 = {
-              word: w,
-              language: lang,
-              translation: '', // Will be filled by enrichment
-              familiarity: 0,
-              pos: '',
-              ipa: '',
-              example_native: '',
-              synonyms: [],
-              collocations: [],
-              gender: 'none'
-            };
-          }
+    if (window.RUN._customGroupId && window.RUN._customLevelNumber) {
+      console.log('🔧 Tooltip for custom level word:', w);
+      
+      // For custom levels, try to get word data from the current item first
+      const currentItem = window.RUN.items[window.RUN.idx || 0];
+      if (currentItem && currentItem.words) {
+        // Look for the word in the current item's words array
+        const wordData = currentItem.words.find(word => word === w);
+        if (wordData) {
+          console.log('🔧 Found word in custom level item:', wordData);
+          // Create a basic word object for the tooltip
+          js1 = {
+            word: w,
+            language: lang,
+            translation: '', // Will be filled by enrichment
+            familiarity: 0,
+            pos: '',
+            ipa: '',
+            example_native: '',
+            synonyms: [],
+            collocations: [],
+            gender: 'none'
+          };
         }
       }
-      
-      // If we don't have word data yet, try to fetch from global database
-      if (!js1) {
+    }
+    
+    // If we don't have word data yet, try to fetch from global database
+    if (!js1) {
         console.log('⚠️ Tooltip: Word data not in cache, fetching for:', w);
-        
+      
         // NEW: Use batch API endpoint directly (more efficient than individual calls)
         const headers = { 'Content-Type': 'application/json' };
-        const sessionToken = localStorage.getItem('session_token');
-        if (sessionToken) {
-          headers['Authorization'] = `Bearer ${sessionToken}`;
-        }
-        
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+      
         try {
           // Use batch endpoint - even for single word, it's more efficient
           const batchResponse = await fetch('/api/words/batch', {
@@ -463,10 +463,10 @@ export async function openTooltip(anchor, word){
           console.log('⚠️ Batch API failed, falling back to single API:', e);
           
           // Fallback to single word API if batch didn't work
-          const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
+      const r1 = await fetch(`/api/word?word=${encodeURIComponent(w)}&language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(nat)}`, {
             headers: { 'Authorization': sessionToken ? `Bearer ${sessionToken}` : '' }
-          });
-          js1 = await r1.json();
+      });
+      js1 = await r1.json();
           console.log('✅ Tooltip: Fetched word data via single API:', w);
           
           // Cache the word data (sync to both caches)
@@ -593,17 +593,17 @@ export async function playOrGenAudio(word, sentenceContext = null){
     // If no cached URL, fetch from API
     if (!audioUrl) {
       console.log('⚠️ Tooltip audio: No cached URL, fetching from API:', w);
-      const payload = { word: w, language: lang };
-      if (sentenceContext && sentenceContext.trim()) {
-        payload.sentence = sentenceContext.trim();
-      }
-      
-      const r = await fetch('/api/word/tts', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const js = await r.json();
-      if(js?.success && js.audio_url){
+    const payload = { word: w, language: lang };
+    if (sentenceContext && sentenceContext.trim()) {
+      payload.sentence = sentenceContext.trim();
+    }
+    
+    const r = await fetch('/api/word/tts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const js = await r.json();
+    if(js?.success && js.audio_url){
         audioUrl = js.audio_url;
         // Update cache with audio URL
         if (window.cacheGet) {

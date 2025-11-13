@@ -2168,7 +2168,7 @@ async function renderCustomLevels(groupId, levels) {
                                 <button class="level-btn primary" onclick="handleCustomLevelStart(${groupId}, ${levelNumber})">
                                     Start
                                 </button>
-                                <button class="level-btn" onclick="handleCustomLevelStart(${groupId}, ${levelNumber})">
+                                <button class="level-btn" onclick="handleCustomLevelPractice(${groupId}, ${levelNumber})">
                                     Practice
                                 </button>
                             </div>
@@ -3963,7 +3963,35 @@ function handleCustomLevelStart(groupId, levelNumber) {
 }
 
 // Export the functions globally
+// Handle practice button click for custom level
+function handleCustomLevelPractice(groupId, levelNumber) {
+    try {
+        console.log(`🎯 Handling custom level practice: group ${groupId}, level ${levelNumber}`);
+        
+        // Mark this level card as active for context detection
+        const levelCard = document.querySelector(`.level-card[data-level="${levelNumber}"][data-custom-group-id="${groupId}"]`);
+        if (levelCard) {
+            // Remove active class from all cards
+            document.querySelectorAll('.level-card').forEach(card => card.classList.remove('active'));
+            // Add active class to this card
+            levelCard.classList.add('active');
+        }
+        
+        // Call startSmartPractice which will detect the context
+        if (typeof window.startSmartPractice === 'function') {
+            window.startSmartPractice();
+        } else {
+            console.error('startSmartPractice function not available');
+            alert('Practice-Funktion nicht verfügbar');
+        }
+    } catch (error) {
+        console.error('Error handling custom level practice:', error);
+        alert('Fehler beim Starten der Übung: ' + error.message);
+    }
+}
+
 window.handleCustomLevelStart = handleCustomLevelStart;
+window.handleCustomLevelPractice = handleCustomLevelPractice;
 window.showCustomLevelGroupsInLibrary = showCustomLevelGroupsInLibrary;
 window.loadCustomLevelGroups = loadCustomLevelGroups;
 window.renderCustomLevelGroups = renderCustomLevelGroups;
