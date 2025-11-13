@@ -649,12 +649,12 @@ def ensure_tts_for_sentence(text: str, language: str, instructions: str | None =
     # Upload directly to S3 (S3 is required - no local disk)
     print(f"🔵 Uploading sentence TTS audio directly to S3 (from memory)...")
     s3_url = upload_tts_audio_bytes(audio, lang, fname, 'tts_sentences')
-        if s3_url:
+    if s3_url:
         print(f"✅ Sentence audio uploaded to S3, returning direct S3 URL")
         return s3_url
-        else:
+    else:
         print(f"❌ S3 upload failed for sentence - S3 is required but upload failed")
-            return None
+        return None
 
 def ensure_tts_for_alphabet_letter(letter: str, language: str, instructions: str | None = None) -> str | None:
     """
