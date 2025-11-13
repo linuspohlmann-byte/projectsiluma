@@ -6394,6 +6394,93 @@ def bug_reports_viewer():
 # _ensure_course_dirs removed - standard levels deactivated
 # Standard level function removed: def api_course_init():
 # Standard level function removed: def api_levels_summary_fs():
+
+@practice_bp.post('/api/practice/start')
+def api_practice_start():
+    """Start a practice session with custom words or level-based words"""
+    try:
+        from server.db_config import get_db_connection, execute_query
+        from server.auth import get_user_id_from_request
+        
+        data = request.get_json(silent=True) or {}
+        language = data.get('language', 'en').strip()
+        custom_words = data.get('custom_words', [])
+        level = data.get('level', 0)
+        exclude_max = data.get('exclude_max', True)
+        
+        user_id = get_user_id_from_request()
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        
+        # Get native language from header or default
+        native_language = request.headers.get('X-Native-Language', 'de').strip()
+        
+        conn = get_db_connection()
+        try:
+            # If custom_words provided, use them directly
+            if custom_words and isinstance(custom_words, list) and len(custom_words) > 0:
+                # Filter words with familiarity 1-4 if exclude_max is True
+                words_to_practice = []
+                for word in custom_words:
+                    if not word or not isinstance(word, str):
+                        continue
+                    word = word.strip()
+                    if not word:
+                        continue
+                    
+                    # Get familiarity for this word
+                    cursor = execute_query(conn, """
+                        SELECT familiarity 
+                        FROM user_word_familiarity 
+                        WHERE user_id = %s AND word = %s AND language = %s AND native_language = %s
+                        LIMIT 1
+                    """, (user_id, word, language, native_language))
+                    row = cursor.fetchone()
+                    
+                    if row:
+                        if isinstance(row, dict):
+                            fam = int(row.get('familiarity', 0) or 0)
+                        else:
+                            fam = int(row[0] or 0)
+                    else:
+                        fam = 0  # Unknown word
+                    
+                    # Include if exclude_max is False or familiarity is 1-4
+                    if not exclude_max or (fam >= 1 and fam <= 4):
+                        words_to_practice.append(word)
+                
+                if not words_to_practice:
+                    return jsonify({
+                        'success': False,
+                        'error': 'No words available for practice'
+                    }), 400
+                
+                # Return first word and practice session info
+                return jsonify({
+                    'success': True,
+                    'word': words_to_practice[0],
+                    'remaining': len(words_to_practice) - 1,
+                    'seen': 0,
+                    'total': len(words_to_practice),
+                    'language': language,
+                    'run_id': None  # No run_id for custom word practice
+                })
+            else:
+                # No custom words - return error
+                return jsonify({
+                    'success': False,
+                    'error': 'No words provided for practice'
+                }), 400
+                
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"Error starting practice: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @levels_bp.post('/api/language/validate')
 def api_language_validate():
     """Validate and add a new language through AI"""
