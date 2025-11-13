@@ -1608,10 +1608,60 @@ async function startSmartPractice(){
     }
     // Check for story overview (all stories visible)
     else if(isStoryOverview){
-      console.log(`🎯 Practice from story overview - all learning words`);
+      console.log(`🎯 Practice from story overview - all learning words from all stories`);
       // Get all words from all stories that user is learning (familiarity 1-4)
-      // This will be handled by the fallback standard level logic below
-      // which uses CURRENT_VIEW_WORD_MAP that includes all words
+      const headers = { 'Content-Type': 'application/json' };
+      if (window.authManager && window.authManager.isAuthenticated()) {
+        Object.assign(headers, window.authManager.getAuthHeaders());
+      }
+      
+      try{
+        // Fetch all custom level groups
+        const r = await fetch('/api/custom-level-groups/summary', { headers });
+        const js = await r.json();
+        if(js && js.success && Array.isArray(js.groups)){
+          const allWords = new Set();
+          const targetLang = $('#target-lang')?.value || 'en';
+          const nativeLang = localStorage.getItem('siluma_native') || 'de';
+          
+          // Fetch words from all levels in all groups
+          for(const group of js.groups){
+            const groupId = group.id || group.group_id;
+            if(!groupId) continue;
+            
+            // Fetch words from all 10 levels in this group
+            for(let levelNum = 1; levelNum <= 10; levelNum++){
+              try{
+                const levelR = await fetch(`/api/custom-levels/${groupId}/${levelNum}`, { headers });
+                const levelJs = await levelR.json();
+                if(levelJs && levelJs.success && levelJs.items){
+                  levelJs.items.forEach(item => {
+                    if(item.words && Array.isArray(item.words)){
+                      item.words.forEach(word => {
+                        if(word && word.trim()) allWords.add(word.trim());
+                      });
+                    }
+                  });
+                }
+              }catch(_){}
+            }
+          }
+          
+          // Get familiarity for each word and filter 1-4
+          for(const word of allWords){
+            try{
+              const fam = await getWordFamiliarity(word, targetLang, nativeLang);
+              if(fam >= 1 && fam <= 4){
+                practiceCandidates.push(word);
+              }
+            }catch(_){}
+          }
+          
+          scopeLabel = 'Stories';
+        }
+      }catch(e){
+        console.error('Error fetching story overview words:', e);
+      }
     }
     
     // Fallback: Standard level logic (Quick Access or Story Overview)
