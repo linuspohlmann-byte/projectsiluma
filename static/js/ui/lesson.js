@@ -1929,7 +1929,21 @@ async function submitAnswer(){
     // progress for MC
     setProgress(RUN.idx+1, RUN.queue?.length||RUN.items.length);
     RUN.answered=true;
-    const btn=$('#check'); if(btn){ btn.textContent=window.t ? window.t('buttons.continue', 'Weiter') : 'Weiter'; btn.onclick=nextItem; btn.disabled=false; btn.style.opacity='1'; btn.classList.add('continue'); btn.classList.remove('ready'); }
+    const btn=$('#check'); if(btn){ 
+      btn.textContent=window.t ? window.t('buttons.continue', 'Weiter') : 'Weiter'; 
+      btn.onclick=nextItem; 
+      btn.disabled=false; 
+      btn.style.opacity='1'; 
+      btn.classList.remove('ready'); 
+      // Color button based on correctness
+      if(correct) {
+        btn.classList.add('continue');
+        btn.classList.remove('incorrect');
+      } else {
+        btn.classList.add('incorrect');
+        btn.classList.remove('continue');
+      }
+    }
     
     // NEW: Preload next task immediately after answer submission (non-blocking)
     const nextTaskIndex = RUN.idx + 1;
@@ -1990,7 +2004,22 @@ async function submitAnswer(){
       box.classList.add(ok ? 'success' : 'error');
       box.innerHTML = (ok ? (window.t ? window.t('results.correct', 'Richtig') : 'Richtig') : (window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch')) + ` <i>${escapeHtml(translation)}</i>`; 
     }
-    const btnNext=$('#check'); if(btnNext){ const continueLabel = tt('buttons.continue', 'Continue'); btnNext.textContent=continueLabel; btnNext.disabled=false; btnNext.style.opacity='1'; btnNext.classList.add('continue'); btnNext.classList.remove('ready'); btnNext.onclick=nextItem; }
+    const btnNext=$('#check'); if(btnNext){ 
+      const continueLabel = tt('buttons.continue', 'Continue'); 
+      btnNext.textContent=continueLabel; 
+      btnNext.disabled=false; 
+      btnNext.style.opacity='1'; 
+      btnNext.classList.remove('ready'); 
+      // Color button based on correctness
+      if(ok) {
+        btnNext.classList.add('continue');
+        btnNext.classList.remove('incorrect');
+      } else {
+        btnNext.classList.add('incorrect');
+        btnNext.classList.remove('continue');
+      }
+      btnNext.onclick=nextItem; 
+    }
     
     // NEW: Preload next task immediately after answer submission (non-blocking)
     const nextTaskIndex = RUN.idx + 1;
@@ -2156,7 +2185,23 @@ async function submitAnswer(){
     }catch(_){}
 
     RUN.answered=true;
-    const btn2=$('#check'); if(btn2){ const continueLabel2 = tt('buttons.continue', 'Continue'); btn2.textContent=continueLabel2; btn2.onclick=nextItem; btn2.disabled=false; btn2.style.opacity='1'; btn2.classList.add('continue'); btn2.classList.remove('ready'); }
+    const btn2=$('#check'); if(btn2){ 
+      const continueLabel2 = tt('buttons.continue', 'Continue'); 
+      btn2.textContent=continueLabel2; 
+      btn2.onclick=nextItem; 
+      btn2.disabled=false; 
+      btn2.style.opacity='1'; 
+      btn2.classList.remove('ready'); 
+      // Color button based on correctness (similarity >= 0.75)
+      const passed = res.similarity >= 0.75;
+      if(passed) {
+        btn2.classList.add('continue');
+        btn2.classList.remove('incorrect');
+      } else {
+        btn2.classList.add('incorrect');
+        btn2.classList.remove('continue');
+      }
+    }
     
     // NEW: Preload next task immediately after answer submission (non-blocking)
     const nextTaskIndex = RUN.idx + 1;
