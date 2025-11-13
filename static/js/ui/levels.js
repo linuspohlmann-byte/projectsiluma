@@ -1419,13 +1419,17 @@ async function updateHeaderStatsForLevelSet(levels){
 
 function updatePracticeButtonState(){
   const practiceBtn = document.getElementById('smart-practice-btn');
-  if(!practiceBtn) return;
+  if(!practiceBtn) {
+    console.log('⚠️ updatePracticeButtonState: practice button not found');
+    return;
+  }
   let available = false;
   CURRENT_VIEW_WORD_MAP.forEach((info) => {
     const fam = Number(info?.familiarity ?? 0);
     if(fam < 5) available = true;
   });
   practiceBtn.disabled = !available;
+  console.log(`🔗 Practice button state updated: disabled=${practiceBtn.disabled}, available=${available}, wordMapSize=${CURRENT_VIEW_WORD_MAP.size}`);
 }
 
 function updatePracticeActionLabels(){
@@ -1488,16 +1492,38 @@ export function bindPracticeActionButtons(){
   const practiceBtn = document.getElementById('smart-practice-btn');
   console.log('🔗 Practice button element:', practiceBtn);
   console.log('🔗 Practice button dataset.bound:', practiceBtn?.dataset.bound);
+  console.log('🔗 Practice button disabled:', practiceBtn?.disabled);
+  console.log('🔗 Practice button style.display:', practiceBtn ? getComputedStyle(practiceBtn).display : 'N/A');
+  console.log('🔗 Practice button onclick:', practiceBtn?.onclick);
+  console.log('🔗 Practice button event listeners:', practiceBtn ? (practiceBtn.onclick ? 'has onclick' : 'no onclick') : 'N/A');
+  
   if(practiceBtn && !practiceBtn.dataset.bound){
     console.log('🔗 Adding click listener to practice button...');
+    // Remove any existing onclick handler first
+    practiceBtn.onclick = null;
+    // Use capture phase to ensure we catch the event early
     practiceBtn.addEventListener('click', (e) => {
       console.log('🔗 Practice button clicked!', e);
+      e.preventDefault();
+      e.stopPropagation();
       startSmartPractice();
-    });
+    }, true); // Use capture phase
     practiceBtn.dataset.bound = 'true';
     console.log('✅ Practice button bound successfully');
   } else {
     console.log('⚠️ Practice button not found or already bound:', practiceBtn ? (practiceBtn.dataset.bound ? 'already bound' : 'found but not bound') : 'not found');
+    // If already bound, try to rebind anyway (in case binding failed)
+    if(practiceBtn && practiceBtn.dataset.bound){
+      console.log('🔄 Button already bound, but checking if click handler works...');
+      // Test if click handler exists
+      const testClick = () => {
+        console.log('🔗 Test click triggered - handler exists');
+        startSmartPractice();
+      };
+      practiceBtn.onclick = testClick;
+      practiceBtn.addEventListener('click', testClick, true);
+      console.log('🔄 Added additional click handler');
+    }
   }
 
   updatePracticeButtonState();
