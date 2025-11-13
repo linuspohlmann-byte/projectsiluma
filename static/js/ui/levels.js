@@ -1692,12 +1692,15 @@ async function startSmartPractice(){
       console.log(`🔍 No custom level context detected, using fallback logic`);
       const levels = [];
       if(SELECTED_LEVEL_GROUP){
+        console.log(`🔍 Using selected level group:`, SELECTED_LEVEL_GROUP);
         for(let lvl = SELECTED_LEVEL_GROUP.start; lvl <= SELECTED_LEVEL_GROUP.end; lvl += 1){
           levels.push(lvl);
         }
         scopeLabel = SELECTED_LEVEL_GROUP.name || 'group';
       }else{
+        console.log(`🔍 No selected level group, using all groups`);
         const groups = ensureLevelGroups();
+        console.log(`🔍 Found ${groups.length} level groups`);
         groups.forEach(group => {
           for(let lvl = group.start; lvl <= group.end; lvl += 1){
             levels.push(lvl);
@@ -1706,7 +1709,10 @@ async function startSmartPractice(){
         scopeLabel = 'course';
       }
 
+      console.log(`🔍 Collected ${levels.length} levels for practice`);
+
       if(!levels.length){
+        console.warn('⚠️ No levels found for practice');
         const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
           ? window.t('practice.no_completed_level', 'Kein abgeschlossenes Level gefunden')
           : 'Kein abgeschlossenes Level gefunden';
@@ -1714,35 +1720,50 @@ async function startSmartPractice(){
         return;
       }
 
+      console.log(`🔍 Loading bulk data for ${levels.length} levels...`);
       await ensureBulkDataForLevels(levels);
       const { wordMap } = computeWordStatsForLevels(levels);
       CURRENT_VIEW_WORD_MAP = wordMap;
       updatePracticeButtonState();
 
+      console.log(`🔍 Word map contains ${wordMap.size} words`);
+      let checkedWords = 0;
       CURRENT_VIEW_WORD_MAP.forEach(({ word, familiarity }) => {
         if(!word) return;
+        checkedWords++;
         const fam = Number(familiarity ?? 0);
         // Filter: only familiarity 1-4 (learning words, not unknown or memorized)
         if(fam >= 1 && fam <= 4){
           practiceCandidates.push(word);
         }
       });
+      console.log(`🔍 Checked ${checkedWords} words, found ${practiceCandidates.length} with familiarity 1-4`);
     }
 
+    console.log(`🎯 Practice candidates collected: ${practiceCandidates.length} words (scope: ${scopeLabel})`);
+    
     if(!practiceCandidates.length){
+      console.warn('⚠️ No practice candidates found');
       const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
         ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)')
         : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
       alert(msg);
+      if(practiceBtn){
+        practiceBtn.disabled = false;
+      }
       return;
     }
 
     console.log(`🎯 Starting practice with ${practiceCandidates.length} words (scope: ${scopeLabel})`);
+    console.log(`🎯 First 5 words:`, practiceCandidates.slice(0, 5));
     
     if(typeof window.startPracticeWithWordList === 'function'){
+      console.log('✅ Calling startPracticeWithWordList...');
       await window.startPracticeWithWordList(practiceCandidates, scopeLabel);
+      console.log('✅ startPracticeWithWordList completed');
     }else{
       console.error('❌ startPracticeWithWordList helper is not available. Practice module may not be initialized.');
+      console.error('❌ Available window functions:', Object.keys(window).filter(k => k.includes('Practice')));
       alert('Practice-Modul nicht verfügbar. Bitte Seite neu laden.');
     }
   }catch(error){
