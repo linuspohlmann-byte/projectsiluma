@@ -2181,6 +2181,11 @@ export function showTab(tab){
     }
     
     // Original tab handling for legacy tabs
+    // Completely reset level UI when switching away from lesson
+    if(tab !== 'lesson' && typeof window.resetLevelUI === 'function') {
+        window.resetLevelUI();
+    }
+    
     // hide all views including practice (words-card removed - now a modern tab)
     ['#levels-card','#lesson','#lesson-container','#evaluation-card','#practice-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
     // hide level tooltip as well
