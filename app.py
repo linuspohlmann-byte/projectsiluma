@@ -2035,6 +2035,9 @@ def api_alphabet_tts():
             print(f"❌ TTS generation failed for letter '{letter}' in language '{language}'")
             return jsonify({'success': False, 'error': 'TTS generation failed'}), 500
         
+        # Convert S3 URL to proxy URL to avoid CORS issues
+        audio_url = convert_s3_url_to_proxy_url(audio_url)
+        
         return jsonify({'success': True, 'audio_url': audio_url})
         
     except Exception as e:
