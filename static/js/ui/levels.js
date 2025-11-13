@@ -1507,6 +1507,9 @@ async function startSmartPractice(){
     
     // Check for specific custom level (level card clicked or practice button clicked)
     const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
+    console.log(`🔍 Context detection - activeLevelCard:`, activeLevelCard ? 'found' : 'not found', 
+                `isCustomLevelView:`, isCustomLevelView, 
+                `isStoryOverview:`, isStoryOverview);
     if(activeLevelCard){
       const groupId = parseInt(activeLevelCard.dataset.customGroupId);
       const levelNumber = parseInt(activeLevelCard.dataset.level);
@@ -1667,6 +1670,7 @@ async function startSmartPractice(){
     
     // Fallback: Standard level logic (Quick Access or Story Overview)
     if(practiceCandidates.length === 0){
+      console.log(`🔍 No custom level context detected, using fallback logic`);
       const levels = [];
       if(SELECTED_LEVEL_GROUP){
         for(let lvl = SELECTED_LEVEL_GROUP.start; lvl <= SELECTED_LEVEL_GROUP.end; lvl += 1){
@@ -1714,10 +1718,13 @@ async function startSmartPractice(){
       return;
     }
 
+    console.log(`🎯 Starting practice with ${practiceCandidates.length} words (scope: ${scopeLabel})`);
+    
     if(typeof window.startPracticeWithWordList === 'function'){
       await window.startPracticeWithWordList(practiceCandidates, scopeLabel);
     }else{
-      console.warn('startPracticeWithWordList helper is not available.');
+      console.error('❌ startPracticeWithWordList helper is not available. Practice module may not be initialized.');
+      alert('Practice-Modul nicht verfügbar. Bitte Seite neu laden.');
     }
   }catch(error){
     console.error('Error starting smart practice:', error);
