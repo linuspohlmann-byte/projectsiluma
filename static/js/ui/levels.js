@@ -1535,6 +1535,18 @@ async function startSmartPractice(){
     const isCustomLevelView = levelsContainer && getComputedStyle(levelsContainer).display !== 'none';
     const isStoryOverview = groupsContainer && getComputedStyle(groupsContainer).display !== 'none';
     
+    console.log('🔍 Container visibility check:');
+    console.log('  - levelsContainer:', levelsContainer ? 'found' : 'not found');
+    console.log('  - groupsContainer:', groupsContainer ? 'found' : 'not found');
+    if(levelsContainer) {
+      console.log('  - levelsContainer display:', getComputedStyle(levelsContainer).display);
+    }
+    if(groupsContainer) {
+      console.log('  - groupsContainer display:', getComputedStyle(groupsContainer).display);
+    }
+    console.log('  - isCustomLevelView:', isCustomLevelView);
+    console.log('  - isStoryOverview:', isStoryOverview);
+    
     // Check for specific custom level (level card clicked or practice button clicked)
     const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
     console.log(`🔍 Context detection - activeLevelCard:`, activeLevelCard ? 'found' : 'not found', 
@@ -1658,9 +1670,12 @@ async function startSmartPractice(){
       
       try{
         // Fetch all custom level groups
+        console.log('🔍 Fetching custom level groups summary...');
         const r = await fetch('/api/custom-level-groups/summary', { headers });
         const js = await r.json();
+        console.log('🔍 Custom level groups response:', js);
         if(js && js.success && Array.isArray(js.groups)){
+          console.log(`🔍 Found ${js.groups.length} custom level groups`);
           const allWords = new Set();
           const targetLang = $('#target-lang')?.value || 'en';
           const nativeLang = localStorage.getItem('siluma_native') || 'de';
