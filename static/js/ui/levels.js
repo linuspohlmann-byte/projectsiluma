@@ -1590,209 +1590,44 @@ async function startSmartPractice(){
     console.log('  - isCustomLevelView:', isCustomLevelView);
     console.log('  - isStoryOverview:', isStoryOverview);
     
-    // Check for specific custom level (level card clicked or practice button clicked)
-    const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
-    console.log(`🔍 Context detection - activeLevelCard:`, activeLevelCard ? 'found' : 'not found', 
-                `isCustomLevelView:`, isCustomLevelView, 
-                `isStoryOverview:`, isStoryOverview);
-    if(activeLevelCard){
-      const groupIdStr = activeLevelCard.dataset.customGroupId;
-      const levelNumberStr = activeLevelCard.dataset.level;
-      const groupId = groupIdStr ? parseInt(groupIdStr, 10) : NaN;
-      const levelNumber = levelNumberStr ? parseInt(levelNumberStr, 10) : NaN;
-      
-      console.log(`🔍 Parsed IDs - groupId: ${groupId}, levelNumber: ${levelNumber} (from "${groupIdStr}", "${levelNumberStr}")`);
-      
-      if(!isNaN(groupId) && !isNaN(levelNumber) && groupId > 0 && levelNumber > 0){
-        console.log(`🎯 Practice for specific custom level: group ${groupId}, level ${levelNumber}`);
-        // Fetch words from this specific level
-        const headers = { 'Content-Type': 'application/json' };
-        if (window.authManager && window.authManager.isAuthenticated()) {
-          Object.assign(headers, window.authManager.getAuthHeaders());
-        }
-        
-        try{
-          const r = await fetch(`/api/custom-levels/${groupId}/${levelNumber}`, { headers });
-          const js = await r.json();
-          if(js && js.success && js.items){
-            // Extract all words from level items
-            const allWords = new Set();
-            js.items.forEach(item => {
-              if(item.words && Array.isArray(item.words)){
-                item.words.forEach(word => {
-                  if(word && word.trim()) allWords.add(word.trim());
-                });
-              }
-            });
-            
-            // Get familiarity for each word and filter 1-4
-            const targetLang = $('#target-lang')?.value || 'en';
-            const nativeLang = localStorage.getItem('siluma_native') || 'de';
-            
-            for(const word of allWords){
-              try{
-                const fam = await getWordFamiliarity(word, targetLang, nativeLang);
-                if(fam >= 1 && fam <= 4){
-                  practiceCandidates.push(word);
-                }
-              }catch(_){}
-            }
-            
-            scopeLabel = `Level ${levelNumber}`;
-          }
-        }catch(e){
-          console.error('Error fetching custom level words:', e);
-        }
-      }
-    }
-    // Check for custom level group view (all levels visible for a story)
-    else if(isCustomLevelView){
-      const firstLevelCard = document.querySelector('.level-card[data-custom-group-id]');
-      if(firstLevelCard){
-        const groupIdStr = firstLevelCard.dataset.customGroupId;
-        const groupId = groupIdStr ? parseInt(groupIdStr, 10) : NaN;
-        
-        console.log(`🔍 Custom level group view - groupId: ${groupId} (from "${groupIdStr}")`);
-        
-        if(!isNaN(groupId) && groupId > 0){
-          console.log(`🎯 Practice for custom level group (story): ${groupId}`);
-          // Fetch words from all levels in this group
-          const headers = { 'Content-Type': 'application/json' };
-          if (window.authManager && window.authManager.isAuthenticated()) {
-            Object.assign(headers, window.authManager.getAuthHeaders());
-          }
-          
-          try{
-            // Get all levels for this group (typically 1-10)
-            const allWords = new Set();
-            const targetLang = $('#target-lang')?.value || 'en';
-            const nativeLang = localStorage.getItem('siluma_native') || 'de';
-            
-            // Fetch words from all 10 levels
-            for(let levelNum = 1; levelNum <= 10; levelNum++){
-              try{
-                const r = await fetch(`/api/custom-levels/${groupId}/${levelNum}`, { headers });
-                const js = await r.json();
-                if(js && js.success && js.items){
-                  js.items.forEach(item => {
-                    if(item.words && Array.isArray(item.words)){
-                      item.words.forEach(word => {
-                        if(word && word.trim()) allWords.add(word.trim());
-                      });
-                    }
-                  });
-                }
-              }catch(_){}
-            }
-            
-            // Get familiarity for each word and filter 1-4
-            for(const word of allWords){
-              try{
-                const fam = await getWordFamiliarity(word, targetLang, nativeLang);
-                if(fam >= 1 && fam <= 4){
-                  practiceCandidates.push(word);
-                }
-              }catch(_){}
-            }
-            
-            scopeLabel = 'Story';
-          }catch(e){
-            console.error('Error fetching custom group words:', e);
-          }
-        }
-      }
-    }
-    // Check for story overview (all stories visible)
-    else if(isStoryOverview){
-      console.log(`🎯 Practice from story overview - all learning words from all stories`);
-      // Get all words from all stories that user is learning (familiarity 1-4)
-      const headers = { 'Content-Type': 'application/json' };
-      if (window.authManager && window.authManager.isAuthenticated()) {
-        Object.assign(headers, window.authManager.getAuthHeaders());
-      }
-      
-      try{
-        // Fetch all custom level groups
-        console.log('🔍 Fetching custom level groups summary...');
-        const r = await fetch('/api/custom-level-groups/summary', { headers });
-        const js = await r.json();
-        console.log('🔍 Custom level groups response:', js);
-        if(js && js.success && Array.isArray(js.groups)){
-          console.log(`🔍 Found ${js.groups.length} custom level groups`);
-          const allWords = new Set();
-          const targetLang = $('#target-lang')?.value || 'en';
-          const nativeLang = localStorage.getItem('siluma_native') || 'de';
-          
-          // Fetch words from all levels in all groups
-          for(const group of js.groups){
-            const groupIdRaw = group.id || group.group_id;
-            const groupId = groupIdRaw ? parseInt(String(groupIdRaw), 10) : NaN;
-            if(isNaN(groupId) || groupId <= 0) continue;
-            
-            // Fetch words from all 10 levels in this group
-            for(let levelNum = 1; levelNum <= 10; levelNum++){
-              try{
-                const levelR = await fetch(`/api/custom-levels/${groupId}/${levelNum}`, { headers });
-                const levelJs = await levelR.json();
-                if(levelJs && levelJs.success && levelJs.items){
-                  levelJs.items.forEach(item => {
-                    if(item.words && Array.isArray(item.words)){
-                      item.words.forEach(word => {
-                        if(word && word.trim()) allWords.add(word.trim());
-                      });
-                    }
-                  });
-                }
-              }catch(_){}
-            }
-          }
-          
-          // Get familiarity for each word and filter 1-4
-          for(const word of allWords){
-            try{
-              const fam = await getWordFamiliarity(word, targetLang, nativeLang);
-              if(fam >= 1 && fam <= 4){
-                practiceCandidates.push(word);
-              }
-            }catch(_){}
-          }
-          
-          scopeLabel = 'Stories';
-        }
-      }catch(e){
-        console.error('Error fetching story overview words:', e);
-      }
+    // Use /api/words/learning API for all contexts (same as words tab)
+    // This API already filters by familiarity 1-4
+    const targetLang = $('#target-lang')?.value || 'en';
+    const headers = { 'Content-Type': 'application/json' };
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      Object.assign(headers, window.authManager.getAuthHeaders());
     }
     
-    // Fallback: Standard level logic or Quick Access (all words with familiarity 1-4)
-    if(practiceCandidates.length === 0){
-      console.log(`🔍 No custom level context detected, using fallback logic`);
-      
-      // If we're in story overview or quick access (not in a specific level group view),
-      // fetch all words with familiarity 1-4 from the course language directly
-      if(isStoryOverview || (!SELECTED_LEVEL_GROUP && !isCustomLevelView)){
-        console.log(`🎯 Quick Access / Story Overview: Fetching all words with familiarity 1-4 from course language`);
-        const targetLang = $('#target-lang')?.value || 'en';
-        const headers = { 'Content-Type': 'application/json' };
-        if (window.authManager && window.authManager.isAuthenticated()) {
-          Object.assign(headers, window.authManager.getAuthHeaders());
-        }
-        
-        try{
-          // Fetch words with familiarity 1-4 directly from API
-          const response = await fetch(`/api/words/learning?language=${encodeURIComponent(targetLang)}&min_familiarity=1&max_familiarity=4&limit=1000`, { headers });
-          const js = await response.json();
-          if(js && js.success && Array.isArray(js.words)){
-            practiceCandidates = js.words.map(w => w.word || w).filter(Boolean);
-            scopeLabel = isStoryOverview ? 'Stories' : 'Course';
-            console.log(`✅ Found ${practiceCandidates.length} words with familiarity 1-4 from API`);
-          } else {
-            console.warn('⚠️ API did not return words:', js);
-          }
-        }catch(e){
-          console.error('Error fetching words from API:', e);
-        }
+    // Determine scope label based on context
+    if(activeLevelCard){
+      const levelNumberStr = activeLevelCard.dataset.level;
+      scopeLabel = levelNumberStr ? `Level ${levelNumberStr}` : 'Level';
+    } else if(isCustomLevelView){
+      scopeLabel = 'Story';
+    } else if(isStoryOverview){
+      scopeLabel = 'Stories';
+    } else {
+      scopeLabel = 'Course';
+    }
+    
+    try{
+      // Fetch words with familiarity 1-4 directly from API (same approach as words tab)
+      console.log(`🎯 Fetching words with familiarity 1-4 from API (scope: ${scopeLabel})`);
+      const response = await fetch(`/api/words/learning?language=${encodeURIComponent(targetLang)}&min_familiarity=1&max_familiarity=4&limit=1000`, { headers });
+      const js = await response.json();
+      if(js && js.success && Array.isArray(js.words)){
+        practiceCandidates = js.words.map(w => w.word || w).filter(Boolean);
+        console.log(`✅ Found ${practiceCandidates.length} words with familiarity 1-4 from API`);
       } else {
+        console.warn('⚠️ API did not return words:', js);
+      }
+    }catch(e){
+      console.error('Error fetching words from API:', e);
+    }
+    
+    // Fallback: Standard level logic (only if no words found and in level group view)
+    if(practiceCandidates.length === 0 && SELECTED_LEVEL_GROUP && !isStoryOverview && !isCustomLevelView){
+      console.log(`🔍 No words from API, using standard level group logic`);
         // Standard level group logic (only if in a specific level group view)
         console.log(`🔍 Using standard level group logic`);
         const levels = [];
