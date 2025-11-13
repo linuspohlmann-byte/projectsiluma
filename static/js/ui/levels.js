@@ -2097,11 +2097,21 @@ export function showTab(tab){
     
     // Handle new navigation tabs
     if (['library', 'browse', 'settings', 'courses', 'words'].includes(tab)) {
-        // Hide legacy single-view screens but keep the tab container visible
-        ['#lesson','#evaluation-card','#practice-card'].forEach(id=>{ 
-            const el=$(id); 
-            if(el) el.style.display='none'; 
-        });
+        // Completely reset level UI when switching away from lesson
+        if (typeof window.resetLevelUI === 'function') {
+            window.resetLevelUI();
+        } else {
+            // Fallback: Hide legacy single-view screens
+            ['#lesson','#lesson-container','#evaluation-card','#practice-card'].forEach(id=>{ 
+                const el=$(id); 
+                if(el) el.style.display='none'; 
+            });
+            // Reset Word Details Panel
+            const wordDetailsPanel = document.getElementById('word-details-panel');
+            if(wordDetailsPanel) {
+                wordDetailsPanel.innerHTML = '';
+            }
+        }
         const levelsCard = document.getElementById('levels-card');
         if(levelsCard) levelsCard.style.display='';
         

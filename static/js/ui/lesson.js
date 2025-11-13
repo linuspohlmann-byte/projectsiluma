@@ -2674,14 +2674,66 @@ function startLevelWithTopic(lvl,topic,reuse=false){
     startLevel(lvl); 
 }
 
+// Completely reset and clean up all level UI elements
+function resetLevelUI(){
+  console.log('🧹 Resetting level UI...');
+  
+  // Hide lesson containers
+  const les = document.getElementById('lesson');
+  if(les) les.style.display='none';
+  
+  const lessonContainer = document.getElementById('lesson-container');
+  if(lessonContainer) lessonContainer.style.display='none';
+  
+  // Reset Word Details Panel
+  const wordDetailsPanel = document.getElementById('word-details-panel');
+  if(wordDetailsPanel) {
+    wordDetailsPanel.innerHTML = ''; // Clear content
+  }
+  
+  // Reset RUN state
+  RUN = { 
+    id: null, 
+    items: [], 
+    idx: 0, 
+    target: $('#target-lang')?.value || 'en', 
+    native: localStorage.getItem('siluma_native') || 'de', 
+    answered: false, 
+    queue: [], 
+    selectedOption: null, 
+    mcCorrect: 0, 
+    mcTotal: 0,
+    sbCorrect: 0,
+    sbTotal: 0,
+    _customGroupId: null,
+    _customLevelNumber: null,
+    _customLevelData: null
+  };
+  
+  if(typeof window !== 'undefined'){ 
+    window.RUN = RUN; 
+    window._mc_ratio = null; 
+    window._mc_inject = false;
+    window._sb_ratio = null;
+    window._sb_inject = false;
+  }
+  
+  // Reset progress
+  setProgress(0, 1);
+  
+  // Hide loader if visible
+  if(typeof window.hideLoader === 'function') {
+    window.hideLoader();
+  }
+  
+  console.log('✅ Level UI reset complete');
+}
+
 function abortLevel(){
   if(!confirm('Level wirklich abbrechen? Fortschritt in diesem Durchlauf geht verloren.')) return;
-  const les=document.getElementById('lesson'); if(les) les.style.display='none';
-  const lessonContainer=document.getElementById('lesson-container'); if(lessonContainer) lessonContainer.style.display='none';
-  const levels=document.getElementById('levels-card'); if(levels) levels.style.display='';
-  RUN = { id:null, items:[], idx:0, target: $('#target-lang')?.value||'en', native: localStorage.getItem('siluma_native')||'de', answered:false, queue:[], selectedOption:null, mcCorrect:0, mcTotal:0 };
-  if(typeof window!=='undefined'){ window.RUN = RUN; window._mc_ratio = null; window._mc_inject = false; }
-  setProgress(0,1);
+  resetLevelUI();
+  const levels = document.getElementById('levels-card');
+  if(levels) levels.style.display='';
 }
 
 export function initLesson(){
@@ -2733,4 +2785,5 @@ if(typeof window!=='undefined'){
   window.startLevelWithTopic = startLevelWithTopic;
   window.startLevel = startLevel;
   window.abortLevel = abortLevel;
+  window.resetLevelUI = resetLevelUI; // Export for use in showTab
 }
