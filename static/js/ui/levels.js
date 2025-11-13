@@ -1764,57 +1764,87 @@ async function startSmartPractice(){
       }
     }
     
-    // Fallback: Standard level logic (Quick Access or Story Overview)
+    // Fallback: Standard level logic or Quick Access (all words with familiarity 1-4)
     if(practiceCandidates.length === 0){
       console.log(`🔍 No custom level context detected, using fallback logic`);
-      const levels = [];
-      if(SELECTED_LEVEL_GROUP){
-        console.log(`🔍 Using selected level group:`, SELECTED_LEVEL_GROUP);
-        for(let lvl = SELECTED_LEVEL_GROUP.start; lvl <= SELECTED_LEVEL_GROUP.end; lvl += 1){
-          levels.push(lvl);
+      
+      // If we're in story overview or quick access (not in a specific level group view),
+      // fetch all words with familiarity 1-4 from the course language directly
+      if(isStoryOverview || (!SELECTED_LEVEL_GROUP && !isCustomLevelView)){
+        console.log(`🎯 Quick Access / Story Overview: Fetching all words with familiarity 1-4 from course language`);
+        const targetLang = $('#target-lang')?.value || 'en';
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.authManager && window.authManager.isAuthenticated()) {
+          Object.assign(headers, window.authManager.getAuthHeaders());
         }
-        scopeLabel = SELECTED_LEVEL_GROUP.name || 'group';
-      }else{
-        console.log(`🔍 No selected level group, using all groups`);
-        const groups = ensureLevelGroups();
-        console.log(`🔍 Found ${groups.length} level groups`);
-        groups.forEach(group => {
-          for(let lvl = group.start; lvl <= group.end; lvl += 1){
+        
+        try{
+          // Fetch words with familiarity 1-4 directly from API
+          const response = await fetch(`/api/words/learning?language=${encodeURIComponent(targetLang)}&min_familiarity=1&max_familiarity=4&limit=1000`, { headers });
+          const js = await response.json();
+          if(js && js.success && Array.isArray(js.words)){
+            practiceCandidates = js.words.map(w => w.word || w).filter(Boolean);
+            scopeLabel = isStoryOverview ? 'Stories' : 'Course';
+            console.log(`✅ Found ${practiceCandidates.length} words with familiarity 1-4 from API`);
+          } else {
+            console.warn('⚠️ API did not return words:', js);
+          }
+        }catch(e){
+          console.error('Error fetching words from API:', e);
+        }
+      } else {
+        // Standard level group logic (only if in a specific level group view)
+        console.log(`🔍 Using standard level group logic`);
+        const levels = [];
+        if(SELECTED_LEVEL_GROUP){
+          console.log(`🔍 Using selected level group:`, SELECTED_LEVEL_GROUP);
+          for(let lvl = SELECTED_LEVEL_GROUP.start; lvl <= SELECTED_LEVEL_GROUP.end; lvl += 1){
             levels.push(lvl);
           }
-        });
-        scopeLabel = 'course';
-      }
-
-      console.log(`🔍 Collected ${levels.length} levels for practice`);
-
-      if(!levels.length){
-        console.warn('⚠️ No levels found for practice');
-        const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
-          ? window.t('practice.no_completed_level', 'Kein abgeschlossenes Level gefunden')
-          : 'Kein abgeschlossenes Level gefunden';
-        alert(msg);
-        return;
-      }
-
-      console.log(`🔍 Loading bulk data for ${levels.length} levels...`);
-      await ensureBulkDataForLevels(levels);
-      const { wordMap } = computeWordStatsForLevels(levels);
-      CURRENT_VIEW_WORD_MAP = wordMap;
-      updatePracticeButtonState();
-
-      console.log(`🔍 Word map contains ${wordMap.size} words`);
-      let checkedWords = 0;
-      CURRENT_VIEW_WORD_MAP.forEach(({ word, familiarity }) => {
-        if(!word) return;
-        checkedWords++;
-        const fam = Number(familiarity ?? 0);
-        // Filter: only familiarity 1-4 (learning words, not unknown or memorized)
-        if(fam >= 1 && fam <= 4){
-          practiceCandidates.push(word);
+          scopeLabel = SELECTED_LEVEL_GROUP.name || 'group';
+        }else{
+          console.log(`🔍 No selected level group, using all groups`);
+          const groups = ensureLevelGroups();
+          console.log(`🔍 Found ${groups.length} level groups`);
+          groups.forEach(group => {
+            for(let lvl = group.start; lvl <= group.end; lvl += 1){
+              levels.push(lvl);
+            }
+          });
+          scopeLabel = 'course';
         }
-      });
-      console.log(`🔍 Checked ${checkedWords} words, found ${practiceCandidates.length} with familiarity 1-4`);
+
+        console.log(`🔍 Collected ${levels.length} levels for practice`);
+
+        if(!levels.length){
+          console.warn('⚠️ No levels found for practice');
+          const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
+            ? window.t('practice.no_completed_level', 'Kein abgeschlossenes Level gefunden')
+            : 'Kein abgeschlossenes Level gefunden';
+          alert(msg);
+          if(practiceBtn) practiceBtn.disabled = false;
+          return;
+        }
+
+        console.log(`🔍 Loading bulk data for ${levels.length} levels...`);
+        await ensureBulkDataForLevels(levels);
+        const { wordMap } = computeWordStatsForLevels(levels);
+        CURRENT_VIEW_WORD_MAP = wordMap;
+        updatePracticeButtonState();
+
+        console.log(`🔍 Word map contains ${wordMap.size} words`);
+        let checkedWords = 0;
+        CURRENT_VIEW_WORD_MAP.forEach(({ word, familiarity }) => {
+          if(!word) return;
+          checkedWords++;
+          const fam = Number(familiarity ?? 0);
+          // Filter: only familiarity 1-4 (learning words, not unknown or memorized)
+          if(fam >= 1 && fam <= 4){
+            practiceCandidates.push(word);
+          }
+        });
+        console.log(`🔍 Checked ${checkedWords} words, found ${practiceCandidates.length} with familiarity 1-4`);
+      }
     }
 
     console.log(`🎯 Practice candidates collected: ${practiceCandidates.length} words (scope: ${scopeLabel})`);
