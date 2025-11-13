@@ -1406,6 +1406,7 @@ async function updateHeaderStatsForLevelSet(levels){
   const { totalWords, memorizedWords, wordMap } = computeWordStatsForLevels(levels);
   CURRENT_VIEW_WORD_MAP = wordMap;
   updatePracticeButtonState();
+  bindPracticeActionButtons(); // Ensure buttons are bound
   
   // For authenticated users, use the more accurate words data
   if (window.authManager && window.authManager.isAuthenticated()) {
@@ -1455,6 +1456,7 @@ function updatePracticeActionLabels(){
 }
 
 function bindPracticeActionButtons(){
+  console.log('🔗 Binding practice action buttons...');
   updatePracticeActionLabels();
   const alphabetBtn = document.getElementById('alphabet-practice-btn');
   if(alphabetBtn && !alphabetBtn.dataset.bound){
@@ -1477,12 +1479,18 @@ function bindPracticeActionButtons(){
       }
     });
     alphabetBtn.dataset.bound = 'true';
+    console.log('✅ Alphabet button bound');
+  } else {
+    console.log('⚠️ Alphabet button not found or already bound');
   }
 
   const practiceBtn = document.getElementById('smart-practice-btn');
   if(practiceBtn && !practiceBtn.dataset.bound){
     practiceBtn.addEventListener('click', startSmartPractice);
     practiceBtn.dataset.bound = 'true';
+    console.log('✅ Practice button bound');
+  } else {
+    console.log('⚠️ Practice button not found or already bound:', practiceBtn ? 'found but bound' : 'not found');
   }
 
   updatePracticeButtonState();
