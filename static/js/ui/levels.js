@@ -1501,8 +1501,9 @@ async function startSmartPractice(){
     // Detect context: Check if we're in a custom level group context
     const levelsContainer = document.getElementById('levels-container');
     const groupsContainer = document.getElementById('custom-level-groups-container');
-    const isCustomLevelView = levelsContainer && levelsContainer.style.display !== 'none' && levelsContainer.style.display !== '';
-    const isStoryOverview = groupsContainer && groupsContainer.style.display !== 'none' && groupsContainer.style.display !== '';
+    // Check visibility using getComputedStyle for accurate detection
+    const isCustomLevelView = levelsContainer && getComputedStyle(levelsContainer).display !== 'none';
+    const isStoryOverview = groupsContainer && getComputedStyle(groupsContainer).display !== 'none';
     
     // Check for specific custom level (level card clicked or practice button clicked)
     const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
