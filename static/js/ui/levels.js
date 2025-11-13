@@ -1457,6 +1457,7 @@ function updatePracticeActionLabels(){
 
 function bindPracticeActionButtons(){
   console.log('🔗 Binding practice action buttons...');
+  console.log('🔗 Button binding stack trace:', new Error().stack);
   updatePracticeActionLabels();
   const alphabetBtn = document.getElementById('alphabet-practice-btn');
   if(alphabetBtn && !alphabetBtn.dataset.bound){
@@ -1481,16 +1482,22 @@ function bindPracticeActionButtons(){
     alphabetBtn.dataset.bound = 'true';
     console.log('✅ Alphabet button bound');
   } else {
-    console.log('⚠️ Alphabet button not found or already bound');
+    console.log('⚠️ Alphabet button not found or already bound:', alphabetBtn ? (alphabetBtn.dataset.bound ? 'already bound' : 'found but not bound') : 'not found');
   }
 
   const practiceBtn = document.getElementById('smart-practice-btn');
+  console.log('🔗 Practice button element:', practiceBtn);
+  console.log('🔗 Practice button dataset.bound:', practiceBtn?.dataset.bound);
   if(practiceBtn && !practiceBtn.dataset.bound){
-    practiceBtn.addEventListener('click', startSmartPractice);
+    console.log('🔗 Adding click listener to practice button...');
+    practiceBtn.addEventListener('click', (e) => {
+      console.log('🔗 Practice button clicked!', e);
+      startSmartPractice();
+    });
     practiceBtn.dataset.bound = 'true';
-    console.log('✅ Practice button bound');
+    console.log('✅ Practice button bound successfully');
   } else {
-    console.log('⚠️ Practice button not found or already bound:', practiceBtn ? 'found but bound' : 'not found');
+    console.log('⚠️ Practice button not found or already bound:', practiceBtn ? (practiceBtn.dataset.bound ? 'already bound' : 'found but not bound') : 'not found');
   }
 
   updatePracticeButtonState();
