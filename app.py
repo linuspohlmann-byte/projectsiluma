@@ -6408,11 +6408,11 @@ def api_practice_start():
         level = data.get('level', 0)
         exclude_max = data.get('exclude_max', True)
         
-        # Get user_id from context (set by middleware)
-        user_context = get_user_context()
-        user_id = user_context.get('user_id')
-        if not user_id:
+        # Get user_id from context (set by require_auth decorator)
+        user = g.current_user
+        if not user:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        user_id = user['id']
         
         # Get native language from header or default
         native_language = request.headers.get('X-Native-Language', 'de').strip()
@@ -6496,11 +6496,11 @@ def api_practice_grade():
         language = data.get('language', 'en').strip()
         run_id = data.get('run_id')  # May be None for custom words
         
-        # Get user_id from context (set by middleware)
-        user_context = get_user_context()
-        user_id = user_context.get('user_id')
-        if not user_id:
+        # Get user_id from context (set by require_auth decorator)
+        user = g.current_user
+        if not user:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        user_id = user['id']
         
         # Get native language from header or default
         native_language = request.headers.get('X-Native-Language', 'de').strip()
