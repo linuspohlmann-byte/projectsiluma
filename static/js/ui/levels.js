@@ -1423,6 +1423,23 @@ function updatePracticeButtonState(){
     console.log('⚠️ updatePracticeButtonState: practice button not found');
     return;
   }
+  
+  // Check if we're in a custom level group context (stories)
+  // In that case, don't disable the button - startSmartPractice will handle word collection
+  const groupsContainer = document.getElementById('custom-level-groups-container');
+  const isStoryOverview = groupsContainer && getComputedStyle(groupsContainer).display !== 'none';
+  const levelsContainer = document.getElementById('levels-container');
+  const isCustomLevelView = levelsContainer && getComputedStyle(levelsContainer).display !== 'none';
+  
+  if(isStoryOverview || isCustomLevelView){
+    // In story/custom level context, always enable the button
+    // startSmartPractice will collect words from the appropriate context
+    practiceBtn.disabled = false;
+    console.log(`🔗 Practice button enabled (story/custom level context)`);
+    return;
+  }
+  
+  // For standard level groups, check if words are available
   let available = false;
   CURRENT_VIEW_WORD_MAP.forEach((info) => {
     const fam = Number(info?.familiarity ?? 0);
