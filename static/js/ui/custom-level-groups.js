@@ -211,6 +211,11 @@ function showCustomLevelGroupsInLibrary() {
     // Load and render custom groups
     loadCustomLevelGroups().then(() => {
         renderCustomLevelGroups();
+        // Ensure practice buttons are bound after custom groups are rendered
+        if (typeof window.bindPracticeActionButtons === 'function') {
+            window.bindPracticeActionButtons();
+            console.log('✅ Practice buttons bound after showing custom groups');
+        }
     });
 }
 
