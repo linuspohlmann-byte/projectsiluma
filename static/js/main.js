@@ -99,6 +99,21 @@ export async function initializeAppContent() {
   // Initialize navigation tabs to return to library home
   initNavigationHomeButtons();
 
+  // Bind practice action buttons after everything is initialized
+  // Import bindPracticeActionButtons from levels.js
+  try {
+    const { bindPracticeActionButtons } = await import('./ui/levels.js');
+    if (typeof bindPracticeActionButtons === 'function') {
+      // Wait a bit for DOM to be ready
+      setTimeout(() => {
+        bindPracticeActionButtons();
+        console.log('✅ Practice action buttons bound on app init');
+      }, 500);
+    }
+  } catch (error) {
+    console.warn('⚠️ Could not bind practice buttons on init:', error);
+  }
+
   // Legacy-API for inline code
   if(typeof window !== 'undefined'){
     window.showTab = showTab;

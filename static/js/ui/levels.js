@@ -1455,7 +1455,7 @@ function updatePracticeActionLabels(){
   }
 }
 
-function bindPracticeActionButtons(){
+export function bindPracticeActionButtons(){
   console.log('🔗 Binding practice action buttons...');
   console.log('🔗 Button binding stack trace:', new Error().stack);
   updatePracticeActionLabels();
@@ -3817,6 +3817,7 @@ if (typeof window !== 'undefined'){
   window.updateLevelGroupLabels = updateLevelGroupLabels;
   window.showLevelGroupsHome = showLevelGroupsHome;
   window.updatePracticeActionLabels = updatePracticeActionLabels;
+  window.bindPracticeActionButtons = bindPracticeActionButtons;
   window.startSmartPractice = startSmartPractice;
   window.showLevelLockedMessage = showLevelLockedMessage;
   window.hideLevelLockedMessage = hideLevelLockedMessage;
