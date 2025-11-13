@@ -7,7 +7,8 @@ const $$ = (sel)=> Array.from(document.querySelectorAll(sel));
 let AB = {
   letters: [], target: 'en', native: 'de',
   needed: 2, attempts: 0, correct: 0,
-  roundTimer: null, timePerRoundMs: 10000, current: null
+  roundTimer: null, timePerRoundMs: 10000, current: null,
+  answerTimeout: null // Track setTimeout for answer delay
 };
 
 // Local fallback alphabet generator for supported languages
@@ -150,14 +151,37 @@ async function renderRound(){
   if(AB.roundTimer){ clearInterval(AB.roundTimer); AB.roundTimer=null; }
   const start = Date.now();
   AB.roundTimer = setInterval(()=>{
+    // Check if practice was cancelled
+    const abCard = document.getElementById('alphabet-card');
+    if(!abCard || abCard.style.display === 'none'){
+      clearInterval(AB.roundTimer);
+      AB.roundTimer = null;
+      return;
+    }
+    
     const dt = Date.now()-start; const left = Math.max(0, AB.timePerRoundMs - dt);
     const pct = Math.round(left/AB.timePerRoundMs*100);
     if(bar) bar.style.width = pct+'%';
-    if(left<=0){ clearInterval(AB.roundTimer); AB.roundTimer=null; handleAnswer(-1); }
+    if(left<=0){ 
+      clearInterval(AB.roundTimer); 
+      AB.roundTimer=null; 
+      // Check again before calling handleAnswer
+      const abCardCheck = document.getElementById('alphabet-card');
+      if(abCardCheck && abCardCheck.style.display !== 'none'){
+        handleAnswer(-1);
+      }
+    }
   }, 100);
 }
 
 function handleAnswer(idx){
+  // Check if alphabet practice was cancelled
+  const abCard = document.getElementById('alphabet-card');
+  if(!abCard || abCard.style.display === 'none'){
+    // Practice was cancelled, don't process answer
+    return;
+  }
+  
   AB.attempts++;
   const { answer, options } = AB.current || {answer:-1, options:[]};
   const correct = (idx===answer);
@@ -171,8 +195,8 @@ function handleAnswer(idx){
     }
   });
   
-  // Play sound effect based on correctness
-  if (window.soundManager) {
+  // Play sound effect based on correctness (only if practice is still active)
+  if (window.soundManager && abCard && abCard.style.display !== 'none') {
     if (correct) {
       window.soundManager.playCorrect();
     } else {
@@ -208,8 +232,20 @@ function handleAnswer(idx){
   const done = AB.letters.every(x=> (x.ok||0) >= AB.needed);
   if(done){ return finishAlphabet(); }
   
+  // Clear any existing timeout
+  if(AB.answerTimeout){
+    clearTimeout(AB.answerTimeout);
+    AB.answerTimeout = null;
+  }
+  
   // Reset button styles and re-enable buttons after a short delay
-  setTimeout(() => {
+  AB.answerTimeout = setTimeout(() => {
+    // Check again if practice was cancelled
+    const abCardCheck = document.getElementById('alphabet-card');
+    if(!abCardCheck || abCardCheck.style.display === 'none'){
+      return; // Practice was cancelled, don't continue
+    }
+    
     buttons.forEach(btnId => {
       const btn = document.getElementById(btnId);
       if (btn) {
@@ -222,11 +258,48 @@ function handleAnswer(idx){
     AB.current = null; 
     pickRound(); 
     renderRound();
+    AB.answerTimeout = null;
   }, 1500);
+}
+
+// Completely stop and clean up alphabet practice
+function stopAlphabetPractice(){
+  // Stop round timer
+  if(AB.roundTimer){
+    clearInterval(AB.roundTimer);
+    AB.roundTimer = null;
+  }
+  
+  // Stop answer timeout
+  if(AB.answerTimeout){
+    clearTimeout(AB.answerTimeout);
+    AB.answerTimeout = null;
+  }
+  
+  // Stop and clear audio
+  const a = document.getElementById('ab-audio');
+  if(a){
+    try{
+      a.pause();
+      a.currentTime = 0;
+      a.removeAttribute('src');
+    }catch(_){}
+  }
+  
+  // Reset state
+  AB.current = null;
+  AB.letters = [];
+  AB.attempts = 0;
+  AB.correct = 0;
+  
+  // Hide alphabet card
+  const ab = document.getElementById('alphabet-card');
+  if(ab) ab.style.display='none';
 }
 
 function finishAlphabet(){
   if(AB.roundTimer){ clearInterval(AB.roundTimer); AB.roundTimer=null; }
+  if(AB.answerTimeout){ clearTimeout(AB.answerTimeout); AB.answerTimeout=null; }
   const evalEl = document.getElementById('evaluation-card');
   if(evalEl){
     ['#levels-card','#words-card','#lesson','#practice-card','#alphabet-card'].forEach(id=>{ const el=$(id); if(el) el.style.display='none'; });
@@ -249,34 +322,23 @@ function bindHandlers(){
     const a = document.getElementById('ab-audio'); if(a && tgt.audio_url){ try{ a.pause(); a.currentTime=0; await a.play(); }catch(_){ } }
   };
   const exit = document.getElementById('ab-exit');
-    if(exit) exit.onclick = ()=>{
-    if(AB.roundTimer){ clearInterval(AB.roundTimer); AB.roundTimer=null; }
-    const a = document.getElementById('ab-audio');
-    if(a){ try{ a.pause(); a.removeAttribute('src'); }catch(_){ } }
-    AB.current=null; AB.letters=[]; AB.attempts=0; AB.correct=0;
-    const ab = document.getElementById('alphabet-card'); if(ab) ab.style.display='none';
-    const lv = document.getElementById('levels-card'); if(lv) lv.style.display='';
-    };
+  if(exit) exit.onclick = ()=>{
+    stopAlphabetPractice();
+    const lv = document.getElementById('levels-card');
+    if(lv) lv.style.display='';
+  };
 
   // Add event listeners for library tab and show-words (same as exit)
   const libraryTab = document.querySelector('[data-tab="library"]');
   if(libraryTab){
     libraryTab.addEventListener('click', ()=>{
-      if(AB.roundTimer){ clearInterval(AB.roundTimer); AB.roundTimer=null; }
-      const a = document.getElementById('ab-audio');
-      if(a){ try{ a.pause(); a.removeAttribute('src'); }catch(_){ } }
-      AB.current=null; AB.letters=[]; AB.attempts=0; AB.correct=0;
-      const ab = document.getElementById('alphabet-card'); if(ab) ab.style.display='none';
+      stopAlphabetPractice();
     });
   }
   const navWords = document.getElementById('show-words');
   if(navWords){
     navWords.addEventListener('click', ()=>{
-      if(AB.roundTimer){ clearInterval(AB.roundTimer); AB.roundTimer=null; }
-      const a = document.getElementById('ab-audio');
-      if(a){ try{ a.pause(); a.removeAttribute('src'); }catch(_){ } }
-      AB.current=null; AB.letters=[]; AB.attempts=0; AB.correct=0;
-      const ab = document.getElementById('alphabet-card'); if(ab) ab.style.display='none';
+      stopAlphabetPractice();
     });
   }
 }
