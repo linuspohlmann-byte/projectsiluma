@@ -6400,7 +6400,6 @@ def api_practice_start():
     """Start a practice session with custom words or level-based words"""
     try:
         from server.db_config import get_db_connection, execute_query
-        from server.auth import get_user_id_from_request
         
         data = request.get_json(silent=True) or {}
         language = data.get('language', 'en').strip()
@@ -6408,7 +6407,9 @@ def api_practice_start():
         level = data.get('level', 0)
         exclude_max = data.get('exclude_max', True)
         
-        user_id = get_user_id_from_request()
+        # Get user_id from context (set by middleware)
+        user_context = get_user_context()
+        user_id = user_context.get('user_id')
         if not user_id:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
@@ -6486,7 +6487,6 @@ def api_practice_grade():
     """Grade a practice word and get the next word"""
     try:
         from server.db_config import get_db_connection, execute_query
-        from server.auth import get_user_id_from_request
         
         data = request.get_json(silent=True) or {}
         word = data.get('word', '').strip()
@@ -6494,7 +6494,9 @@ def api_practice_grade():
         language = data.get('language', 'en').strip()
         run_id = data.get('run_id')  # May be None for custom words
         
-        user_id = get_user_id_from_request()
+        # Get user_id from context (set by middleware)
+        user_context = get_user_context()
+        user_id = user_context.get('user_id')
         if not user_id:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
