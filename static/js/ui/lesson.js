@@ -44,6 +44,49 @@ function normalizeScoreForLesson(raw) {
   return num;
 }
 
+// Client-side translation similarity calculation (matches backend algorithm)
+function calculateTranslationSimilarity(userText, correctText) {
+  if (!userText || !correctText) {
+    return 0.0;
+  }
+  
+  // Normalize texts (lowercase, remove extra spaces)
+  const userNormalized = userText.toLowerCase().split(/\s+/).join(' ');
+  const correctNormalized = correctText.toLowerCase().split(/\s+/).join(' ');
+  
+  // Exact match
+  if (userNormalized === correctNormalized) {
+    return 1.0;
+  }
+  
+  // Word-based similarity
+  const userWords = new Set(userNormalized.split(/\s+/).filter(w => w.length > 0));
+  const correctWords = new Set(correctNormalized.split(/\s+/).filter(w => w.length > 0));
+  
+  if (userWords.size === 0 || correctWords.size === 0) {
+    return 0.0;
+  }
+  
+  // Calculate Jaccard similarity
+  const intersection = new Set([...userWords].filter(w => correctWords.has(w)));
+  const union = new Set([...userWords, ...correctWords]);
+  
+  if (union.size === 0) {
+    return 0.0;
+  }
+  
+  const jaccardSimilarity = intersection.size / union.size;
+  
+  // Boost score if most words match (matches backend logic)
+  if (jaccardSimilarity > 0.7) {
+    return Math.min(0.9, jaccardSimilarity + 0.1);
+  } else if (jaccardSimilarity > 0.5) {
+    return Math.min(0.8, jaccardSimilarity + 0.05);
+  } else {
+    return jaccardSimilarity;
+  }
+}
+
 function normalizeCustomProgressForLesson(progress) {
   if (!progress) return null;
   const counts = {0:0,1:0,2:0,3:0,4:0,5:0};
@@ -1491,7 +1534,7 @@ async function renderCurrent(){
 
   // Reset common UI
   RUN.selectedOption = null;
-  const resBox = $('#result'); if(resBox){ resBox.classList.remove('success', 'error'); resBox.classList.add('hint'); resBox.innerHTML=''; }
+  const resBox = $('#result'); if(resBox){ resBox.classList.remove('success', 'error'); resBox.classList.add('hint'); resBox.innerHTML=''; resBox.style.display='none'; }
   const ta=$('#user-translation');
   const btn=$('#check'); if(btn){ btn.disabled=true; btn.style.opacity='0.6'; btn.classList.remove('ready', 'continue'); }
   
@@ -1857,42 +1900,45 @@ async function submitAnswer(){
     
     // update word familiarity based on correctness
     try{ adjustFamiliarity(task.pick, correct? +1 : -1); }catch(_){}
-    // record MC result server-side if supported
-    try{
-      const it = RUN.items[task.i];
-      const headers = { 'Content-Type': 'application/json' };
-      
-      // Add authentication header if session token exists
-      const sessionToken = localStorage.getItem('session_token');
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
+    
+    // Record MC result server-side ASYNCHRONOUSLY (non-blocking) for recording only
+    // This happens in the background and doesn't delay the UI
+    (async () => {
+      try{
+        const it = RUN.items[task.i];
+        const headers = { 'Content-Type': 'application/json' };
+        
+        // Add authentication header if session token exists
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
+        
+        // Use custom level API if this is a custom level
+        if (RUN._customGroupId && RUN._customLevelNumber) {
+          console.log('🔧 Recording MC result to backend (async):', RUN._customGroupId, RUN._customLevelNumber);
+          await fetch(`/api/custom-levels/${RUN._customGroupId}/${RUN._customLevelNumber}/submit_mc`, { 
+            method:'POST', 
+            headers, 
+            body: JSON.stringify({ 
+              run_id: RUN.id, 
+              idx: it?.idx, 
+              word: task.pick, 
+              answer: RUN.selectedOption,
+              correct_answer: task.answer,
+              correct: !!correct 
+            }) 
+          });
+        } else {
+          console.log('🔧 Recording MC result to backend (async)');
+          await fetch('/api/level/submit_mc', { method:'POST', headers, body: JSON.stringify({ run_id: RUN.id, idx: it?.idx, word: task.pick, correct: !!correct }) });
+        }
+        console.log('✅ MC result recorded to backend');
+      }catch(err){
+        // Silently fail - evaluation already shown, this is just for recording
+        console.log('⚠️ Failed to record MC result to backend (non-critical):', err);
       }
-      
-      // Use custom level API if this is a custom level
-      if (RUN._customGroupId && RUN._customLevelNumber) {
-        console.log('🔧 Using custom level submit_mc API:', RUN._customGroupId, RUN._customLevelNumber);
-        console.log('🔧 Custom level context available:', {
-          groupId: RUN._customGroupId,
-          levelNumber: RUN._customLevelNumber,
-          runId: RUN.id
-        });
-        await fetch(`/api/custom-levels/${RUN._customGroupId}/${RUN._customLevelNumber}/submit_mc`, { 
-          method:'POST', 
-          headers, 
-          body: JSON.stringify({ 
-            run_id: RUN.id, 
-            idx: it?.idx, 
-            word: task.pick, 
-            answer: RUN.selectedOption,
-            correct_answer: task.answer,
-            correct: !!correct 
-          }) 
-        });
-      } else {
-        console.log('🔧 Using standard level submit_mc API (no custom level context)');
-        await fetch('/api/level/submit_mc', { method:'POST', headers, body: JSON.stringify({ run_id: RUN.id, idx: it?.idx, word: task.pick, correct: !!correct }) });
-      }
-    }catch(_){ /* optional endpoint */ }
+    })();
     // update local MC stats
     RUN.mcTotal = (RUN.mcTotal||0) + 1;
     if(correct) RUN.mcCorrect = (RUN.mcCorrect||0) + 1;
@@ -1906,16 +1952,15 @@ async function submitAnswer(){
     if(gap){ gap.textContent = task.options[task.answer]; }
     const box=$('#result');
     if(box){ 
-      // Get the correct translation in native language
+      // Get the original sentence and correct translation
       const item = RUN.items[task.i];
-      let translation = '';
-      if (item) {
-        translation = item.text_native_ref || item.text_native || item.translation || '';
-      }
+      const originalSentence = item?.text_target || task?.text_target || '';
+      const translation = item?.text_native_ref || item?.text_native || item?.translation || '';
       
       console.log('🔧 MC result display:', {
         correct: correct,
         item: item,
+        originalSentence: originalSentence,
         translation: translation,
         text_native_ref: item?.text_native_ref,
         text_native: item?.text_native,
@@ -1924,7 +1969,29 @@ async function submitAnswer(){
       
       box.classList.remove('hint', 'success', 'error');
       box.classList.add(correct ? 'success' : 'error');
-      box.innerHTML = (correct ? (window.t ? window.t('results.correct', 'Richtig') : 'Richtig') : (window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch')) + ` <i>${escapeHtml(translation)}</i>`; 
+      
+      // Show the result box
+      box.style.display = 'block';
+      
+      // Build result HTML showing both original sentence and translation
+      let resultHTML = '';
+      if (correct) {
+        resultHTML = window.t ? window.t('results.correct', 'Richtig') : 'Richtig';
+      } else {
+        resultHTML = window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch';
+      }
+      
+      // Show original sentence and translation clearly
+      if (originalSentence && translation) {
+        resultHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2);">
+          <div style="font-weight: 500; margin-bottom: 4px;">${escapeHtml(originalSentence)}</div>
+          <div style="font-style: italic; opacity: 0.9;">${escapeHtml(translation)}</div>
+        </div>`;
+      } else if (translation) {
+        resultHTML += ` <i>${escapeHtml(translation)}</i>`;
+      }
+      
+      box.innerHTML = resultHTML;
     }
     // progress for MC
     setProgress(RUN.idx+1, RUN.queue?.length||RUN.items.length);
@@ -1984,16 +2051,15 @@ async function submitAnswer(){
     if(area){ Array.from(area.children).forEach(ch=> ch.disabled=true); }
     const box=$('#result');
     if(box){ 
-      // Get the correct translation in native language
+      // Get the original sentence and correct translation
       const item = RUN.items[task.i];
-      let translation = '';
-      if (item) {
-        translation = item.text_native_ref || item.text_native || item.translation || '';
-      }
+      const originalSentence = item?.text_target || task?.text_target || '';
+      const translation = item?.text_native_ref || item?.text_native || item?.translation || '';
       
       console.log('🔧 SB result display:', {
         correct: ok,
         item: item,
+        originalSentence: originalSentence,
         translation: translation,
         text_native_ref: item?.text_native_ref,
         text_native: item?.text_native,
@@ -2002,7 +2068,29 @@ async function submitAnswer(){
       
       box.classList.remove('hint', 'success', 'error'); 
       box.classList.add(ok ? 'success' : 'error');
-      box.innerHTML = (ok ? (window.t ? window.t('results.correct', 'Richtig') : 'Richtig') : (window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch')) + ` <i>${escapeHtml(translation)}</i>`; 
+      
+      // Show the result box
+      box.style.display = 'block';
+      
+      // Build result HTML showing both original sentence and translation
+      let resultHTML = '';
+      if (ok) {
+        resultHTML = window.t ? window.t('results.correct', 'Richtig') : 'Richtig';
+      } else {
+        resultHTML = window.t ? window.t('results.incorrect', 'Falsch') : 'Falsch';
+      }
+      
+      // Show original sentence and translation clearly
+      if (originalSentence && translation) {
+        resultHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2);">
+          <div style="font-weight: 500; margin-bottom: 4px;">${escapeHtml(originalSentence)}</div>
+          <div style="font-style: italic; opacity: 0.9;">${escapeHtml(translation)}</div>
+        </div>`;
+      } else if (translation) {
+        resultHTML += ` <i>${escapeHtml(translation)}</i>`;
+      }
+      
+      box.innerHTML = resultHTML;
     }
     const btnNext=$('#check'); if(btnNext){ 
       const continueLabel = tt('buttons.continue', 'Continue'); 
@@ -2038,186 +2126,206 @@ async function submitAnswer(){
     
     return;
   }
-  // Translation branch as before
+  // Translation branch - OPTIMIZED: Calculate similarity client-side for instant feedback
   console.log('🔧 Translation submit branch');
   const it=RUN.items[(task?task.i:RUN.idx)]; if(!it) return;
   const user=$('#user-translation')?.value.trim(); 
   console.log('🔧 User translation:', user);
   if(!user){ alert(tt('lesson.prompt_translate', 'Please translate.')); return; }
-  const btn=$('#check'); if(btn){ btn.disabled=true; btn.style.opacity='0.6'; }
-  try{
-    const headers = { 'Content-Type': 'application/json' };
-    
-    // Add authentication header if session token exists
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
-    }
-    
-    // Use custom level API if this is a custom level
-    let r, js;
-    if (RUN._customGroupId && RUN._customLevelNumber) {
-      console.log('🔧 Using custom level submit API:', RUN._customGroupId, RUN._customLevelNumber);
-      console.log('🔧 Custom level context available:', {
-        groupId: RUN._customGroupId,
-        levelNumber: RUN._customLevelNumber,
-        runId: RUN.id
-      });
-      r = await fetch(`/api/custom-levels/${RUN._customGroupId}/${RUN._customLevelNumber}/submit`, {
-        method:'POST',
-        headers,
-        body: JSON.stringify({
-          run_id: RUN.id,
-          answers: [{idx: it.idx, translation: user}]
-        })
-      });
+  
+  // Get correct answer from item (already available when task started)
+  const originalSentence = it?.text_target || '';
+  const correctAnswer = it.text_native_ref || it.text_native || it.translation || '';
+  
+  // Calculate similarity immediately on client-side (INSTANT)
+  const similarity = calculateTranslationSimilarity(user, correctAnswer);
+  const passed = similarity >= 0.75;
+  
+  console.log('🔧 Client-side evaluation (instant):', {
+    similarity: similarity,
+    passed: passed,
+    originalSentence: originalSentence,
+    correctAnswer: correctAnswer,
+    userAnswer: user
+  });
+  
+  // Play sound effect immediately
+  if (window.soundManager) {
+    if (passed) {
+      window.soundManager.playCorrect();
     } else {
-      console.log('🔧 Using standard level submit API (no custom level context)');
-      r = await fetch('/api/level/submit', {
-        method:'POST',
-        headers,
-        body: JSON.stringify({run_id: RUN.id, answers: [{idx: it.idx, translation: user}]})
-      });
+      window.soundManager.playIncorrect();
+    }
+  }
+  
+  // Show result immediately
+  const box=$('#result'); 
+  if(box) {
+    box.classList.remove('hint', 'success', 'error');
+    box.classList.add(passed ? 'success' : 'error');
+    box.style.display = 'block';
+    
+    // Build result HTML showing similarity, original sentence, and correct translation
+    let resultHTML = '';
+    if (window.t) {
+      resultHTML = window.t('results.similarity', 'Ähnlichkeit: {similarity}').replace('{similarity}', `<b>${Math.round(similarity * 100)}%</b>`);
+    } else {
+      resultHTML = `Ähnlichkeit: <b>${Math.round(similarity * 100)}%</b>`;
     }
     
-    js = await r.json(); 
-    if(!js.success){ 
-      console.error('❌ Submit API error:', js.error);
-      alert(js.error||tt('errors.generic', 'An error occurred')); 
-      return; 
+    // Show original sentence and correct translation clearly
+    if (originalSentence && correctAnswer) {
+      resultHTML += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2);">
+        <div style="font-weight: 500; margin-bottom: 4px;">${escapeHtml(originalSentence)}</div>
+        <div style="font-style: italic; opacity: 0.9;">${escapeHtml(correctAnswer)}</div>
+      </div>`;
+    } else if (correctAnswer) {
+      resultHTML += window.t ? window.t('results.correct_answer', ' · Korrekt: {ref}').replace('{ref}', `<i>${escapeHtml(correctAnswer)}</i>`) : ` · Korrekt: <i>${escapeHtml(correctAnswer)}</i>`;
     }
-    console.log('✅ Submit API success:', js);
-    const all=js.results||[]; const res=all.find(r=>Number(r.idx)===Number(it.idx))||all[all.length-1]||{similarity:0,ref:''};
     
-    // Play sound effect based on similarity score (threshold 0.75)
-    if (window.soundManager) {
-      const passed = res.similarity >= 0.75;
-      if (passed) {
-        window.soundManager.playCorrect();
+    box.innerHTML = resultHTML;
+  }
+  
+  // Update familiarity immediately (client-side)
+  try{ 
+    const words = uniqWords(it.words||[]).slice(0,8);
+    words.forEach(w=> adjustFamiliarity(w, passed ? +1 : -1)); 
+  }catch(_){}
+  
+  // Update progress immediately
+  setProgress(RUN.idx+1, RUN.queue?.length||RUN.items.length);
+  RUN.answered=true;
+  
+  // Update button immediately
+  const btn=$('#check'); 
+  if(btn){ 
+    btn.textContent=window.t ? window.t('buttons.continue', 'Weiter') : 'Weiter'; 
+    btn.onclick=nextItem; 
+    btn.disabled=false; 
+    btn.style.opacity='1'; 
+    btn.classList.remove('ready'); 
+    // Color button based on correctness
+    if(passed) {
+      btn.classList.add('continue');
+      btn.classList.remove('incorrect');
+    } else {
+      btn.classList.add('incorrect');
+      btn.classList.remove('continue');
+    }
+  }
+  
+  // Send result to backend ASYNCHRONOUSLY (non-blocking) for recording only
+  // This happens in the background and doesn't delay the UI
+  (async () => {
+    try{
+      const headers = { 'Content-Type': 'application/json' };
+      
+      // Add authentication header if session token exists
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+      
+      // Use custom level API if this is a custom level
+      if (RUN._customGroupId && RUN._customLevelNumber) {
+        console.log('🔧 Recording result to backend (async):', RUN._customGroupId, RUN._customLevelNumber);
+        await fetch(`/api/custom-levels/${RUN._customGroupId}/${RUN._customLevelNumber}/submit`, {
+          method:'POST',
+          headers,
+          body: JSON.stringify({
+            run_id: RUN.id,
+            answers: [{idx: it.idx, translation: user}]
+          })
+        });
       } else {
-        window.soundManager.playIncorrect();
+        console.log('🔧 Recording result to backend (async)');
+        await fetch('/api/level/submit', {
+          method:'POST',
+          headers,
+          body: JSON.stringify({run_id: RUN.id, answers: [{idx: it.idx, translation: user}]})
+        });
       }
+      console.log('✅ Result recorded to backend');
+    }catch(err){
+      // Silently fail - evaluation already shown, this is just for recording
+      console.log('⚠️ Failed to record result to backend (non-critical):', err);
     }
+  })();
+  
+  // Post-answer word enrichment (non-blocking)
+  try{ 
+    const lang=RUN.target, nat=RUN.native;
+    const words=uniqWords(it.words||[]).slice(0,8);
     
-    const box=$('#result'); 
-    if(box) {
-      const passed = res.similarity >= 0.75;
-      box.classList.remove('hint', 'success', 'error');
-      box.classList.add(passed ? 'success' : 'error');
-      
-      // Get the correct answer in native language
-      let correctAnswer = res.ref || '';
-      if (it.text_native_ref) {
-        correctAnswer = it.text_native_ref;
-      } else if (it.text_native) {
-        correctAnswer = it.text_native;
-      } else if (it.translation) {
-        correctAnswer = it.translation;
+    // Check which words actually need enrichment
+    const need = new Set();
+    words.forEach(w=>{
+      const cached = cacheGet(w, lang);
+      if(!cached || !cached.translation || !cached.pos){
+        need.add(w);
       }
+    });
+    
+    if (need.size > 0) {
+      console.log(`📚 Post-answer enriching ${need.size} words that need enrichment`);
       
-      console.log('🔧 Displaying result:', {
-        similarity: res.similarity,
-        correctAnswer: correctAnswer,
-        itemData: it
-      });
+      // Check if we're in a custom level context
+      const isCustomLevel = window.RUN && (window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP);
       
-      box.innerHTML = window.t ? window.t('results.similarity', 'Ähnlichkeit: {similarity} · Korrekt: {ref}').replace('{similarity}', `<b>${res.similarity}</b>`).replace('{ref}', `<i>${escapeHtml(correctAnswer)}</i>`) : `Ähnlichkeit: <b>${res.similarity}</b> · Korrekt: <i>${escapeHtml(correctAnswer)}</i>`;
-    }
-    setProgress(RUN.idx+1, RUN.queue?.length||RUN.items.length);
-
-    try{ // leichte Anreicherung
-      const lang=RUN.target, nat=RUN.native;
-      const words=uniqWords(it.words||[]).slice(0,8);
-      
-      // Check which words actually need enrichment
-      const need = new Set();
-      words.forEach(w=>{
-        const cached = cacheGet(w, lang);
-        if(!cached || !cached.translation || !cached.pos){
-          need.add(w);
+      if (isCustomLevel) {
+        // Use custom level batch enrichment API
+        const groupId = window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP;
+        const levelNumber = window.RUN._customLevelNumber || window.SELECTED_CUSTOM_LEVEL || 1;
+        
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.authManager && window.authManager.isAuthenticated()) {
+          Object.assign(headers, window.authManager.getAuthHeaders());
         }
-      });
-      
-      if (need.size > 0) {
-        console.log(`📚 Post-answer enriching ${need.size} words that need enrichment`);
         
-        // Check if we're in a custom level context
-        const isCustomLevel = window.RUN && (window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP);
-        
-        if (isCustomLevel) {
-          // Use custom level batch enrichment API
-          const groupId = window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP;
-          const levelNumber = window.RUN._customLevelNumber || window.SELECTED_CUSTOM_LEVEL || 1;
-          
-          const headers = { 'Content-Type': 'application/json' };
-          if (window.authManager && window.authManager.isAuthenticated()) {
-            Object.assign(headers, window.authManager.getAuthHeaders());
-          }
-          
-          fetch(`/api/custom-levels/${groupId}/${levelNumber}/enrich_batch`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              words: Array.from(need),
-              language: lang,
-              native_language: nat,
-              sentence_context: '',
-              sentence_native: ''
-            })
-          }).then(() => {
-            console.log('✅ Post-answer custom level batch enrichment successful');
-          }).catch((error) => {
-            console.log('⚠️ Post-answer custom level batch enrichment failed:', error);
-            // Fallback to individual requests
-            for(const w of Array.from(need)){ 
-              enrichWordIfNeeded(w, lang, nat, '', '').catch(()=>{}); 
-            }
-          });
-        } else {
-          // Use individual requests for non-custom levels
+        fetch(`/api/custom-levels/${groupId}/${levelNumber}/enrich_batch`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            words: Array.from(need),
+            language: lang,
+            native_language: nat,
+            sentence_context: '',
+            sentence_native: ''
+          })
+        }).then(() => {
+          console.log('✅ Post-answer custom level batch enrichment successful');
+        }).catch((error) => {
+          console.log('⚠️ Post-answer custom level batch enrichment failed:', error);
+          // Fallback to individual requests
           for(const w of Array.from(need)){ 
             enrichWordIfNeeded(w, lang, nat, '', '').catch(()=>{}); 
           }
+        });
+      } else {
+        // Use individual requests for non-custom levels
+        for(const w of Array.from(need)){ 
+          enrichWordIfNeeded(w, lang, nat, '', '').catch(()=>{}); 
         }
-      } else {
-        console.log('🎯 All words already enriched, skipping post-answer enrichment');
       }
-    }catch(_){}
+    } else {
+      console.log('🎯 All words already enriched, skipping post-answer enrichment');
+    }
+  }catch(_){}
 
-    RUN.answered=true;
-    const btn2=$('#check'); if(btn2){ 
-      const continueLabel2 = tt('buttons.continue', 'Continue'); 
-      btn2.textContent=continueLabel2; 
-      btn2.onclick=nextItem; 
-      btn2.disabled=false; 
-      btn2.style.opacity='1'; 
-      btn2.classList.remove('ready'); 
-      // Color button based on correctness (similarity >= 0.75)
-      const passed = res.similarity >= 0.75;
-      if(passed) {
-        btn2.classList.add('continue');
-        btn2.classList.remove('incorrect');
-      } else {
-        btn2.classList.add('incorrect');
-        btn2.classList.remove('continue');
-      }
+  // Preload next task immediately after answer submission (non-blocking)
+  const nextTaskIndex = RUN.idx + 1;
+  if (nextTaskIndex < (RUN.queue?.length || RUN.items.length)) {
+    const nextTask = RUN.queue && RUN.queue[nextTaskIndex];
+    if (nextTask) {
+      preloadTaskData(nextTask.i).catch(err => {
+        console.log(`Next-task preload failed:`, err);
+      });
+    } else if (RUN.items[nextTaskIndex]) {
+      preloadTaskData(nextTaskIndex).catch(err => {
+        console.log(`Next-task preload failed:`, err);
+      });
     }
-    
-    // NEW: Preload next task immediately after answer submission (non-blocking)
-    const nextTaskIndex = RUN.idx + 1;
-    if (nextTaskIndex < (RUN.queue?.length || RUN.items.length)) {
-      const nextTask = RUN.queue && RUN.queue[nextTaskIndex];
-      if (nextTask) {
-        preloadTaskData(nextTask.i).catch(err => {
-          console.log(`Next-task preload failed:`, err);
-        });
-      } else if (RUN.items[nextTaskIndex]) {
-        preloadTaskData(nextTaskIndex).catch(err => {
-          console.log(`Next-task preload failed:`, err);
-        });
-      }
-    }
-  } finally { const b=$('#check'); if(b){ b.disabled=false; b.style.opacity=''; } }
+  }
 }
 
 async function finishLevel(){
