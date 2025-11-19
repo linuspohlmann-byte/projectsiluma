@@ -592,6 +592,42 @@ def debug_cleanup_duplicate_words():
             'success': False
         }), 500
 
+@app.get('/api/debug/check-custom-level-titles/<int:group_id>')
+@require_auth()
+def debug_check_custom_level_titles(group_id):
+    """Debug endpoint to check if custom level titles exist in database"""
+    try:
+        from server.services.custom_levels import get_custom_levels_for_group, get_custom_level_group
+        from server.db_config import get_db_connection, execute_query
+        
+        group_data = get_custom_level_group(group_id, None)
+        if not group_data:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+        
+        levels = get_custom_levels_for_group(group_id, group_data)
+        
+        level_titles = {}
+        for level in levels:
+            level_num = level.get('level_number')
+            title = level.get('title', 'NOT SET')
+            level_titles[level_num] = {
+                'title': title,
+                'topic': level.get('topic', ''),
+                'has_content': bool(level.get('content'))
+            }
+        
+        return jsonify({
+            'success': True,
+            'group_id': group_id,
+            'group_name': group_data.get('group_name', ''),
+            'levels': level_titles,
+            'total_levels': len(levels)
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.get('/api/debug/list-georgian-words')
 def debug_list_georgian_words():
     """List Georgian words in the database"""
@@ -898,6 +934,79 @@ def debug_add_words_unique_constraint():
             'success': False
         }), 500
 
+@app.post('/api/debug/migrate-topic-localizations')
+def debug_migrate_topic_localizations():
+    """One-time migration to add new topic localization entries"""
+    try:
+        from migrate_topic_localizations import NEW_TOPICS, ONBOARDING_DESCRIPTIONS
+        from server.db import upsert_localization_entry
+        from server.db_config import get_db_connection
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Failed to connect to database'}), 500
+        
+        try:
+            all_entries = {**NEW_TOPICS, **ONBOARDING_DESCRIPTIONS}
+            added = 0
+            
+            for key, translations in all_entries.items():
+                payload = {'reference_key': key, **translations}
+                upsert_localization_entry(payload, conn=conn)
+                added += 1
+            
+            conn.commit()
+            return jsonify({
+                'success': True,
+                'message': f'Successfully added {added} localization entries',
+                'added': added
+            })
+        except Exception as e:
+            conn.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+        finally:
+            conn.close()
+    except ImportError as e:
+        return jsonify({'success': False, 'error': f'Import error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/debug/migrate-notification-localizations')
+def debug_migrate_notification_localizations():
+    """One-time migration to add notification localization entries"""
+    try:
+        from add_notification_localizations import NOTIFICATION_LOCALIZATIONS
+        from server.db import upsert_localization_entry
+        from server.db_config import get_db_connection
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Failed to connect to database'}), 500
+        
+        try:
+            added = 0
+            
+            for key, translations in NOTIFICATION_LOCALIZATIONS.items():
+                payload = {'reference_key': key, **translations}
+                upsert_localization_entry(payload, conn=conn)
+                added += 1
+            
+            conn.commit()
+            return jsonify({
+                'success': True,
+                'message': f'Successfully added {added} notification localization entries',
+                'added': added
+            })
+        except Exception as e:
+            conn.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+        finally:
+            conn.close()
+    except ImportError as e:
+        return jsonify({'success': False, 'error': f'Import error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.post('/api/debug/run-database-schema-migration')
 def debug_run_database_schema_migration():
     """Run database schema migration to fix missing columns and schema issues"""
@@ -1124,6 +1233,129 @@ def debug_check_progress_cache_table():
             
     except Exception as e:
         print(f"❌ Error checking progress cache table: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
+@app.get('/api/debug/custom-level-data/<int:group_id>/<int:level_number>')
+def debug_custom_level_data(group_id, level_number):
+    """Get all data for a custom level from all PostgreSQL tables"""
+    try:
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        import json
+        
+        config = get_database_config()
+        conn = get_db_connection()
+        
+        result = {
+            'group_id': group_id,
+            'level_number': level_number,
+            'database_type': config['type'],
+            'custom_level_groups': None,
+            'custom_levels': None,
+            'custom_level_progress': [],
+            'users': []
+        }
+        
+        try:
+            is_postgres = config['type'] == 'postgresql'
+            param = '%s' if is_postgres else '?'
+            
+            # 1. Query custom_level_groups
+            query1 = f"""
+                SELECT id, user_id, language, native_language, group_name, 
+                       context_description, topic, cefr_level, num_levels, 
+                       status, created_at, updated_at
+                FROM custom_level_groups
+                WHERE id = {param}
+            """
+            cursor1 = execute_query(conn, query1, (group_id,))
+            row1 = cursor1.fetchone()
+            if row1:
+                result['custom_level_groups'] = dict(row1) if isinstance(row1, dict) else {
+                    col[0]: row1[i] for i, col in enumerate(cursor1.description)
+                }
+            
+            # 2. Query custom_levels
+            query2 = f"""
+                SELECT id, group_id, level_number, title, topic, 
+                       word_count, created_at, updated_at
+                FROM custom_levels
+                WHERE group_id = {param} AND level_number = {param}
+            """
+            cursor2 = execute_query(conn, query2, (group_id, level_number))
+            row2 = cursor2.fetchone()
+            if row2:
+                level_data = dict(row2) if isinstance(row2, dict) else {
+                    col[0]: row2[i] for i, col in enumerate(cursor2.description)
+                }
+                # Get content separately (might be large)
+                query2_content = f"""
+                    SELECT content
+                    FROM custom_levels
+                    WHERE group_id = {param} AND level_number = {param}
+                """
+                cursor2_content = execute_query(conn, query2_content, (group_id, level_number))
+                content_row = cursor2_content.fetchone()
+                if content_row:
+                    content = content_row[0] if isinstance(content_row, dict) else content_row[0]
+                    level_data['content'] = content
+                    level_data['content_type'] = type(content).__name__
+                    if isinstance(content, (dict, list)):
+                        level_data['content_length'] = len(json.dumps(content))
+                    else:
+                        level_data['content_length'] = len(str(content)) if content else 0
+                result['custom_levels'] = level_data
+            
+            # 3. Query custom_level_progress (for all users)
+            query3 = f"""
+                SELECT id, user_id, group_id, level_number,
+                       total_words, familiarity_0, familiarity_1, familiarity_2,
+                       familiarity_3, familiarity_4, familiarity_5,
+                       score, status, completed_at, last_updated, created_at
+                FROM custom_level_progress
+                WHERE group_id = {param} AND level_number = {param}
+                ORDER BY user_id
+            """
+            cursor3 = execute_query(conn, query3, (group_id, level_number))
+            rows3 = cursor3.fetchall()
+            for row in rows3:
+                progress_data = dict(row) if isinstance(row, dict) else {
+                    col[0]: row[i] for i, col in enumerate(cursor3.description)
+                }
+                result['custom_level_progress'].append(progress_data)
+                
+                # Get user info
+                user_id = progress_data.get('user_id')
+                if user_id:
+                    query4 = f"""
+                        SELECT id, username, email, created_at
+                        FROM users
+                        WHERE id = {param}
+                    """
+                    cursor4 = execute_query(conn, query4, (user_id,))
+                    user_row = cursor4.fetchone()
+                    if user_row:
+                        user_data = dict(user_row) if isinstance(user_row, dict) else {
+                            col[0]: user_row[i] for i, col in enumerate(cursor4.description)
+                        }
+                        # Only add if not already in list
+                        if not any(u.get('id') == user_data.get('id') for u in result['users']):
+                            result['users'].append(user_data)
+            
+            return jsonify({
+                'success': True,
+                'data': result
+            })
+            
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        print(f"❌ Error querying custom level data: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -1544,21 +1776,31 @@ def api_get_user_settings():
             conn = get_db_connection()
             
             if config['type'] == 'postgresql':
-                # PostgreSQL syntax
+                # PostgreSQL syntax - get_db_cursor uses _dict_row factory, so we get dicts
                 result = execute_query(conn, "SELECT settings FROM users WHERE id = %s", (user['id'],))
                 row = result.fetchone()
+                # With _dict_row factory, row should be a dict
+                if row:
+                    if isinstance(row, dict):
+                        settings_json = row.get('settings')
+                    else:
+                        # Fallback: if it's still a tuple, access by index
+                        settings_json = row[0] if len(row) > 0 else None
+                else:
+                    settings_json = None
             else:
-                # SQLite syntax
+                # SQLite syntax - sqlite3.Row allows dict-like access
                 cur = conn.cursor()
                 row = cur.execute("SELECT settings FROM users WHERE id = ?", (user['id'],)).fetchone()
+                settings_json = row['settings'] if row else None
             
             conn.close()
             
-            if row and row['settings']:
+            if settings_json:
                 try:
-                    settings = json.loads(row['settings'])
+                    settings = json.loads(settings_json)
                     return jsonify({'success': True, 'settings': settings})
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, TypeError):
                     pass
             
             # Fallback to default settings
@@ -1605,10 +1847,18 @@ def api_update_user_settings():
         
         # Check if native language is being updated
         if 'native_language' in data:
-            from server.db_multi_user import update_user_native_language
-            success = update_user_native_language(user['id'], data['native_language'])
-            if not success:
-                return jsonify({'success': False, 'error': 'Failed to update native language'}), 500
+            try:
+                from server.db_multi_user import update_user_native_language
+                success = update_user_native_language(user['id'], data['native_language'])
+                if not success:
+                    # Log error but don't fail the entire request - settings will still be saved
+                    print(f"⚠️ Warning: Failed to update native_language column for user {user['id']}, but continuing with settings update")
+                    # Continue - the native_language will still be saved in settings JSON
+            except Exception as native_lang_error:
+                print(f"⚠️ Error updating native language: {native_lang_error}")
+                import traceback
+                traceback.print_exc()
+                # Continue - the native_language will still be saved in settings JSON
         
         # Save settings to database instead of file system
         try:
@@ -2116,6 +2366,7 @@ def api_create_custom_level_group():
         payload = request.get_json(force=True) or {}
         group_name = (payload.get('group_name') or '').strip()
         context_description = (payload.get('context_description') or '').strip()
+        motivation = (payload.get('motivation') or '').strip()
         language = (payload.get('language') or '').strip()
         native_language = (payload.get('native_language') or '').strip()
         cefr_level = (payload.get('cefr_level') or 'A1').strip()
@@ -2167,6 +2418,7 @@ def api_create_custom_level_group():
             native_language=native_language,
             group_name=enriched_group_name,
             context_description=enriched_context_description,
+            motivation=motivation,
             cefr_level=cefr_level,
             num_levels=num_levels
         )
@@ -2276,6 +2528,9 @@ def api_custom_levels_groups_summary():
                     SELECT 
                         clg.id,
                         clg.group_name,
+                        clg.context_description,
+                        clg.motivation,
+                        clg.cefr_level,
                         clg.language,
                         clg.native_language,
                         COUNT(DISTINCT cl.id) as level_count,
@@ -2288,7 +2543,7 @@ def api_custom_levels_groups_summary():
                         clp.level_number = cl.level_number AND
                         clp.user_id = %s
                     WHERE clg.user_id = %s
-                    GROUP BY clg.id, clg.group_name, clg.language, clg.native_language
+                    GROUP BY clg.id, clg.group_name, clg.context_description, clg.motivation, clg.cefr_level, clg.language, clg.native_language
                     ORDER BY clg.created_at DESC
                 ''', (user_id, user_id))
             else:
@@ -2298,6 +2553,9 @@ def api_custom_levels_groups_summary():
                     SELECT 
                         clg.id,
                         clg.group_name,
+                        clg.context_description,
+                        clg.motivation,
+                        clg.cefr_level,
                         clg.language,
                         clg.native_language,
                         COUNT(DISTINCT cl.id) as level_count,
@@ -2310,7 +2568,7 @@ def api_custom_levels_groups_summary():
                         clp.level_number = cl.level_number AND
                         clp.user_id = ?
                     WHERE clg.user_id = ?
-                    GROUP BY clg.id, clg.group_name, clg.language, clg.native_language
+                    GROUP BY clg.id, clg.group_name, clg.context_description, clg.motivation, clg.cefr_level, clg.language, clg.native_language
                     ORDER BY clg.created_at DESC
                 ''', (user_id, user_id))
                 result = cur
@@ -2321,6 +2579,9 @@ def api_custom_levels_groups_summary():
                     groups.append({
                         'id': row.get('id'),
                         'name': row.get('group_name'),
+                        'context_description': row.get('context_description') or '',
+                        'motivation': row.get('motivation') or '',
+                        'cefr_level': row.get('cefr_level') or 'A1',
                         'language': row.get('language'),
                         'native_language': row.get('native_language'),
                         'level_count': row.get('level_count') or 0,
@@ -2332,11 +2593,14 @@ def api_custom_levels_groups_summary():
                     groups.append({
                         'id': row[0],
                         'name': row[1],  # group_name is at index 1
-                        'language': row[2],
-                        'native_language': row[3],
-                        'level_count': row[4] or 0,
-                        'total_words': row[5] or 0,
-                        'completed_levels': row[6] or 0
+                        'context_description': row[2] or '',  # context_description is at index 2
+                        'motivation': row[3] or '',  # motivation is at index 3
+                        'cefr_level': row[4] or 'A1',  # cefr_level is at index 4
+                        'language': row[5],
+                        'native_language': row[6],
+                        'level_count': row[7] or 0,
+                        'total_words': row[8] or 0,
+                        'completed_levels': row[9] or 0
                     })
             
             return jsonify({'success': True, 'groups': groups})
@@ -2603,13 +2867,18 @@ def api_get_custom_level_bulk_stats(group_id):
                 from server.db import ensure_words_exist
                 ensure_words_exist(list(all_unique_words), language, native_language)
         
-        # Process all levels
+                # Process all levels
         levels_data = {}
         for level_num in range(1, 11):  # Assuming 10 levels per group
             try:
                 level_data = levels_dict.get(level_num)
                 if not level_data:
                     continue
+                
+                # Get title from level data
+                level_title = level_data.get('title', f'Level {level_num}')
+                # Debug: log title extraction for all levels
+                print(f"🔍 Level {level_num} title check: title='{level_title}', raw_title='{level_data.get('title')}', has_title_key={('title' in level_data)}, level_data_keys={list(level_data.keys())[:10]}")
                     
                 # Get word count from database column (much faster than calculating)
                 total_words = level_data.get('word_count', 0)
@@ -2670,6 +2939,7 @@ def api_get_custom_level_bulk_stats(group_id):
                                 'last_score': weighted_score,
                                 'fam_counts': fam_counts,
                                 'total_words': total_words,
+                                'title': level_title,
                                 'user_progress': {
                                     'status': status,
                                     'score': weighted_score
@@ -2682,6 +2952,7 @@ def api_get_custom_level_bulk_stats(group_id):
                                 'last_score': 0.0,
                                 'fam_counts': fam_counts,
                                 'total_words': total_words,
+                                'title': level_title,
                                 'user_progress': {
                                     'status': 'not_started',
                                     'score': 0.0
@@ -2694,6 +2965,7 @@ def api_get_custom_level_bulk_stats(group_id):
                             'last_score': 0.0,
                             'fam_counts': fam_counts,
                             'total_words': total_words,
+                            'title': level_title,
                             'user_progress': {
                                 'status': 'not_started',
                                 'score': 0.0
@@ -2706,6 +2978,7 @@ def api_get_custom_level_bulk_stats(group_id):
                         'last_score': 0.0,
                         'fam_counts': fam_counts,
                         'total_words': total_words,
+                        'title': level_title,
                         'user_progress': {
                             'status': 'not_started',
                             'score': 0.0
@@ -2720,6 +2993,7 @@ def api_get_custom_level_bulk_stats(group_id):
                     'last_score': 0.0,
                     'fam_counts': {'0': 0, '1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
                     'total_words': 0,
+                    'title': level_title,
                     'user_progress': {
                         'status': 'not_started',
                         'score': 0.0
@@ -3931,7 +4205,12 @@ def api_get_custom_level_progress(group_id, level_number):
         from server.db_progress_cache import get_custom_level_progress
         progress_data = get_custom_level_progress(user_id, group_id, level_number)
 
+        # Debug logging
+        print(f"🔍 DEBUG api_get_custom_level_progress: user_id={user_id}, group_id={group_id}, level_number={level_number}")
+        print(f"🔍 DEBUG progress_data returned: {progress_data}")
+
         if not progress_data:
+            print(f"⚠️ DEBUG: No progress data found for user_id={user_id}, group_id={group_id}, level_number={level_number}")
             return jsonify({
                 'success': True,
                 'score': None,
@@ -3943,7 +4222,9 @@ def api_get_custom_level_progress(group_id, level_number):
             })
 
         fam_counts = progress_data.get('fam_counts') or {0:0,1:0,2:0,3:0,4:0,5:0}
+        print(f"🔍 DEBUG fam_counts from progress_data: {fam_counts}")
         fam_counts_str = {str(k): int(v or 0) for k, v in fam_counts.items()}
+        print(f"🔍 DEBUG fam_counts_str (final): {fam_counts_str}")
 
         return jsonify({
             'success': True,
@@ -4635,6 +4916,11 @@ def api_words_learning():
     if min_fam > max_fam:
         min_fam, max_fam = max_fam, min_fam
     max_fam = min(max_fam, 4)  # Exclude fully mastered by default
+    
+    # Ensure we never return familiarity 0 if min_familiarity >= 1 is requested
+    # This prevents words with familiarity 0 from being returned when they shouldn't be
+    if min_fam >= 1:
+        min_fam = max(min_fam, 1)  # Force minimum to be at least 1
     
     # Pagination
     def _parse_positive_int(value, default, upper=None):
@@ -5920,6 +6206,9 @@ def api_words_adjust_familiarity():
         
         payload = request.get_json(force=True) or {}
         word = (payload.get('word') or '').strip().lower()  # Normalize to lowercase
+        # Remove trailing punctuation
+        import re
+        word = re.sub(r'[.!?,;:—–-]+$', '', word)
         delta = payload.get('delta', 0)
         
         if not word:
@@ -5969,7 +6258,8 @@ def api_words_adjust_familiarity():
             current_familiarity = familiarity_row['familiarity'] if familiarity_row else 0
             
             # Calculate new familiarity
-            new_familiarity = max(0, min(5, current_familiarity + delta))
+            # Minimum value is 1 (never drop to 0)
+            new_familiarity = max(1, min(5, current_familiarity + delta))
             
             # Update or insert familiarity
             if familiarity_row:
@@ -6576,8 +6866,7 @@ def api_practice_grade():
                         new_fam = current_fam
                     
                     # Update or insert familiarity
-                    from datetime import datetime
-                    from server.db_config import UTC
+                    from datetime import datetime, UTC
                     now = datetime.now(UTC).isoformat()
                     
                     execute_query(conn, """

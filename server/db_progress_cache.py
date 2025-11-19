@@ -218,6 +218,8 @@ def get_custom_level_progress(user_id: int, group_id: int, level_number: int) ->
         config = get_database_config()
         conn = get_db_connection()
         
+        print(f"🔍 DEBUG get_custom_level_progress: user_id={user_id}, group_id={group_id}, level_number={level_number}, db_type={config['type']}")
+        
         try:
             if config['type'] == 'postgresql':
                 result = execute_query(conn, """
@@ -229,60 +231,80 @@ def get_custom_level_progress(user_id: int, group_id: int, level_number: int) ->
                 """, (user_id, group_id, level_number))
                 
                 row = result.fetchone()
+                print(f"🔍 DEBUG get_custom_level_progress: row from DB = {row}, type = {type(row)}")
+                print(f"🔍 DEBUG get_custom_level_progress: result.description = {getattr(result, 'description', None)}")
+                
                 if row:
-                    # Handle both dict and tuple/list results
+                    # First try to convert to dict using _coerce_row_to_dict (most reliable)
+                    from server.db import _coerce_row_to_dict
+                    description = getattr(result, 'description', None)
+                    if description is None and hasattr(result, 'description'):
+                        description = result.description
+                    row_dict = _coerce_row_to_dict(row, description)
+                    print(f"🔍 DEBUG get_custom_level_progress: row_dict after _coerce_row_to_dict = {row_dict}")
+                    
+                    # If _coerce_row_to_dict failed, try manual conversion
+                    if not row_dict and hasattr(row, 'keys'):
+                        try:
+                            row_dict = {key: row[key] for key in row.keys()}
+                            print(f"🔍 DEBUG get_custom_level_progress: row_dict after manual keys() = {row_dict}")
+                        except Exception as e:
+                            print(f"⚠️ DEBUG: Error in manual keys() conversion: {e}")
+                    
+                    if row_dict:
+                        return {
+                            'total_words': int(row_dict.get('total_words') or 0),
+                            'fam_counts': {
+                                0: int(row_dict.get('familiarity_0') or 0),
+                                1: int(row_dict.get('familiarity_1') or 0),
+                                2: int(row_dict.get('familiarity_2') or 0),
+                                3: int(row_dict.get('familiarity_3') or 0),
+                                4: int(row_dict.get('familiarity_4') or 0),
+                                5: int(row_dict.get('familiarity_5') or 0)
+                            },
+                            'score': row_dict.get('score'),
+                            'status': row_dict.get('status'),
+                            'completed_at': row_dict.get('completed_at'),
+                            'last_updated': row_dict.get('last_updated')
+                        }
+                    
+                    # Fallback: Handle dict directly
                     if isinstance(row, dict):
                         return {
-                            'total_words': row.get('total_words', 0),
+                            'total_words': int(row.get('total_words') or 0),
                             'fam_counts': {
-                                0: row.get('familiarity_0', 0),
-                                1: row.get('familiarity_1', 0),
-                                2: row.get('familiarity_2', 0),
-                                3: row.get('familiarity_3', 0),
-                                4: row.get('familiarity_4', 0),
-                                5: row.get('familiarity_5', 0)
+                                0: int(row.get('familiarity_0') or 0),
+                                1: int(row.get('familiarity_1') or 0),
+                                2: int(row.get('familiarity_2') or 0),
+                                3: int(row.get('familiarity_3') or 0),
+                                4: int(row.get('familiarity_4') or 0),
+                                5: int(row.get('familiarity_5') or 0)
                             },
                             'score': row.get('score'),
                             'status': row.get('status'),
                             'completed_at': row.get('completed_at'),
                             'last_updated': row.get('last_updated')
                         }
-                    elif isinstance(row, (list, tuple)) and len(row) >= 11:
+                    
+                    # Fallback: Handle tuple/list
+                    if isinstance(row, (list, tuple)) and len(row) >= 11:
                         return {
-                            'total_words': row[0] or 0,
+                            'total_words': int(row[0] or 0),
                             'fam_counts': {
-                                0: row[1] or 0,
-                                1: row[2] or 0,
-                                2: row[3] or 0,
-                                3: row[4] or 0,
-                                4: row[5] or 0,
-                                5: row[6] or 0
+                                0: int(row[1] or 0),
+                                1: int(row[2] or 0),
+                                2: int(row[3] or 0),
+                                3: int(row[4] or 0),
+                                4: int(row[5] or 0),
+                                5: int(row[6] or 0)
                             },
                             'score': row[7],
                             'status': row[8],
                             'completed_at': row[9],
                             'last_updated': row[10]
                         }
-                    else:
-                        # Try to convert using _coerce_row_to_dict
-                        from server.db import _coerce_row_to_dict
-                        row_dict = _coerce_row_to_dict(row, getattr(result, 'description', None))
-                        if row_dict:
-                            return {
-                                'total_words': row_dict.get('total_words', 0),
-                                'fam_counts': {
-                                    0: row_dict.get('familiarity_0', 0),
-                                    1: row_dict.get('familiarity_1', 0),
-                                    2: row_dict.get('familiarity_2', 0),
-                                    3: row_dict.get('familiarity_3', 0),
-                                    4: row_dict.get('familiarity_4', 0),
-                                    5: row_dict.get('familiarity_5', 0)
-                                },
-                                'score': row_dict.get('score'),
-                                'status': row_dict.get('status'),
-                                'completed_at': row_dict.get('completed_at'),
-                                'last_updated': row_dict.get('last_updated')
-                            }
+                    
+                    print(f"⚠️ DEBUG: Could not parse row data: {row}")
             else:
                 cursor = conn.cursor()
                 cursor.execute("""
