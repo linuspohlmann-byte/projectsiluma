@@ -2555,6 +2555,7 @@ async function renderCustomLevels(groupId, levels) {
                 
                 // If flipping to back side, load familiarity data
                 if (!wasFlipped) {
+                    console.log('🔄 Card flipped to back side, loading familiarity data for level', levelNumber, 'group', groupId);
                     loadCustomLevelFamiliarityData(card, levelNumber, groupId);
                 }
             }
@@ -3029,14 +3030,16 @@ function updateCustomLevelCompletionCircle(levelElement, progressPercent) {
 
 // Load familiarity data for custom level back side - reads directly from custom_level_progress table
 async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId) {
+    console.log('📊 loadCustomLevelFamiliarityData called:', { levelNumber, groupId, element: levelElement });
     try {
         // Check if we have cached data first
         const cachedData = levelElement.dataset.cachedProgressData;
+        console.log('📊 Cached data check:', { hasCachedData: !!cachedData, cachedData });
         if (cachedData) {
             try {
                 const progressData = JSON.parse(cachedData);
                 if (progressData.fam_counts) {
-                    console.log('🚀 Using cached familiarity data for level', levelNumber);
+                    console.log('🚀 Using cached familiarity data for level', levelNumber, ':', progressData.fam_counts);
                     updateFamiliarityUI(levelElement, progressData.fam_counts);
                     return;
                 }
