@@ -268,13 +268,13 @@ export async function populateEvaluationStatus(){
   if (window._eval_context === 'practice' && window._practiceEvalStats) {
     const stats = window._practiceEvalStats;
     
-    // Calculate familiarity counts for practiced words
-    const counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    // Calculate familiarity counts for practiced words using the same approach as level evaluation
+    let counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
     
     if(stats.practicedWords && Array.isArray(stats.practicedWords) && stats.practicedWords.length > 0) {
       const language = stats.language || $('#target-lang')?.value || 'en';
       
-      // Fetch familiarity for all practiced words
+      // Fetch familiarity for all practiced words (same method as used in practice.js)
       try {
         const familiarityPromises = stats.practicedWords.map(async (word) => {
           try {
@@ -282,7 +282,7 @@ export async function populateEvaluationStatus(){
             if(typeof window.getFamiliarity === 'function') {
               return await window.getFamiliarity(word, language);
             }
-            // Fallback: fetch word data directly
+            // Fallback: fetch word data directly (same as practice.js does)
             const headers = {};
             if (window.authManager && window.authManager.isAuthenticated()) {
               Object.assign(headers, window.authManager.getAuthHeaders());
@@ -305,19 +305,22 @@ export async function populateEvaluationStatus(){
         
         const familiarities = await Promise.all(familiarityPromises);
         
-        // Count words by familiarity level
+        // Count words by familiarity level (same logic as normalizeCounts)
         familiarities.forEach(fam => {
           const level = Math.max(0, Math.min(5, Math.floor(fam)));
           counts[level] = (counts[level] || 0) + 1;
         });
         
+        // Normalize counts using the same function as level evaluation
+        counts = normalizeCounts(counts);
         console.log('📊 Practice familiarity counts calculated:', counts);
       } catch(e) {
         console.warn('Failed to calculate practice familiarity counts:', e);
+        counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
       }
     }
     
-    // Update familiarity bars with calculated counts
+    // Update familiarity bars with animation (same as level evaluation)
     const total = Object.values(counts).reduce((sum, val) => sum + Number(val), 0);
     [0,1,2,3,4,5].forEach(s=>{
       const bar = document.querySelector(`#evaluation-card .familiarity-bar[data-status="${s}"]`);
@@ -328,21 +331,22 @@ export async function populateEvaluationStatus(){
         
         if(countEl) countEl.textContent = count;
         
-        // Calculate percentage for progress bar
+        // Calculate percentage for progress bar (same as level evaluation)
         const percentage = total > 0 ? (count / total) * 100 : 0;
         
         if(fillEl) {
-          // Animate the progress bar
+          // Animate the progress bar (same stagger animation as level evaluation)
           setTimeout(() => {
             fillEl.style.width = percentage + '%';
-          }, s * 100); // Stagger animation
+          }, s * 100);
         }
       }
     });
     
-    // Update statistics with practice data
-    await updateEvaluationStatsForPractice(stats, counts);
-    console.log('📊 Practice evaluation status updated:', stats);
+    // Use the same updateEvaluationStats function as level evaluation
+    // This ensures consistent behavior between practice and level evaluations
+    await updateEvaluationStats(counts);
+    console.log('📊 Practice evaluation status updated (using same logic as level evaluation):', stats);
     return;
   }
   
@@ -378,42 +382,36 @@ export async function populateEvaluationStatus(){
 }
 
 // Update evaluation stats specifically for practice sessions
+// Note: This function is kept for backward compatibility, but practice evaluation
+// now uses updateEvaluationStats() for consistency with level evaluation
 export async function updateEvaluationStatsForPractice(stats, counts = null) {
-  const totalWordsEl = document.getElementById('total-words');
-  const learnedWordsEl = document.getElementById('learned-words');
-  const accuracyEl = document.getElementById('accuracy');
-  
-  if (!stats) return;
-  
-  // Use familiarity counts if available, otherwise use practice stats
-  let totalWords = stats.totalWords || 0;
-  let learnedWords = 0;
-  
+  // Delegate to the same function used by level evaluation for consistency
   if(counts && typeof counts === 'object') {
-    // Calculate from familiarity counts
-    totalWords = Object.values(counts).reduce((sum, val) => sum + Number(val), 0);
-    learnedWords = Number(counts[5] || 0); // Familiarity level 5 = learned
+    await updateEvaluationStats(counts);
   } else {
-    // Fallback to practice stats
-    learnedWords = stats.correct || 0;
+    // Fallback: use practice stats directly
+    const totalWordsEl = document.getElementById('total-words');
+    const learnedWordsEl = document.getElementById('learned-words');
+    const accuracyEl = document.getElementById('accuracy');
+    
+    if (!stats) return;
+    
+    const totalWords = stats.totalWords || 0;
+    const learnedWords = stats.correct || 0;
+    const accuracy = stats.accuracy || 0;
+    
+    if (totalWordsEl) {
+      animateNumber(totalWordsEl, 0, totalWords, 1000);
+    }
+    
+    if (learnedWordsEl) {
+      animateNumber(learnedWordsEl, 0, learnedWords, 1200);
+    }
+    
+    if (accuracyEl) {
+      animateNumber(accuracyEl, 0, accuracy, 1400, '%');
+    }
   }
-  
-  const accuracy = stats.accuracy || 0;
-  
-  // Update elements with animation
-  if (totalWordsEl) {
-    animateNumber(totalWordsEl, 0, totalWords, 1000);
-  }
-  
-  if (learnedWordsEl) {
-    animateNumber(learnedWordsEl, 0, learnedWords, 1200);
-  }
-  
-  if (accuracyEl) {
-    animateNumber(accuracyEl, 0, accuracy, 1400, '%');
-  }
-  
-  console.log('📊 Practice stats updated:', { totalWords, learnedWords, accuracy, counts });
 }
 
 export async function updateEvaluationStats(counts) {
