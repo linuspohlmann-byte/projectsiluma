@@ -821,6 +821,11 @@ async function applyPracticeStartResponse(js, fallbackLevel = 1, expectedTotal =
       if(PR._queue.length > 0){
         const pick = await nextFromQueueSkippingMemorized();
         if(pick) PR.curr = pick;
+        
+        // Preload all words in queue in background (non-blocking)
+        preloadAllPracticeWords(PR._queue, null).catch(err => {
+          console.warn('Background preload of practice queue failed:', err);
+        });
       }
       const lang = $('#target-lang')?.value||'';
       if(PR.curr && await isMemorized(PR.curr, lang)){
@@ -884,8 +889,222 @@ export async function startPracticeForLevel(level, runIdOverride){
   let js = null; try{ js = await r.json(); }catch(_){ js = null; }
   if(!r.ok || !js || js.success === false){ const msg = (js && (js.error||js.message)) || ('HTTP '+r.status); alert('Practice-Start fehlgeschlagen: '+msg); return; }
 
+  // NEW: Preload practice words before showing practice
+  // Collect words from server response and queue
+  const practiceWords = [];
+  if (js.word) practiceWords.push(js.word);
+  
+  // Show loading state
+  const practiceCard = document.getElementById('practice-card');
+  if (practiceCard) {
+    const practiceInner = document.getElementById('practice-inner');
+    if (practiceInner) {
+      const preparingText = window.t ? window.t('practice.preparing_session', 'Preparing practice session...') : 'Preparing practice session...';
+      practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}</div></div>`;
+    }
+  }
+  
+  // Preload initial word if available
+  if (practiceWords.length > 0) {
+    await preloadAllPracticeWords(practiceWords, (progress) => {
+      const practiceInner = document.getElementById('practice-inner');
+      if (practiceInner) {
+        const preparingText = window.t ? window.t('practice.preparing_session', 'Preparing practice session...') : 'Preparing practice session...';
+        practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}<br><small>${progress}</small></div></div>`;
+      }
+    });
+  }
+
   // assign state
   await applyPracticeStartResponse(js, level, js.total || js.remaining || 0);
+  
+  // After queue is built, preload all words in queue
+  if (PR._queue && PR._queue.length > 0) {
+    // Preload remaining words in background (non-blocking)
+    preloadAllPracticeWords(PR._queue, null).catch(err => {
+      console.warn('Background preload of practice queue failed:', err);
+    });
+  }
+}
+
+// Preload and enrich ALL words in a practice session
+// This ensures instant word data display for all practice words
+async function preloadAllPracticeWords(words, progressCallback = null) {
+  if (!words || words.length === 0) {
+    console.log('⚠️ No practice words to preload');
+    return;
+  }
+  
+  const lang = $('#target-lang')?.value || 'en';
+  const nativeLang = localStorage.getItem('siluma_native') || 'de';
+  
+  // Normalize and deduplicate words
+  const normalizedWords = Array.from(new Set(
+    words.map(w => String(w || '').trim()).filter(Boolean)
+  ));
+  
+  if (normalizedWords.length === 0) {
+    console.log('⚠️ No valid words to preload');
+    return;
+  }
+  
+  console.log(`🚀 Preloading ALL practice words: ${normalizedWords.length} words`);
+  
+  try {
+    // Step 1: Load all word data using batch API
+    if (progressCallback) progressCallback(`Loading ${normalizedWords.length} words...`);
+    
+    const headers = { 'Content-Type': 'application/json' };
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      Object.assign(headers, window.authManager.getAuthHeaders());
+    } else {
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      }
+    }
+    
+    // Use batch API to load all words at once
+    const batchResponse = await fetch('/api/words/batch', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        words: normalizedWords,
+        language: lang,
+        native_language: nativeLang
+      })
+    });
+    
+    if (batchResponse.ok) {
+      const batchData = await batchResponse.json();
+      if (batchData.success && batchData.words) {
+        // Cache all words in practice cache
+        Object.values(batchData.words).forEach(wordData => {
+          if (wordData && wordData.word) {
+            wordCache.set(wordData.word, lang, wordData);
+            // Also sync to lesson.js cache if available
+            if (window.cachePut) {
+              window.cachePut(wordData);
+            }
+          }
+        });
+        console.log(`✅ All practice words: Word data loaded`);
+      }
+    } else {
+      console.warn('⚠️ Batch API failed, falling back to individual requests');
+      // Fallback: load words individually (slower but works)
+      for (const word of normalizedWords) {
+        try {
+          const wordData = await getWordData(word, lang);
+          if (wordData) {
+            // Already cached by getWordData
+            // Also sync to lesson.js cache if available
+            if (window.cachePut) {
+              window.cachePut(wordData);
+            }
+          }
+        } catch (e) {
+          console.warn(`⚠️ Failed to load word "${word}":`, e);
+        }
+      }
+    }
+    
+    // Step 2: Check which words need enrichment
+    const wordsNeedingEnrichment = [];
+    for (const w of normalizedWords) {
+      const cached = wordCache.get(w, lang);
+      // Also check lesson.js cache
+      const lessonCached = window.cacheGet ? window.cacheGet(w, lang) : null;
+      const wordData = cached || lessonCached;
+      
+      const hasTranslation = !!(wordData && (wordData.translation || '').trim());
+      const hasBasicInfo = !!(wordData && ((wordData.lemma || '').trim() || (wordData.pos || '').trim()));
+      const hasAdvancedInfo = !!(wordData && (
+        (wordData.ipa || '').trim() || 
+        (wordData.example || '').trim() || 
+        (wordData.synonyms || []).length > 0 ||
+        (wordData.collocations || []).length > 0
+      ));
+      
+      // Only enrich if missing basic translation OR missing both lemma/pos AND advanced info
+      if (!hasTranslation || (!hasBasicInfo && !hasAdvancedInfo)) {
+        wordsNeedingEnrichment.push(w);
+      }
+    }
+    
+    // Step 3: Enrich words that need enrichment
+    if (wordsNeedingEnrichment.length > 0) {
+      if (progressCallback) progressCallback(`Enriching ${wordsNeedingEnrichment.length} words...`);
+      
+      // Use batch enrichment API
+      const enrichHeaders = { 'Content-Type': 'application/json' };
+      if (window.authManager && window.authManager.isAuthenticated()) {
+        Object.assign(enrichHeaders, window.authManager.getAuthHeaders());
+      } else {
+        const sessionToken = localStorage.getItem('session_token');
+        if (sessionToken) {
+          enrichHeaders['Authorization'] = `Bearer ${sessionToken}`;
+        }
+      }
+      
+      // Check if we're in a custom level context
+      const isCustomLevel = window.RUN && (window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP);
+      let enrichResponse;
+      
+      if (isCustomLevel) {
+        const groupId = window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP;
+        const levelNumber = window.RUN._customLevelNumber || window.SELECTED_CUSTOM_LEVEL || 1;
+        
+        enrichResponse = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/enrich_batch`, {
+          method: 'POST',
+          headers: enrichHeaders,
+          body: JSON.stringify({
+            words: wordsNeedingEnrichment,
+            language: lang,
+            native_language: nativeLang,
+            sentence_context: '',
+            sentence_native: ''
+          })
+        });
+      } else {
+        enrichResponse = await fetch('/api/word/enrich_batch', {
+          method: 'POST',
+          headers: enrichHeaders,
+          body: JSON.stringify({
+            words: wordsNeedingEnrichment,
+            language: lang,
+            native_language: nativeLang,
+            sentence_context: '',
+            sentence_native: ''
+          })
+        });
+      }
+      
+      if (enrichResponse.ok) {
+        // Refresh cache for enriched words
+        for (const word of wordsNeedingEnrichment) {
+          try {
+            const enrichedData = await getWordData(word, lang);
+            if (enrichedData && window.cachePut) {
+              window.cachePut(enrichedData);
+            }
+          } catch (e) {
+            console.warn(`⚠️ Failed to refresh cache for enriched word "${word}":`, e);
+          }
+        }
+        console.log(`✅ All practice words: Enriched ${wordsNeedingEnrichment.length} words`);
+      } else {
+        console.warn('⚠️ Batch enrichment failed:', enrichResponse.status, enrichResponse.statusText);
+      }
+    } else {
+      console.log(`✅ All practice words: All words already enriched`);
+    }
+    
+    console.log(`✅ All practice words: Preloading complete`);
+    if (progressCallback) progressCallback('Ready!');
+  } catch (err) {
+    console.error(`❌ All practice words: Preloading failed:`, err);
+  }
 }
 
 // Guard to prevent multiple simultaneous practice starts
@@ -937,6 +1156,25 @@ export async function startPracticeWithWordList(wordList, label = 'custom'){
     PR.curr = normalizedWords[0] || ''; // Set first word immediately for faster start
     PR.total = normalizedWords.length;
     PR.level = 0; // Mark as custom word list
+    
+    // NEW: Preload ALL practice words before starting (ensures instant word data display)
+    const practiceCard = document.getElementById('practice-card');
+    if (practiceCard) {
+      const practiceInner = document.getElementById('practice-inner');
+      if (practiceInner) {
+        const preparingText = window.t ? window.t('practice.preparing_session', 'Preparing practice session...') : 'Preparing practice session...';
+        practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}</div></div>`;
+      }
+    }
+    
+    await preloadAllPracticeWords(normalizedWords, (progress) => {
+      const practiceInner = document.getElementById('practice-inner');
+      if (practiceInner) {
+        const preparingText = window.t ? window.t('practice.preparing_session', 'Preparing practice session...') : 'Preparing practice session...';
+        practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}<br><small>${progress}</small></div></div>`;
+      }
+    });
+    
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
       Object.assign(headers, window.authManager.getAuthHeaders());
