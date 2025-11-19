@@ -1233,6 +1233,16 @@ function finishPractice(){
     console.log(`Practice completed: ${totalWords} words, ${accuracy}% accuracy, ${practiceStats.maxStreak} max streak, ${timeSpent}s`);
   }
   
+  // Collect unique words that were practiced
+  const practicedWords = new Set();
+  if(practiceStats.ratings && Array.isArray(practiceStats.ratings)) {
+    practiceStats.ratings.forEach(rating => {
+      if(rating.word) {
+        practicedWords.add(rating.word);
+      }
+    });
+  }
+  
   // Store practice statistics for evaluation display
   window._practiceEvalStats = {
     totalWords: totalWords,
@@ -1241,7 +1251,9 @@ function finishPractice(){
     accuracy: accuracy,
     maxStreak: practiceStats.maxStreak,
     timeSpent: timeSpent,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    practicedWords: Array.from(practicedWords), // Store list of words for familiarity calculation
+    language: PR.language || $('#target-lang')?.value || 'en'
   };
   
   // Refresh level states after practice completion
@@ -1286,4 +1298,5 @@ if(typeof window !== 'undefined'){
   window.startPracticeForLevel = startPracticeForLevel;
   window.startPracticeForLatestLevel = startPracticeForLatestLevel;
   window.startPracticeWithWordList = startPracticeWithWordList;
+  window.getFamiliarity = getFamiliarity; // Export for evaluation.js
 }

@@ -28,8 +28,27 @@ export function normalizeCounts(data){
 
 function getCustomEvalProgress(level){
   const progress = typeof window !== 'undefined' ? window._customEvalProgress : null;
-  if (!progress) return null;
-  if (Number(progress.levelNumber) !== Number(level)) return null;
+  if (!progress) {
+    // If no progress in window._customEvalProgress, but we have groupId and levelNumber,
+    // try to fetch from API
+    if (window._customEvalGroupId && level) {
+      return {
+        groupId: window._customEvalGroupId,
+        levelNumber: level
+      };
+    }
+    return null;
+  }
+  if (Number(progress.levelNumber) !== Number(level)) {
+    // Level mismatch, but if we have groupId, we can still fetch
+    if (progress.groupId) {
+      return {
+        groupId: progress.groupId,
+        levelNumber: level
+      };
+    }
+    return null;
+  }
   return progress;
 }
 
@@ -44,9 +63,44 @@ function normalizeScorePercent(value){
 
 export async function fetchStatusCounts(level, run){
   const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+  
+  // First, check for custom level progress (from window._customEvalProgress)
   const customProgress = getCustomEvalProgress(level);
   if (customProgress && customProgress.counts) {
+    console.log('📊 Using custom eval progress from window._customEvalProgress:', customProgress);
     return normalizeCounts(customProgress.counts);
+  }
+  
+  // For custom levels, try to fetch from custom_level_progress API
+  if (customProgress && customProgress.groupId) {
+    try {
+      const headers = {};
+      if (window.authManager && window.authManager.isAuthenticated()) {
+        Object.assign(headers, window.authManager.getAuthHeaders());
+      }
+      
+      const response = await fetch(`/api/custom-levels/${customProgress.groupId}/${customProgress.levelNumber}/progress-direct`, {
+        headers
+      });
+      
+      if (response.ok) {
+        const progressData = await response.json();
+        if (progressData.success) {
+          const fam_counts = {
+            0: parseInt(progressData.familiarity_0 || 0),
+            1: parseInt(progressData.familiarity_1 || 0),
+            2: parseInt(progressData.familiarity_2 || 0),
+            3: parseInt(progressData.familiarity_3 || 0),
+            4: parseInt(progressData.familiarity_4 || 0),
+            5: parseInt(progressData.familiarity_5 || 0)
+          };
+          console.log('📊 Fetched custom level progress from API:', fam_counts);
+          return normalizeCounts(fam_counts);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Error fetching custom level progress for evaluation:', error);
+    }
   }
   
   if (isUserAuthenticated) {
@@ -89,15 +143,64 @@ export async function fetchStatusCounts(level, run){
 export async function populateEvaluationScore(){
       const ring = document.getElementById('eval-ring');
       const label = document.getElementById('eval-ring-txt');
+      
+      // Check if this is a practice evaluation
+      if (window._eval_context === 'practice' && window._practiceEvalStats) {
+        const stats = window._practiceEvalStats;
+        const pct = stats.accuracy || 0;
+        const C = 2*Math.PI*50;
+        const off = C * (1 - pct/100);
+        if(ring){ ring.setAttribute('stroke-dasharray', String(C.toFixed(2))); ring.setAttribute('stroke-dashoffset', String(off)); }
+        if(label){ label.textContent = pct + '%'; }
+        console.log('📊 Practice evaluation score:', pct + '%');
+        return;
+      }
+      
       const lvl = Number(window._lt_level || (window.RUN && window.RUN.level) || 1);
       const customProgress = getCustomEvalProgress(lvl);
+      
+      // Check custom progress first
       if (customProgress && typeof customProgress.scoreRatio === 'number') {
-      const pct = Math.max(0, Math.min(100, Math.round(customProgress.scoreRatio * 100)));
+        const pct = Math.max(0, Math.min(100, Math.round(customProgress.scoreRatio * 100)));
         const C = 2*Math.PI*50;
         const off = C * (1 - pct/100);
         if(ring){ ring.setAttribute('stroke-dasharray', String(C.toFixed(2))); ring.setAttribute('stroke-dashoffset', String(off)); }
         if(label){ label.textContent = pct + '%'; }
         return;
+      }
+      
+      // For custom levels, try to fetch score from API if customProgress has groupId
+      if (customProgress && customProgress.groupId) {
+        try {
+          const headers = {};
+          if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+          }
+          
+          const response = await fetch(`/api/custom-levels/${customProgress.groupId}/${customProgress.levelNumber}/progress-direct`, {
+            headers
+          });
+          
+          if (response.ok) {
+            const progressData = await response.json();
+            if (progressData.success && progressData.score !== null && progressData.score !== undefined) {
+              // Normalize score (can be 0-1 or 0-100)
+              let scoreValue = Number(progressData.score);
+              if (scoreValue > 1.0001) {
+                scoreValue = scoreValue / 100; // Convert 0-100 to 0-1
+              }
+              const pct = Math.max(0, Math.min(100, Math.round(scoreValue * 100)));
+              const C = 2*Math.PI*50;
+              const off = C * (1 - pct/100);
+              if(ring){ ring.setAttribute('stroke-dasharray', String(C.toFixed(2))); ring.setAttribute('stroke-dashoffset', String(off)); }
+              if(label){ label.textContent = pct + '%'; }
+              console.log('📊 Fetched custom level score from API:', pct + '%');
+              return;
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ Error fetching custom level score for evaluation:', error);
+        }
       }
       let val = NaN;
       
@@ -161,6 +264,88 @@ export async function populateEvaluationScore(){
       if(label){ label.textContent = Math.round(pct) + '%'; }
     }
 export async function populateEvaluationStatus(){
+  // Check if this is a practice evaluation
+  if (window._eval_context === 'practice' && window._practiceEvalStats) {
+    const stats = window._practiceEvalStats;
+    
+    // Calculate familiarity counts for practiced words
+    const counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+    
+    if(stats.practicedWords && Array.isArray(stats.practicedWords) && stats.practicedWords.length > 0) {
+      const language = stats.language || $('#target-lang')?.value || 'en';
+      
+      // Fetch familiarity for all practiced words
+      try {
+        const familiarityPromises = stats.practicedWords.map(async (word) => {
+          try {
+            // Use the same getFamiliarity function from practice.js if available
+            if(typeof window.getFamiliarity === 'function') {
+              return await window.getFamiliarity(word, language);
+            }
+            // Fallback: fetch word data directly
+            const headers = {};
+            if (window.authManager && window.authManager.isAuthenticated()) {
+              Object.assign(headers, window.authManager.getAuthHeaders());
+            }
+            const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
+            headers['X-Native-Language'] = nativeLanguage;
+            
+            const r = await fetch(`/api/word?word=${encodeURIComponent(word)}&language=${encodeURIComponent(language)}`, { headers });
+            if(r.ok) {
+              const js = await r.json();
+              if(js && js.familiarity !== undefined) {
+                return parseInt(js.familiarity || 0, 10) || 0;
+              }
+            }
+          } catch(e) {
+            console.warn(`Failed to get familiarity for word "${word}":`, e);
+          }
+          return 0;
+        });
+        
+        const familiarities = await Promise.all(familiarityPromises);
+        
+        // Count words by familiarity level
+        familiarities.forEach(fam => {
+          const level = Math.max(0, Math.min(5, Math.floor(fam)));
+          counts[level] = (counts[level] || 0) + 1;
+        });
+        
+        console.log('📊 Practice familiarity counts calculated:', counts);
+      } catch(e) {
+        console.warn('Failed to calculate practice familiarity counts:', e);
+      }
+    }
+    
+    // Update familiarity bars with calculated counts
+    const total = Object.values(counts).reduce((sum, val) => sum + Number(val), 0);
+    [0,1,2,3,4,5].forEach(s=>{
+      const bar = document.querySelector(`#evaluation-card .familiarity-bar[data-status="${s}"]`);
+      if(bar) {
+        const countEl = bar.querySelector('.familiarity-count');
+        const fillEl = bar.querySelector('.familiarity-fill');
+        const count = Number(counts[s]||0);
+        
+        if(countEl) countEl.textContent = count;
+        
+        // Calculate percentage for progress bar
+        const percentage = total > 0 ? (count / total) * 100 : 0;
+        
+        if(fillEl) {
+          // Animate the progress bar
+          setTimeout(() => {
+            fillEl.style.width = percentage + '%';
+          }, s * 100); // Stagger animation
+        }
+      }
+    });
+    
+    // Update statistics with practice data
+    await updateEvaluationStatsForPractice(stats, counts);
+    console.log('📊 Practice evaluation status updated:', stats);
+    return;
+  }
+  
   const lvl = Number(window._lt_level || (window.RUN && window.RUN.level) || 1);
   const run = Number(window._last_run_id||0)||0;
   const counts = await fetchStatusCounts(lvl, run);
@@ -192,14 +377,129 @@ export async function populateEvaluationStatus(){
   await updateEvaluationStats(counts);
 }
 
+// Update evaluation stats specifically for practice sessions
+export async function updateEvaluationStatsForPractice(stats, counts = null) {
+  const totalWordsEl = document.getElementById('total-words');
+  const learnedWordsEl = document.getElementById('learned-words');
+  const accuracyEl = document.getElementById('accuracy');
+  
+  if (!stats) return;
+  
+  // Use familiarity counts if available, otherwise use practice stats
+  let totalWords = stats.totalWords || 0;
+  let learnedWords = 0;
+  
+  if(counts && typeof counts === 'object') {
+    // Calculate from familiarity counts
+    totalWords = Object.values(counts).reduce((sum, val) => sum + Number(val), 0);
+    learnedWords = Number(counts[5] || 0); // Familiarity level 5 = learned
+  } else {
+    // Fallback to practice stats
+    learnedWords = stats.correct || 0;
+  }
+  
+  const accuracy = stats.accuracy || 0;
+  
+  // Update elements with animation
+  if (totalWordsEl) {
+    animateNumber(totalWordsEl, 0, totalWords, 1000);
+  }
+  
+  if (learnedWordsEl) {
+    animateNumber(learnedWordsEl, 0, learnedWords, 1200);
+  }
+  
+  if (accuracyEl) {
+    animateNumber(accuracyEl, 0, accuracy, 1400, '%');
+  }
+  
+  console.log('📊 Practice stats updated:', { totalWords, learnedWords, accuracy, counts });
+}
+
 export async function updateEvaluationStats(counts) {
   const totalWordsEl = document.getElementById('total-words');
   const learnedWordsEl = document.getElementById('learned-words');
   const accuracyEl = document.getElementById('accuracy');
   
-  if (!counts) return;
+  // If no counts, try to get from custom progress
+  if (!counts || Object.values(counts).reduce((sum, val) => sum + Number(val), 0) === 0) {
+    const lvl = Number(window._lt_level || (window.RUN && window.RUN.level) || 1);
+    const customProgress = getCustomEvalProgress(lvl);
+    
+    // Try to fetch from API if we have groupId
+    if (customProgress && customProgress.groupId) {
+      try {
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+          Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        const response = await fetch(`/api/custom-levels/${customProgress.groupId}/${customProgress.levelNumber}/progress-direct`, {
+          headers
+        });
+        
+        if (response.ok) {
+          const progressData = await response.json();
+          if (progressData.success) {
+            const apiTotalWords = parseInt(progressData.total_words || 0);
+            const apiLearnedWords = parseInt(progressData.familiarity_5 || 0);
+            const apiAccuracy = apiTotalWords > 0 ? Math.round((apiLearnedWords / apiTotalWords) * 100) : 0;
+            
+            if (totalWordsEl) {
+              animateNumber(totalWordsEl, 0, apiTotalWords, 1000);
+            }
+            
+            if (learnedWordsEl) {
+              animateNumber(learnedWordsEl, 0, apiLearnedWords, 1200);
+            }
+            
+            if (accuracyEl) {
+              animateNumber(accuracyEl, 0, apiAccuracy, 1400, '%');
+            }
+            
+            console.log('📊 Updated evaluation stats from API:', { apiTotalWords, apiLearnedWords, apiAccuracy });
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Error fetching custom level stats for evaluation:', error);
+      }
+    }
+    
+    // Fallback: use customProgress data if available
+    if (customProgress) {
+      const totalWords = customProgress.totalWords || 0;
+      const learnedWords = customProgress.completedWords || 0;
+      const accuracy = totalWords > 0 ? Math.round((learnedWords / totalWords) * 100) : 0;
+      
+      if (totalWordsEl) {
+        animateNumber(totalWordsEl, 0, totalWords, 1000);
+      }
+      
+      if (learnedWordsEl) {
+        animateNumber(learnedWordsEl, 0, learnedWords, 1200);
+      }
+      
+      if (accuracyEl) {
+        animateNumber(accuracyEl, 0, accuracy, 1400, '%');
+      }
+      return;
+    }
+    
+    // If no data at all, set to 0
+    if (totalWordsEl) {
+      totalWordsEl.textContent = '0';
+    }
+    if (learnedWordsEl) {
+      learnedWordsEl.textContent = '0';
+    }
+    if (accuracyEl) {
+      accuracyEl.textContent = '0%';
+    }
+    return;
+  }
   
-  // Calculate totals
+  // Calculate totals from counts
   const totalWords = Object.values(counts).reduce((sum, val) => sum + Number(val), 0);
   const learnedWords = Number(counts[5] || 0); // Familiarity level 5 = learned
   const accuracy = totalWords > 0 ? Math.round((learnedWords / totalWords) * 100) : 0;
