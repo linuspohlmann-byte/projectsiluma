@@ -1866,7 +1866,8 @@ async function startSmartPractice(fromLevelContainer = false){
     }
     const practiceInner = document.getElementById('practice-inner');
     if(practiceInner) {
-      practiceInner.innerHTML = '<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>Preparing practice session...</div></div>';
+      const preparingText = window.t ? window.t('practice.preparing_session', 'Preparing practice session...') : 'Preparing practice session...';
+      practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}</div></div>`;
     }
   }
   
