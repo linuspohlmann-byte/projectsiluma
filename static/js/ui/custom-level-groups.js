@@ -119,7 +119,12 @@ function applyCustomLevelProgressData(levelElement, progressData) {
     if (progressFill) progressFill.style.width = `${normalized.progress_percent}%`;
 
     updateCustomLevelCompletionCircle(levelElement, normalized.score_percent);
-    updateFamiliarityUI(levelElement, normalized.fam_counts);
+    
+    // Only update familiarity UI if card is flipped (backside visible)
+    // This prevents overwriting correct values before user flips the card
+    if (levelElement.classList.contains('flipped')) {
+        updateFamiliarityUI(levelElement, normalized.fam_counts);
+    }
 
     try {
         levelElement.classList.remove('done', 'gold');
@@ -1724,7 +1729,36 @@ async function startCustomGroup(groupId) {
         
         // Render custom levels immediately (don't wait for content generation)
         console.log('🎨 Rendering levels immediately...');
-        renderCustomLevelsWithPreloading(groupId, levels);
+        renderCustomLevels(groupId, levels);
+        
+        // Apply basic progression immediately (fast path)
+        applyBasicCustomLevelProgression(groupId, levels);
+        
+        // Preload familiarity data with loading screen integration
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            if (window.showLoader) {
+                window.showLoader(window.t ? window.t('ui.loading_familiarity', 'Lade Fortschrittsdaten...') : 'Lade Fortschrittsdaten...');
+            }
+            
+            await preloadFamiliarityDataForAllLevels(groupId, levels, (current, total) => {
+                if (window.showLoader) {
+                    const progressText = window.t 
+                        ? window.t('ui.loading_familiarity_progress', 'Lade Fortschrittsdaten... {current}/{total}')
+                        : `Lade Fortschrittsdaten... ${current}/${total}`;
+                    window.showLoader(progressText.replace('{current}', current).replace('{total}', total));
+                }
+            });
+            
+            // Update frontside of all cards with preloaded data (same logic as backside)
+            updateFrontsideWithPreloadedData(groupId, levels);
+            
+            // Re-apply progression after preloading to unlock levels based on scores
+            const levelsContainer = document.getElementById('levels-container') || document.getElementById('levels');
+            if (levelsContainer) {
+                console.log('🔄 Re-applying progression after preloading familiarity data');
+                await applyCustomLevelProgressionBulk(levelsContainer, groupId);
+            }
+        }
         
         const totalTime = performance.now() - startTime;
         console.log(`✅ Group opened in ${totalTime.toFixed(0)}ms`);
@@ -2340,34 +2374,66 @@ async function renderCustomLevels(groupId, levels) {
         const needsGeneration = content.ultra_lazy_loading && !content.sentences_generated;
         const isGenerating = content.ultra_lazy_loading && content.sentences_generated === false;
         
-        // Estimate word count immediately for better UX
-        let estimatedWords = 0;
-        if (content.items && content.items.length > 0) {
-            // Count words from existing content
-            const allWords = new Set();
-            content.items.forEach(item => {
-                if (item.words) {
-                    item.words.forEach(word => {
-                        if (word && word.trim()) {
-                            allWords.add(word.trim().toLowerCase());
-                        }
-                    });
-                }
-            });
-            estimatedWords = allWords.size;
-        } else if (needsGeneration) {
-            // Estimate for levels that need generation
-            estimatedWords = 25; // Typical custom level size
+        // Get progress data from preload cache (same source as backside)
+        // Use window.cachedFamiliarityData which is populated during preloading
+        let totalWords = 0;
+        let learnedWords = 0;
+        let scorePercent = 0;
+        
+        // Try to get progress data from preload cache (same as backside uses)
+        if (window.cachedFamiliarityData && 
+            window.cachedFamiliarityData[groupId] && 
+            window.cachedFamiliarityData[groupId][levelNumber]) {
+            const cachedFamiliarity = window.cachedFamiliarityData[groupId][levelNumber];
+            totalWords = cachedFamiliarity.total_words || 0;
+            learnedWords = cachedFamiliarity.fam_counts && cachedFamiliarity.fam_counts[5] ? cachedFamiliarity.fam_counts[5] : 0;
+            // Calculate score percent from score (normalize first, then convert to percent)
+            // Score can be 0-100 or 0-1, normalizeScoreValue handles both
+            if (cachedFamiliarity.score !== null && cachedFamiliarity.score !== undefined) {
+                const normalizedScore = normalizeScoreValue(cachedFamiliarity.score);
+                scorePercent = Math.round(normalizedScore * 100);
+            } else {
+                scorePercent = 0;
+            }
         }
         
-        // Determine level status
-        let levelStatus = 'Bereit';
+        // Fallback: Try old cache if preload cache not available yet
+        if (totalWords === 0 && window.cachedGroupProgress && window.cachedGroupProgress[levelNumber]) {
+            const cachedProgress = window.cachedGroupProgress[levelNumber];
+            totalWords = cachedProgress.total_words || 0;
+            learnedWords = cachedProgress.completed_words || (cachedProgress.fam_counts && cachedProgress.fam_counts[5]) || 0;
+            scorePercent = cachedProgress.score_percent || 0;
+        }
+        
+        // If no progress data, estimate word count from content
+        if (totalWords === 0) {
+            if (content.items && content.items.length > 0) {
+                // Count words from existing content
+                const allWords = new Set();
+                content.items.forEach(item => {
+                    if (item.words) {
+                        item.words.forEach(word => {
+                            if (word && word.trim()) {
+                                allWords.add(word.trim().toLowerCase());
+                            }
+                        });
+                    }
+                });
+                totalWords = allWords.size;
+            } else if (needsGeneration) {
+                // Estimate for levels that need generation
+                totalWords = 25; // Typical custom level size
+            }
+        }
+        
+        // Determine level status (localized)
+        let levelStatus = window.t ? window.t('status.available', 'Available') : 'Available';
         let statusClass = '';
         if (needsGeneration) {
-            levelStatus = 'Wird generiert...';
+            levelStatus = window.t ? window.t('status.generating', 'Generating...') : 'Generating...';
             statusClass = 'generating';
         } else if (isGenerating) {
-            levelStatus = 'Generiert...';
+            levelStatus = window.t ? window.t('status.generated', 'Generated') : 'Generated';
             statusClass = 'generating';
         }
         
@@ -2378,7 +2444,7 @@ async function renderCustomLevels(groupId, levels) {
                         <div class="level-card-content">
                             <div class="level-number">${levelNumber}</div>
                             <div class="level-card-info">
-                                <div class="level-status ${statusClass}">${levelStatus}</div>
+                                <div class="level-status ${statusClass}" data-i18n="${needsGeneration ? 'status.generating' : (isGenerating ? 'status.generated' : 'status.available')}">${levelStatus}</div>
                                 <div class="level-title">${escapeHtml(levelTitle)}</div>
                                 
                                 <!-- Word statistics section (same as standard levels) -->
@@ -2387,11 +2453,11 @@ async function renderCustomLevels(groupId, levels) {
                                         <div class="level-word-stats-left">
                                             <div class="level-words-count">
                                                 <span class="words-icon">📖</span>
-                                                <span class="words-text">${estimatedWords}</span>
+                                                <span class="words-text">${totalWords}</span>
                                             </div>
                                             <div class="level-learned-count">
                                                 <span class="learned-icon">💡</span>
-                                                <span class="learned-text">0</span>
+                                                <span class="learned-text">${learnedWords}</span>
                                             </div>
                                         </div>
                                         <div class="level-word-stats-right">
@@ -2400,7 +2466,7 @@ async function renderCustomLevels(groupId, levels) {
                                                     <path class="completion-circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
                                                     <path class="completion-circle-fill" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
                                                 </svg>
-                                                <div class="completion-circle-text">0%</div>
+                                                <div class="completion-circle-text">${scorePercent}%</div>
                                             </div>
                                         </div>
                                     </div>
@@ -2412,11 +2478,11 @@ async function renderCustomLevels(groupId, levels) {
                             
                             <!-- Actions section (same as standard levels) -->
                             <div class="level-actions">
-                                <button class="level-btn primary" onclick="handleCustomLevelStart(${groupId}, ${levelNumber})">
-                                    Start
+                                <button class="level-btn primary" data-i18n="buttons.start" onclick="handleCustomLevelStart(${groupId}, ${levelNumber})">
+                                    ${window.t ? window.t('buttons.start', 'Start') : 'Start'}
                                 </button>
-                                <button class="level-btn" onclick="handleCustomLevelPractice(${groupId}, ${levelNumber})">
-                                    Practice
+                                <button class="level-btn" data-i18n="buttons.practice" onclick="handleCustomLevelPractice(${groupId}, ${levelNumber})">
+                                    ${window.t ? window.t('buttons.practice', 'Practice') : 'Practice'}
                                 </button>
                             </div>
                         </div>
@@ -2425,40 +2491,40 @@ async function renderCustomLevels(groupId, levels) {
                     <div class="level-card-back">
                         <div class="level-card-back-content">
                             <div class="level-card-back-header">
-                                <div class="level-card-back-title">Level ${levelNumber}</div>
+                                <div class="level-card-back-title" data-i18n="labels.level">${window.t ? window.t('labels.level', 'Level') : 'Level'} ${levelNumber}</div>
                                 <div class="level-card-back-close">×</div>
                             </div>
                             <div class="level-card-back-info">
-                                <div class="familiarity-overview-title">Familiarity of Words</div>
+                                <div class="familiarity-overview-title" data-i18n="familiarity.title">${window.t ? window.t('familiarity.title', 'Familiarity of Words') : 'Familiarity of Words'}</div>
                                 <div class="familiarity-list">
                                     <div class="familiarity-item" data-familiarity-level="0">
                                         <div class="familiarity-symbol">❌</div>
-                                        <div class="familiarity-label">Unknown</div>
+                                        <div class="familiarity-label" data-i18n="familiarity.unknown">${window.t ? window.t('familiarity.unknown', 'Unknown') : 'Unknown'}</div>
                                         <div class="familiarity-count">0</div>
                                     </div>
                                     <div class="familiarity-item" data-familiarity-level="1">
                                         <div class="familiarity-symbol">🔴</div>
-                                        <div class="familiarity-label">Seen</div>
+                                        <div class="familiarity-label" data-i18n="familiarity.seen">${window.t ? window.t('familiarity.seen', 'Seen') : 'Seen'}</div>
                                         <div class="familiarity-count">0</div>
                                     </div>
                                     <div class="familiarity-item" data-familiarity-level="2">
                                         <div class="familiarity-symbol">🟠</div>
-                                        <div class="familiarity-label">Learning</div>
+                                        <div class="familiarity-label" data-i18n="familiarity.learning">${window.t ? window.t('familiarity.learning', 'Learning') : 'Learning'}</div>
                                         <div class="familiarity-count">0</div>
                                     </div>
                                     <div class="familiarity-item" data-familiarity-level="3">
                                         <div class="familiarity-symbol">🟡</div>
-                                        <div class="familiarity-label">Familiar</div>
+                                        <div class="familiarity-label" data-i18n="familiarity.familiar">${window.t ? window.t('familiarity.familiar', 'Familiar') : 'Familiar'}</div>
                                         <div class="familiarity-count">0</div>
                                     </div>
                                     <div class="familiarity-item" data-familiarity-level="4">
                                         <div class="familiarity-symbol">🟢</div>
-                                        <div class="familiarity-label">Strong</div>
+                                        <div class="familiarity-label" data-i18n="familiarity.strong">${window.t ? window.t('familiarity.strong', 'Strong') : 'Strong'}</div>
                                         <div class="familiarity-count">0</div>
                                     </div>
                                     <div class="familiarity-item" data-familiarity-level="5">
                                         <div class="familiarity-symbol">💡</div>
-                                        <div class="familiarity-label">Memorized</div>
+                                        <div class="familiarity-label" data-i18n="familiarity.memorized">${window.t ? window.t('familiarity.memorized', 'Memorized') : 'Memorized'}</div>
                                         <div class="familiarity-count">0</div>
                                     </div>
                                 </div>
@@ -3032,23 +3098,67 @@ function updateCustomLevelCompletionCircle(levelElement, progressPercent) {
 async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId) {
     console.log('📊 loadCustomLevelFamiliarityData called:', { levelNumber, groupId, element: levelElement });
     try {
-        // Check if we have cached data first
+        // Extract identifiers from element if not provided
+        const extractedGroupId = groupId || levelElement.dataset.customGroupId;
+        const extractedLevelNumber = levelNumber || parseInt(levelElement.dataset.level);
+        
+        // Get user ID from auth manager with fallback
+        let userId = null;
+        if (window.authManager && window.authManager.currentUser) {
+            userId = window.authManager.currentUser.id;
+        } else {
+            // Fallback: try to decode from session token
+            const sessionToken = localStorage.getItem('session_token');
+            if (sessionToken) {
+                try {
+                    const userInfo = JSON.parse(atob(sessionToken.split('.')[1]));
+                    userId = userInfo.user_id || userInfo.id;
+                } catch (e) {
+                    console.warn('⚠️ Could not decode session token:', e);
+                }
+            }
+        }
+        
+        if (!userId) {
+            console.log('⚠️ No user ID available, cannot fetch progress data');
+            // Initialize with zeros
+            const familiarityCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+            updateFamiliarityUI(levelElement, familiarityCounts);
+            return;
+        }
+        
+        // Check preloaded cache first (data loaded when story was opened)
+        if (window.cachedFamiliarityData && 
+            window.cachedFamiliarityData[extractedGroupId] && 
+            window.cachedFamiliarityData[extractedGroupId][extractedLevelNumber]) {
+            const cachedFamiliarity = window.cachedFamiliarityData[extractedGroupId][extractedLevelNumber];
+            console.log('🚀 Using preloaded familiarity data for level', extractedLevelNumber, ':', cachedFamiliarity.fam_counts);
+            updateFamiliarityUI(levelElement, cachedFamiliarity.fam_counts);
+            
+            // Also update card's cached data
+            levelElement.dataset.cachedProgressData = JSON.stringify(cachedFamiliarity);
+            return;
+        }
+        
+        // Check card's cached data as fallback
         const cachedData = levelElement.dataset.cachedProgressData;
-        console.log('📊 Cached data check:', { hasCachedData: !!cachedData, cachedData });
         if (cachedData) {
             try {
                 const progressData = JSON.parse(cachedData);
                 if (progressData.fam_counts) {
-                    console.log('🚀 Using cached familiarity data for level', levelNumber, ':', progressData.fam_counts);
+                    console.log('🚀 Using card cached familiarity data for level', extractedLevelNumber, ':', progressData.fam_counts);
                     updateFamiliarityUI(levelElement, progressData.fam_counts);
                     return;
                 }
             } catch (error) {
-                console.log('⚠️ Error parsing cached data, falling back to API:', error);
+                console.log('⚠️ Error parsing cached data, fetching from API:', error);
             }
         }
         
-        // Single API call to read from custom_level_progress table
+        // Fetch fresh data from API if cache is not available
+        console.log('📊 Fetching familiarity data from API for level', extractedLevelNumber);
+        
+        // Single API call to read from custom_level_progress table using new direct endpoint
         const familiarityCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
         
         try {
@@ -3057,30 +3167,50 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
                 Object.assign(headers, window.authManager.getAuthHeaders());
             }
             
-            console.log('🔧 Fetching custom level progress from custom_level_progress table:', groupId, levelNumber);
-            const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress`, {
+            console.log('🔧 Fetching custom level progress from custom_level_progress table (direct):', extractedGroupId, extractedLevelNumber, userId);
+            const response = await fetch(`/api/custom-levels/${extractedGroupId}/${extractedLevelNumber}/progress-direct`, {
                 headers: headers
             });
             
             if (response.ok) {
                 const progressData = await response.json();
-                if (progressData.success && progressData.fam_counts) {
-                    // Convert string keys to numbers for consistency
-                    Object.keys(progressData.fam_counts).forEach(key => {
-                        const numKey = parseInt(key);
-                        if (!isNaN(numKey) && numKey >= 0 && numKey <= 5) {
-                            familiarityCounts[numKey] = parseInt(progressData.fam_counts[key]) || 0;
-                        }
+                console.log('📊 API Response for level', extractedLevelNumber, 'group', extractedGroupId, ':', progressData);
+                if (progressData.success) {
+                    // Extract familiarity counts from direct database fields
+                    familiarityCounts[0] = parseInt(progressData.familiarity_0 || 0);
+                    familiarityCounts[1] = parseInt(progressData.familiarity_1 || 0);
+                    familiarityCounts[2] = parseInt(progressData.familiarity_2 || 0);
+                    familiarityCounts[3] = parseInt(progressData.familiarity_3 || 0);
+                    familiarityCounts[4] = parseInt(progressData.familiarity_4 || 0);
+                    familiarityCounts[5] = parseInt(progressData.familiarity_5 || 0);
+                    
+                    const totalFromCounts = Object.values(familiarityCounts).reduce((sum, val) => sum + val, 0);
+                    console.log('✅ Custom level progress loaded from custom_level_progress table (direct):', {
+                        familiarityCounts,
+                        total_words_from_api: progressData.total_words,
+                        total_from_familiarity_counts: totalFromCounts,
+                        match: progressData.total_words === totalFromCounts
                     });
-                    console.log('✅ Custom level progress loaded from custom_level_progress table:', familiarityCounts);
                     
                     // Update cache for future use
-                    levelElement.dataset.cachedProgressData = JSON.stringify({
+                    const cacheData = {
                         fam_counts: familiarityCounts,
                         total_words: progressData.total_words || 0,
                         score: progressData.score,
                         status: progressData.status
-                    });
+                    };
+                    
+                    // Store in card's dataset
+                    levelElement.dataset.cachedProgressData = JSON.stringify(cacheData);
+                    
+                    // Also store in global preload cache
+                    if (!window.cachedFamiliarityData) {
+                        window.cachedFamiliarityData = {};
+                    }
+                    if (!window.cachedFamiliarityData[extractedGroupId]) {
+                        window.cachedFamiliarityData[extractedGroupId] = {};
+                    }
+                    window.cachedFamiliarityData[extractedGroupId][extractedLevelNumber] = cacheData;
                 } else {
                     console.log('⚠️ Progress API returned no data:', progressData);
                 }
@@ -3099,16 +3229,204 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
 }
 
 // Helper function to update familiarity UI
+// Maps all 6 familiarity counts (0-5) from database fields to UI elements
 function updateFamiliarityUI(levelElement, familiarityCounts) {
-    Object.keys(familiarityCounts).forEach(level => {
+    // Ensure we update all 6 familiarity levels (0-5)
+    for (let level = 0; level <= 5; level++) {
         const familiarityItem = levelElement.querySelector(`[data-familiarity-level="${level}"]`);
         if (familiarityItem) {
             const countElement = familiarityItem.querySelector('.familiarity-count');
             if (countElement) {
-                countElement.textContent = familiarityCounts[level];
+                // Get count from familiarityCounts object (handles both string and number keys)
+                const count = familiarityCounts[level] !== undefined 
+                    ? familiarityCounts[level] 
+                    : (familiarityCounts[String(level)] !== undefined 
+                        ? familiarityCounts[String(level)] 
+                        : 0);
+                countElement.textContent = parseInt(count) || 0;
             }
         }
+    }
+}
+
+// Preload familiarity data for all levels in a story (background loading)
+// This ensures data is ready when user flips a card
+// progressCallback(current, total) is called to update loading screen
+async function preloadFamiliarityDataForAllLevels(groupId, levels, progressCallback = null) {
+    try {
+        // Get user ID
+        let userId = null;
+        if (window.authManager && window.authManager.currentUser) {
+            userId = window.authManager.currentUser.id;
+        } else {
+            const sessionToken = localStorage.getItem('session_token');
+            if (sessionToken) {
+                try {
+                    const userInfo = JSON.parse(atob(sessionToken.split('.')[1]));
+                    userId = userInfo.user_id || userInfo.id;
+                } catch (e) {
+                    console.warn('⚠️ Could not decode session token for preloading:', e);
+                    return;
+                }
+            }
+        }
+        
+        if (!userId) {
+            console.log('⚠️ No user ID available, cannot preload familiarity data');
+            return;
+        }
+        
+        // Initialize cache structure if needed
+        if (!window.cachedFamiliarityData) {
+            window.cachedFamiliarityData = {};
+        }
+        if (!window.cachedFamiliarityData[groupId]) {
+            window.cachedFamiliarityData[groupId] = {};
+        }
+        
+        console.log(`🚀 Preloading familiarity data for ${levels.length} levels in group ${groupId}`);
+        
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        // Load all levels sequentially to show progress (better UX)
+        let completed = 0;
+        const total = levels.length;
+        
+        for (const level of levels) {
+            const levelNumber = level.level_number;
+            
+            try {
+                // Update progress callback
+                if (progressCallback) {
+                    progressCallback(completed, total);
+                }
+                
+                const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress-direct`, {
+                    headers: headers
+                });
+                
+                if (response.ok) {
+                    const progressData = await response.json();
+                    if (progressData.success) {
+                        // Extract familiarity counts
+                        const familiarityCounts = {
+                            0: parseInt(progressData.familiarity_0 || 0),
+                            1: parseInt(progressData.familiarity_1 || 0),
+                            2: parseInt(progressData.familiarity_2 || 0),
+                            3: parseInt(progressData.familiarity_3 || 0),
+                            4: parseInt(progressData.familiarity_4 || 0),
+                            5: parseInt(progressData.familiarity_5 || 0)
+                        };
+                        
+                        // Store in cache
+                        window.cachedFamiliarityData[groupId][levelNumber] = {
+                            fam_counts: familiarityCounts,
+                            total_words: progressData.total_words || 0,
+                            score: progressData.score,
+                            status: progressData.status
+                        };
+                        
+                        // Also update the card's dataset if it exists
+                        const card = document.querySelector(`[data-custom-group-id="${groupId}"][data-level="${levelNumber}"]`);
+                        if (card) {
+                            card.dataset.cachedProgressData = JSON.stringify({
+                                fam_counts: familiarityCounts,
+                                total_words: progressData.total_words || 0,
+                                score: progressData.score,
+                                status: progressData.status
+                            });
+                        }
+                        
+                        completed++;
+                    }
+                }
+            } catch (error) {
+                console.log(`⚠️ Error preloading familiarity data for level ${levelNumber}:`, error.message);
+            }
+        }
+        
+        // Final progress update
+        if (progressCallback) {
+            progressCallback(completed, total);
+        }
+        
+        console.log(`✅ Preloaded familiarity data for ${completed}/${total} levels`);
+        
+    } catch (error) {
+        console.log('⚠️ Error in preloadFamiliarityDataForAllLevels:', error);
+    }
+}
+
+// Update frontside of level cards with preloaded familiarity data
+// Uses the same data source as backside for consistency
+function updateFrontsideWithPreloadedData(groupId, levels) {
+    if (!window.cachedFamiliarityData || !window.cachedFamiliarityData[groupId]) {
+        return;
+    }
+    
+    levels.forEach(level => {
+        const levelNumber = level.level_number;
+        const cachedFamiliarity = window.cachedFamiliarityData[groupId][levelNumber];
+        
+        if (!cachedFamiliarity) {
+            return;
+        }
+        
+        // Find the card element
+        const card = document.querySelector(`[data-custom-group-id="${groupId}"][data-level="${levelNumber}"]`);
+        if (!card) {
+            return;
+        }
+        
+        // Extract data (same as backside uses)
+        const totalWords = cachedFamiliarity.total_words || 0;
+        const learnedWords = cachedFamiliarity.fam_counts && cachedFamiliarity.fam_counts[5] ? cachedFamiliarity.fam_counts[5] : 0;
+        let scorePercent = 0;
+        // Normalize score first (handles both 0-1 and 0-100 formats), then convert to percent
+        if (cachedFamiliarity.score !== null && cachedFamiliarity.score !== undefined) {
+            const normalizedScore = normalizeScoreValue(cachedFamiliarity.score);
+            scorePercent = Math.round(normalizedScore * 100);
+        }
+        
+        // Update frontside elements
+        const wordsText = card.querySelector('.words-text');
+        if (wordsText) {
+            wordsText.textContent = totalWords;
+        }
+        
+        const learnedText = card.querySelector('.learned-text');
+        if (learnedText) {
+            learnedText.textContent = learnedWords;
+        }
+        
+        const completionCircleText = card.querySelector('.completion-circle-text');
+        if (completionCircleText) {
+            completionCircleText.textContent = `${scorePercent}%`;
+        }
+        
+        // Update completion circle visual
+        updateCustomLevelCompletionCircle(card, scorePercent);
+        
+        // Update progress bar
+        const progressFill = card.querySelector('.level-progress-fill');
+        if (progressFill && totalWords > 0) {
+            const progressPercent = Math.round((learnedWords / totalWords) * 100);
+            progressFill.style.width = `${progressPercent}%`;
+        }
+        
+        // Store in card's dataset for consistency
+        card.dataset.cachedProgressData = JSON.stringify({
+            fam_counts: cachedFamiliarity.fam_counts,
+            total_words: totalWords,
+            score: cachedFamiliarity.score,
+            status: cachedFamiliarity.status
+        });
     });
+    
+    console.log(`✅ Updated frontside for ${levels.length} level cards with preloaded data`);
 }
 
 // Load cached progress data for all levels in a group (ultra-fast)
@@ -3754,7 +4072,7 @@ function updateLevelGenerationProgress(groupId, levels, success) {
                 levelCard.classList.remove('generating');
                 const statusElement = levelCard.querySelector('.level-status');
                 if (statusElement) {
-                    statusElement.textContent = 'Bereit';
+                    statusElement.textContent = window.t ? window.t('status.available', 'Available') : 'Available';
                     statusElement.classList.remove('generating');
                 }
             } else {
@@ -3776,17 +4094,8 @@ function renderCustomLevelsWithPreloading(groupId, levels) {
     // Apply basic progression immediately (fast path)
     applyBasicCustomLevelProgression(groupId, levels);
     
-    // DISABLED: Progressive updates and preloading cause race conditions
-    // setCustomLevelColor (called in applyBulkCustomLevelProgression) already loads all data
-    // These duplicate calls were overwriting good data with 0s
-    
-    // setTimeout(() => {
-    //     updateWordCountsProgressively(groupId, levels);
-    // }, 200);
-    
-    // setTimeout(() => {
-    //     preloadCustomLevelData(groupId, levels);
-    // }, 100);
+    // Note: Preloading is now handled in startCustomGroup with loading screen integration
+    // This function is kept for backward compatibility but preloading happens there
 }
 
 // Simple progress animation (no longer needed with ultra-lazy loading)
@@ -3852,13 +4161,16 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                     
                     let isUnlocked = false;
                     
-                    if (status === 'completed' && Number(score || 0) > 0.6) {
+                    // Normalize score first (handles both 0-1 and 0-100 formats)
+                    const normalizedScore = normalizeScoreValue(score);
+                    
+                    if (status === 'completed' && normalizedScore > 0.6) {
                         // Level completed with good score
                         isUnlocked = true;
                         levelElement.classList.add('done');
                         levelElement.classList.remove('locked', 'unlocked');
                         console.log(`Custom level ${levelNumber} marked as completed (Score > 0.6)`);
-                    } else if (status === 'completed' && Number(score || 0) <= 0.6) {
+                    } else if (status === 'completed' && normalizedScore <= 0.6) {
                         // Level completed but low score
                         isUnlocked = true;
                         levelElement.classList.add('unlocked');
@@ -3878,7 +4190,8 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                             const prevUserProgress = prevLevelData.user_progress;
                             const prevStatus = prevUserProgress?.status || prevLevelData.status;
                             const prevScore = prevUserProgress?.score || prevLevelData.last_score;
-                            const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+                            const prevNormalizedScore = normalizeScoreValue(prevScore);
+                            const isPrevCompleted = prevStatus === 'completed' && prevNormalizedScore > 0.6;
                             
                             if (isPrevCompleted) {
                                 isUnlocked = true;
@@ -3904,6 +4217,8 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                     // Set allowStart flag for unlocked levels
                     if (isUnlocked) {
                         levelElement.dataset.allowStart = 'true';
+                    } else {
+                        levelElement.dataset.allowStart = 'false';
                     }
                     
                     // Cache the data for later use
@@ -4042,9 +4357,17 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
             return;
         }
         
-        // For authenticated users, rely on cached progress data
-        if (!window.cachedGroupProgress || Object.keys(window.cachedGroupProgress).length === 0) {
-            await loadCachedGroupProgress(groupId);
+        // For authenticated users, use preloaded familiarity data (same source as score display)
+        // Fallback to cachedGroupProgress if familiarity data not available yet
+        const familiarityData = window.cachedFamiliarityData && window.cachedFamiliarityData[groupId] 
+            ? window.cachedFamiliarityData[groupId] 
+            : null;
+        
+        // Fallback: load cachedGroupProgress if familiarity data not available
+        if (!familiarityData) {
+            if (!window.cachedGroupProgress || Object.keys(window.cachedGroupProgress).length === 0) {
+                await loadCachedGroupProgress(groupId);
+            }
         }
 
         const progressMap = window.cachedGroupProgress || {};
@@ -4052,39 +4375,110 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
 
         levelCards.forEach(card => {
             const levelNumber = parseInt(card.dataset.level);
-            const normalized = progressMap[levelNumber];
-            const prevNormalized = progressMap[levelNumber - 1];
+            
+            // Use familiarity data if available (same source as score display), otherwise use progressMap
+            let levelData = null;
+            let prevLevelData = null;
+            
+            if (familiarityData && familiarityData[levelNumber]) {
+                // Use preloaded familiarity data (same as score display)
+                const cachedFamiliarity = familiarityData[levelNumber];
+                // Normalize to match progressMap format
+                const normalizedScore = normalizeScoreValue(cachedFamiliarity.score);
+                levelData = {
+                    status: cachedFamiliarity.status,
+                    score: normalizedScore,
+                    score_percent: Math.round(normalizedScore * 100),
+                    total_words: cachedFamiliarity.total_words || 0,
+                    completed_words: cachedFamiliarity.fam_counts && cachedFamiliarity.fam_counts[5] ? cachedFamiliarity.fam_counts[5] : 0,
+                    fam_counts: cachedFamiliarity.fam_counts || {} // Include full fam_counts for applyCustomLevelProgressData
+                };
+            } else {
+                // Fallback to progressMap
+                levelData = progressMap[levelNumber];
+            }
+            
+            // Get previous level data using same logic
+            if (familiarityData && familiarityData[levelNumber - 1]) {
+                const prevCachedFamiliarity = familiarityData[levelNumber - 1];
+                const prevNormalizedScore = normalizeScoreValue(prevCachedFamiliarity.score);
+                prevLevelData = {
+                    status: prevCachedFamiliarity.status,
+                    score: prevNormalizedScore, // Normalized score (0-1) for comparison
+                    score_percent: Math.round(prevNormalizedScore * 100) // Percent (0-100) for display
+                };
+            } else {
+                prevLevelData = progressMap[levelNumber - 1];
+                // Normalize score if it exists in progressMap
+                if (prevLevelData && prevLevelData.score !== undefined) {
+                    prevLevelData.score = normalizeScoreValue(prevLevelData.score);
+                } else if (prevLevelData && prevLevelData.score_percent !== undefined) {
+                    // Convert score_percent to normalized score (0-1)
+                    prevLevelData.score = prevLevelData.score_percent / 100;
+                }
+            }
 
             card.classList.remove('locked', 'unlocked', 'done', 'gold');
 
-            if (normalized) {
+            if (levelData) {
                 try {
-                    card.dataset.cachedProgressData = JSON.stringify(normalized);
+                    // Apply progress data to update frontside display (total_words, familiarity_5, score)
+                    applyCustomLevelProgressData(card, levelData);
                     
                     // Update title from bulk-stats if available
-                    if (normalized.title && normalized.title !== `Level ${levelNumber}`) {
+                    if (levelData.title && levelData.title !== `Level ${levelNumber}`) {
                         const titleEl = card.querySelector('.level-title');
                         if (titleEl) {
-                            titleEl.textContent = normalized.title;
-                            console.log(`✅ Updated custom level ${levelNumber} title in bulk: ${normalized.title}`);
+                            titleEl.textContent = levelData.title;
+                            console.log(`✅ Updated custom level ${levelNumber} title in bulk: ${levelData.title}`);
                         }
                     }
                 } catch (_e) { /* ignore */ }
             }
 
-            const isCompleted = normalized?.status === 'completed';
-            const hasProgress = normalized ? Number(normalized.progress_percent || 0) > 0 : false;
-            const prevCompleted = prevNormalized?.status === 'completed';
+            const isCompleted = levelData?.status === 'completed';
+            const hasProgress = levelData ? Number(levelData.score_percent || 0) > 0 : false;
+            
+            // Check previous level completion with score > 0.6 (same logic as score display)
+            // Use normalized score (0-1) for comparison, not percent
+            const prevScore = prevLevelData?.score !== undefined 
+                ? prevLevelData.score 
+                : (prevLevelData?.score_percent !== undefined 
+                    ? prevLevelData.score_percent / 100 
+                    : 0);
+            
+            // Unlock if previous level has score > 0.6, regardless of status
+            // Status might not be 'completed' even if score is high enough
+            const prevCompleted = prevScore > 0.6;
+            
+            // Debug logging
+            if (levelNumber > 1) {
+                console.log(`🔓 Level ${levelNumber} unlock check:`, {
+                    prevLevel: levelNumber - 1,
+                    prevLevelData: prevLevelData,
+                    prevStatus: prevLevelData?.status,
+                    prevScore: prevScore,
+                    prevScorePercent: Math.round(prevScore * 100),
+                    prevCompleted: prevCompleted,
+                    familiarityDataExists: !!familiarityData,
+                    familiarityDataForPrevLevel: familiarityData && familiarityData[levelNumber - 1],
+                    allowStart: prevCompleted || levelNumber === 1
+                });
+            }
 
             let allowStart = false;
             if (levelNumber === 1) {
                 allowStart = true;
             } else if (prevCompleted) {
                 allowStart = true;
+            } else if (!prevLevelData) {
+                // If no data for previous level, check if it exists in familiarity data
+                // Maybe the previous level hasn't been started yet, so it should be locked
+                console.log(`⚠️ Level ${levelNumber}: No data for previous level ${levelNumber - 1}`);
             }
 
             if (isCompleted) {
-                if (Number(normalized.score_percent || 0) >= 80) {
+                if (Number(levelData.score_percent || 0) >= 80) {
                     card.classList.add('gold');
                 } else {
                     card.classList.add('done');
@@ -4138,7 +4532,8 @@ function showCustomLevelLockedMessage(level, prevLevel, prevScore) {
     message.className = 'level-locked-message';
     message.id = 'custom-level-locked-message';
     
-    const progressPercent = Math.round((prevScore || 0) * 100);
+    // prevScore is already in percent (0-100), no need to multiply
+    const progressPercent = Math.round(prevScore || 0);
     const neededPercent = 60;
     
     message.innerHTML = `
@@ -4233,22 +4628,35 @@ function handleCustomLevelStart(groupId, levelNumber) {
         if (levelCard.classList.contains('locked')) {
             console.log(`Level ${levelNumber} is locked, showing locked message`);
             
-            // Get previous level data to show progress
+            // Get previous level data to show progress (use same data source as score display)
             const prevLevel = levelNumber - 1;
             let prevScore = 0;
             
-            // Try to get previous level score from cached data
-            const prevLevelCard = document.querySelector(`.level-card[data-level="${prevLevel}"][data-custom-group-id="${groupId}"]`);
-            if (prevLevelCard && prevLevelCard.dataset.bulkData) {
-                try {
-                    const prevData = JSON.parse(prevLevelCard.dataset.bulkData);
-                    prevScore = prevData.user_progress?.score || prevData.last_score || 0;
-                } catch (error) {
-                    console.log('Error parsing previous level data:', error);
+            // Try to get previous level score from preloaded familiarity data (same as score display)
+            const familiarityData = window.cachedFamiliarityData && window.cachedFamiliarityData[groupId] 
+                ? window.cachedFamiliarityData[groupId] 
+                : null;
+            
+            if (familiarityData && familiarityData[prevLevel]) {
+                const prevCachedFamiliarity = familiarityData[prevLevel];
+                const prevNormalizedScore = normalizeScoreValue(prevCachedFamiliarity.score);
+                prevScore = Math.round(prevNormalizedScore * 100); // Convert to percent (0-100) for display
+            } else {
+                // Fallback: try to get from card's cached data
+                const prevLevelCard = document.querySelector(`.level-card[data-level="${prevLevel}"][data-custom-group-id="${groupId}"]`);
+                if (prevLevelCard && prevLevelCard.dataset.bulkData) {
+                    try {
+                        const prevData = JSON.parse(prevLevelCard.dataset.bulkData);
+                        const rawScore = prevData.user_progress?.score || prevData.last_score || 0;
+                        const normalizedScore = normalizeScoreValue(rawScore);
+                        prevScore = Math.round(normalizedScore * 100); // Convert to percent (0-100) for display
+                    } catch (error) {
+                        console.log('Error parsing previous level data:', error);
+                    }
                 }
             }
             
-            // Show locked message
+            // Show locked message (prevScore is already in percent 0-100)
             showCustomLevelLockedMessage(levelNumber, prevLevel, prevScore);
             return;
         }
@@ -4277,11 +4685,26 @@ function handleCustomLevelPractice(groupId, levelNumber) {
             document.querySelectorAll('.level-card').forEach(card => card.classList.remove('active'));
             // Add active class to this card
             levelCard.classList.add('active');
+            
+            // Find and set loading state on the practice button in this level card
+            const practiceBtn = levelCard.querySelector('.level-btn[data-i18n="buttons.practice"]');
+            if (practiceBtn) {
+                practiceBtn.disabled = true;
+                const originalText = practiceBtn.textContent;
+                practiceBtn.dataset.originalText = originalText;
+                // Show loading state without emoji
+                const labelNode = practiceBtn.querySelector('.btn-label');
+                if (labelNode) {
+                    labelNode.textContent = window.t ? window.t('ui.loading', 'Loading...') : 'Loading...';
+                } else {
+                    practiceBtn.textContent = window.t ? window.t('ui.loading', 'Loading...') : 'Loading...';
+                }
+            }
         }
         
-        // Call startSmartPractice which will detect the context
+        // Call startSmartPractice with flag to indicate it's from a level container
         if (typeof window.startSmartPractice === 'function') {
-            window.startSmartPractice();
+            window.startSmartPractice(true); // Pass true to indicate level container context
         } else {
             console.error('startSmartPractice function not available');
             alert('Practice-Funktion nicht verfügbar');
@@ -4322,3 +4745,4 @@ window.loadCustomLevelGroups = loadCustomLevelGroups;
 window.renderCustomLevelGroups = renderCustomLevelGroups;
 window.showGroupsContainer = showGroupsContainer;
 window.setupCustomGroupsFilterListeners = setupCustomGroupsFilterListeners;
+

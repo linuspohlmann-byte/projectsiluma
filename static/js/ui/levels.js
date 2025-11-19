@@ -196,6 +196,8 @@ function debouncedApplyLevelStates() {
 window.refreshLevelStates = refreshLevelStates;
 
 // Function to sync user data
+// Note: This endpoint may not exist in all deployments
+// Made optional to prevent errors if endpoint is not available
 async function syncUserData() {
   try {
     const headers = {};
@@ -208,17 +210,44 @@ async function syncUserData() {
       headers: headers
     });
     
-    const result = await response.json();
+    // Check if response is OK before trying to parse JSON
+    if (!response.ok) {
+      // 405 Method Not Allowed or 404 Not Found means endpoint doesn't exist
+      // This is fine - just log and return success (non-blocking)
+      if (response.status === 405 || response.status === 404) {
+        console.log('ℹ️ Sync endpoint not available (this is OK)');
+        return true; // Return success to not block other operations
+      }
+      // For other errors, log but don't throw
+      console.log('⚠️ Sync endpoint returned status:', response.status);
+      return false;
+    }
+    
+    // Try to parse JSON, but handle non-JSON responses gracefully
+    let result;
+    try {
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        console.log('ℹ️ Sync endpoint returned empty response');
+        return true;
+      }
+      result = JSON.parse(text);
+    } catch (parseError) {
+      console.log('⚠️ Sync endpoint returned non-JSON response:', parseError.message);
+      return false;
+    }
     
     if (result.success) {
       console.log('✅ User data synchronized successfully');
       return true;
     } else {
-      console.error('❌ Sync failed:', result.error);
+      console.log('⚠️ Sync returned success=false:', result.error);
       return false;
     }
   } catch (error) {
-    console.error('❌ Error during sync:', error);
+    // Network errors or other issues - log but don't throw
+    // This is a non-critical operation, so we don't want to break the UI
+    console.log('ℹ️ Sync skipped (non-critical):', error.message);
     return false;
   }
 }
@@ -395,6 +424,9 @@ async function applyLevelStates(){
     }
   
   // Sync user data when applying level states (for authenticated users)
+  // NOTE: Endpoint /api/level/sync-data may not exist - disabled to prevent 405 errors
+  // If sync is needed in the future, the endpoint should be created first
+  /*
   if (window.authManager && window.authManager.isAuthenticated()) {
     try {
       await syncUserData();
@@ -402,6 +434,7 @@ async function applyLevelStates(){
       console.log('Sync skipped:', error);
     }
   }
+  */
 
   // Map Level -> Node
   const map = new Map();
@@ -468,13 +501,38 @@ async function applyLevelStates(){
           const js = data.levels[lvl] || data.levels[String(lvl)];
           if (!js || !js.success) continue;
           
+          // Debug: log title data
+          if (lvl <= 3) {
+            console.log(`🔍 Level ${lvl} title data:`, {
+              hasTitle: !!js.title,
+              title: js.title,
+              titleType: typeof js.title,
+              titleValue: js.title
+            });
+          }
+          
           // Cache the bulk data in the level element for later use
           nd.dataset.bulkData = JSON.stringify({
             fam_counts: js.fam_counts,
             status: js.status,
             last_score: js.last_score,
-            total_words: js.total_words
+            total_words: js.total_words,
+            title: js.title || `Level ${lvl}`
           });
+          
+          // Update level title if available (for custom levels)
+          const titleToUse = js.title || `Level ${lvl}`;
+          if (titleToUse && titleToUse !== `Level ${lvl}`) {
+            const titleEl = nd.querySelector('.level-title');
+            if (titleEl) {
+              titleEl.textContent = titleToUse;
+              console.log(`✅ Updated level ${lvl} title to: ${titleToUse}`);
+            } else {
+              console.warn(`⚠️ Level ${lvl}: title element not found for title: ${titleToUse}`);
+            }
+          } else if (lvl <= 3) {
+            console.log(`ℹ️ Level ${lvl}: title is default or missing (titleToUse='${titleToUse}')`);
+          }
           
       nd.classList.remove('locked','unlocked','done');
       
@@ -651,6 +709,12 @@ async function applyLevelStates(){
   // Update group stats after all level states have been applied
   // This ensures the group statistics reflect the current level completion status
   await updateGroupStatsInOverview();
+  
+  // Highlight the highest available level after all levels are processed
+  // Use setTimeout to ensure DOM is fully updated
+  setTimeout(() => {
+    highlightHighestAvailableLevel();
+  }, 200); // Increased timeout to ensure all levels are fully processed
   
   } finally {
     isApplyingLevelStates = false;
@@ -977,7 +1041,13 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
     levelElement.dataset.colorSet = 'true';
     
     // Apply button highlighting based on level status and color
-    applyButtonHighlighting(levelElement, actualIsCompleted, progressPercent);
+    // For Level 1, if it's unlocked and not completed, it should be highlighted
+    // We'll let highlightHighestAvailableLevel determine if it's the highest, but ensure it gets highlighted
+    const isLevel1 = lvl === 1;
+    const isAvailableAndNotCompleted = isAvailable && !actualIsCompleted;
+    const isHighestForNow = isLevel1 && isAvailableAndNotCompleted; // Level 1 is highest if it's available and no other levels are completed
+    
+    applyButtonHighlighting(levelElement, actualIsCompleted, progressPercent, isHighestForNow);
     
   } catch(error) {
     console.log('Error setting level color based on learned words:', error);
@@ -1039,52 +1109,184 @@ export function updateLevelGroupNames() {
 }
 
 // Helper function to apply button highlighting based on level status
-function applyButtonHighlighting(levelElement, isCompleted, progressPercent) {
+// Now uses the same logic as the level number circle - colors are applied via CSS based on level card classes
+function applyButtonHighlighting(levelElement, isCompleted, progressPercent, isHighestAvailable = false) {
   try {
     const startBtn = levelElement.querySelector('.level-btn.primary');
     const practiceBtn = levelElement.querySelector('.level-btn:not(.primary)');
     
     if (!startBtn || !practiceBtn) return;
     
-    // Remove existing highlighting classes
-    startBtn.classList.remove('highlighted-blue', 'highlighted-green', 'highlighted-gold');
-    practiceBtn.classList.remove('highlighted-blue', 'highlighted-green', 'highlighted-gold');
+    // Remove ALL legacy highlighting classes to prevent interference
+    startBtn.classList.remove('highlighted-blue', 'highlighted-green', 'highlighted-gold', 'highlighted-orange');
+    practiceBtn.classList.remove('highlighted-blue', 'highlighted-green', 'highlighted-gold', 'highlighted-orange');
     
-    // Check if level is available (unlocked but not completed)
-    const isAvailable = levelElement.classList.contains('unlocked') && !isCompleted;
+    // Mark buttons as color-set to prevent legacy code interference
+    startBtn.dataset.colorSet = 'true';
+    practiceBtn.dataset.colorSet = 'true';
     
-    // Determine level color for highlighting based on completion status and word progress
-    let highlightClass = '';
-    if (isCompleted && progressPercent >= 100) {
-      highlightClass = 'highlighted-gold'; // Gold for completed with 100% words learned
-    } else if (isCompleted && progressPercent > 0) {
-      highlightClass = 'highlighted-green'; // Green for completed with <100% words learned
-    } else if (isCompleted && progressPercent === 0) {
-      highlightClass = 'highlighted-green'; // Green for completed but no words learned yet
-    } else if (isAvailable) {
-      highlightClass = 'highlighted-blue'; // Blue for available levels
+    // The button colors are now controlled by CSS based on level card classes:
+    // - .level-card.unlocked .level-btn.primary (blue) - matches .level-card.unlocked .level-number
+    // - .level-card.done .level-btn.primary (green) - matches .level-card.done .level-number
+    // - .level-card.gold .level-btn.primary (gold) - matches .level-card.gold .level-number
+    // - .level-card.locked .level-btn.primary (gray) - matches default locked state
+    
+    // For highest available level, we can add a special pulse effect via CSS class
+    if (isHighestAvailable && !isCompleted) {
+      levelElement.classList.add('highest-available');
+      console.log(`✅ Applied highest-available class to level ${levelElement.dataset.level || 'unknown'} - Start button will match circle color`);
     } else {
-      highlightClass = ''; // No highlighting for locked levels
+      levelElement.classList.remove('highest-available');
     }
     
-    // Apply highlighting to appropriate button based on level status and color
-    if (highlightClass) {
-      if (isCompleted) {
-        // For completed levels, highlight the Practice button with appropriate color
-        practiceBtn.classList.add(highlightClass);
-        console.log(`Applied button highlighting: ${highlightClass} to Practice button (completed level)`);
-      } else if (isAvailable) {
-        // For available levels, highlight the Start button with blue
-        startBtn.classList.add(highlightClass);
-        console.log(`Applied button highlighting: ${highlightClass} to Start button (available level)`);
+    // Log for debugging
+    const levelNum = levelElement.dataset.level || 'unknown';
+    const hasGold = levelElement.classList.contains('gold');
+    const hasDone = levelElement.classList.contains('done');
+    const hasUnlocked = levelElement.classList.contains('unlocked');
+    const hasLocked = levelElement.classList.contains('locked');
+    
+    // Ensure button doesn't have inline styles that override CSS
+    if (startBtn) {
+      // Remove any inline background styles that might interfere
+      if (startBtn.style.background) {
+        console.log(`⚠️ Level ${levelNum}: Removing inline background style from start button: ${startBtn.style.background}`);
+        startBtn.style.background = '';
       }
-    } else {
-      // For locked levels, no highlighting
-      console.log(`No button highlighting applied (locked level - isCompleted: ${isCompleted}, isAvailable: ${isAvailable})`);
+      if (startBtn.style.backgroundColor) {
+        console.log(`⚠️ Level ${levelNum}: Removing inline backgroundColor style from start button: ${startBtn.style.backgroundColor}`);
+        startBtn.style.backgroundColor = '';
+      }
     }
+    
+    console.log(`✅ Button colors set for level ${levelNum}: gold=${hasGold}, done=${hasDone}, unlocked=${hasUnlocked}, locked=${hasLocked} (matches circle color)`);
     
   } catch(error) {
     console.log('Error applying button highlighting:', error);
+  }
+}
+
+// Function to find and highlight the highest available (unlocked, not completed) level
+function highlightHighestAvailableLevel() {
+  try {
+    // Get all level elements
+    const levelElements = document.querySelectorAll('[data-level]');
+    if (!levelElements || levelElements.length === 0) {
+      console.log('No level elements found for highest available level detection');
+      return;
+    }
+    
+    let highestAvailableLevel = null;
+    let highestLevelNumber = 0;
+    
+    // Find the highest unlocked level that is not completed
+    levelElements.forEach(element => {
+      const levelNum = parseInt(element.dataset.level, 10);
+      if (isNaN(levelNum)) return;
+      
+      const isUnlocked = element.classList.contains('unlocked');
+      const isCompleted = element.dataset.isCompleted === 'true';
+      
+      // Debug logging
+      if (levelNum === 1) {
+        console.log(`🔍 Level 1 check: isUnlocked=${isUnlocked}, isCompleted=${isCompleted}, dataset.isCompleted="${element.dataset.isCompleted}"`);
+      }
+      
+      if (isUnlocked && !isCompleted && levelNum > highestLevelNumber) {
+        highestLevelNumber = levelNum;
+        highestAvailableLevel = element;
+      }
+    });
+    
+    // If no highest level found but Level 1 is unlocked and not completed, use Level 1
+    if (!highestAvailableLevel) {
+      levelElements.forEach(element => {
+        const levelNum = parseInt(element.dataset.level, 10);
+        if (levelNum === 1) {
+          const isUnlocked = element.classList.contains('unlocked');
+          const isCompleted = element.dataset.isCompleted === 'true';
+          if (isUnlocked && !isCompleted) {
+            highestAvailableLevel = element;
+            highestLevelNumber = 1;
+            console.log('🎯 Using Level 1 as highest available level (fallback)');
+          }
+        }
+      });
+    }
+    
+    if (highestAvailableLevel) {
+      console.log(`🎯 Found highest available level: ${highestLevelNumber}`);
+      
+      // Get progress percent for this level
+      let progressPercent = 0;
+      try {
+        const bulkData = highestAvailableLevel.dataset.bulkData;
+        if (bulkData) {
+          const data = JSON.parse(bulkData);
+          const totalWords = data.total_words || 0;
+          const famCounts = data.fam_counts || {};
+          
+          // Calculate learned words (familiarity >= 1)
+          let learnedWords = 0;
+          for (let fam = 1; fam <= 5; fam++) {
+            learnedWords += parseInt(famCounts[fam] || 0, 10);
+          }
+          
+          if (totalWords > 0) {
+            progressPercent = Math.round((learnedWords / totalWords) * 100);
+          }
+        }
+      } catch (error) {
+        console.log('Error calculating progress for highest available level:', error);
+      }
+      
+      // Re-apply highlighting with isHighestAvailable flag
+      const isCompleted = highestAvailableLevel.dataset.isCompleted === 'true';
+      applyButtonHighlighting(highestAvailableLevel, isCompleted, progressPercent, true);
+      
+      // Also update other available levels to use blue instead of orange
+      levelElements.forEach(element => {
+        const levelNum = parseInt(element.dataset.level, 10);
+        if (isNaN(levelNum)) return;
+        
+        const isUnlocked = element.classList.contains('unlocked');
+        const isCompleted = element.dataset.isCompleted === 'true';
+        
+        // Skip the highest available level (already handled above)
+        if (element === highestAvailableLevel) return;
+        
+        // Re-apply highlighting for other available levels (with blue, not orange)
+        if (isUnlocked && !isCompleted) {
+          let progressPercent = 0;
+          try {
+            const bulkData = element.dataset.bulkData;
+            if (bulkData) {
+              const data = JSON.parse(bulkData);
+              const totalWords = data.total_words || 0;
+              const famCounts = data.fam_counts || {};
+              
+              let learnedWords = 0;
+              for (let fam = 1; fam <= 5; fam++) {
+                learnedWords += parseInt(famCounts[fam] || 0, 10);
+              }
+              
+              if (totalWords > 0) {
+                progressPercent = Math.round((learnedWords / totalWords) * 100);
+              }
+            }
+          } catch (error) {
+            // Ignore errors
+          }
+          
+          applyButtonHighlighting(element, false, progressPercent, false);
+        }
+      });
+    } else {
+      console.log('No highest available level found (all levels are either locked or completed)');
+    }
+    
+  } catch(error) {
+    console.log('Error highlighting highest available level:', error);
   }
 }
 
@@ -1094,6 +1296,7 @@ if(typeof window!=='undefined'){
   window.applyImmediateLevelStates = applyImmediateLevelStates;
   window.applyLevelStateFromCache = applyLevelStateFromCache;
   window.applyDefaultLevelState = applyDefaultLevelState;
+  window.highlightHighestAvailableLevel = highlightHighestAvailableLevel;
 }
 
 
@@ -1546,17 +1749,128 @@ export function bindPracticeActionButtons(){
   updatePracticeButtonState();
 }
 
-async function startSmartPractice(){
-  console.log('🎯 startSmartPractice called');
-  console.log('🎯 Stack trace:', new Error().stack);
-  const practiceBtn = document.getElementById('smart-practice-btn');
-  if(practiceBtn){
-    practiceBtn.disabled = true;
-    console.log('✅ Practice button found and disabled');
-  } else {
-    console.warn('⚠️ Practice button not found!');
-    return; // Early return if button doesn't exist
+// Helper function to extract words from custom level content
+function extractWordsFromLevelContent(levelContent) {
+  const words = new Set();
+  if(levelContent && levelContent.items) {
+    for(const item of levelContent.items) {
+      if(item.words && Array.isArray(item.words)) {
+        for(const word of item.words) {
+          if(word && word.trim()) {
+            words.add(word.trim().toLowerCase());
+          }
+        }
+      }
+    }
   }
+  return Array.from(words);
+}
+
+// Helper function to filter words by familiarity < 5 (all words that are not fully learned)
+async function filterWordsByFamiliarity(words, language, nativeLanguage, headers) {
+  if(!words || words.length === 0) return [];
+  
+  const filteredWords = [];
+  const nativeLang = nativeLanguage || localStorage.getItem('siluma_native') || 'en';
+  
+  // Fetch familiarities for all words in parallel for better performance
+  const familiarityPromises = words.map(async (word) => {
+    try {
+      const url = `/api/word?word=${encodeURIComponent(word)}&language=${encodeURIComponent(language)}&native_language=${encodeURIComponent(nativeLang)}`;
+      const response = await fetch(url, { headers });
+      const js = await response.json();
+      
+      // Check both js.data.familiarity and js.familiarity for compatibility
+      let familiarity = null;
+      if(js && js.success) {
+        if(js.data && js.data.familiarity !== undefined) {
+          familiarity = Number(js.data.familiarity || 0);
+        } else if(js.familiarity !== undefined) {
+          familiarity = Number(js.familiarity || 0);
+        }
+      }
+      
+      return { word, familiarity };
+    } catch(e) {
+      console.warn(`Failed to get familiarity for word "${word}":`, e);
+      return { word, familiarity: null };
+    }
+  });
+  
+  // Wait for all requests to complete
+  const results = await Promise.all(familiarityPromises);
+  
+  // Filter: all words with familiarity < 5 (not fully learned)
+  // This includes: 0 (unknown), 1 (seen), 2 (learning), 3 (familiar), 4 (strong)
+  // Excludes: 5 (memorized/fully learned)
+  results.forEach(({ word, familiarity }) => {
+    // If familiarity is null (word not in database), include it (treat as 0)
+    // If familiarity is 0-4, include it
+    // If familiarity is 5, exclude it (fully learned)
+    if(familiarity === null || (familiarity !== null && familiarity < 5)) {
+      filteredWords.push(word);
+    }
+  });
+  
+  console.log(`📊 Filtered ${filteredWords.length} words with familiarity < 5 from ${words.length} total words`);
+  return filteredWords;
+}
+
+// Guard to prevent multiple simultaneous practice starts
+let isStartingPractice = false;
+
+async function startSmartPractice(fromLevelContainer = false){
+  // Prevent multiple simultaneous calls
+  if(isStartingPractice){
+    console.log('⚠️ Practice already starting, ignoring duplicate call');
+    return;
+  }
+  
+  console.log('🎯 startSmartPractice called', fromLevelContainer ? 'from level container' : 'from quick access bar');
+  console.log('🎯 Stack trace:', new Error().stack);
+  
+  // Only set loading state on quick access bar button if NOT called from level container
+  if(!fromLevelContainer) {
+    const practiceBtn = document.getElementById('smart-practice-btn');
+    if(practiceBtn){
+      practiceBtn.disabled = true;
+      // Show loading state on button - update label node if it exists, otherwise update textContent
+      const labelNode = practiceBtn.querySelector('.btn-label');
+      if(labelNode){
+        const originalText = labelNode.textContent;
+        labelNode.textContent = window.t ? window.t('ui.loading', 'Loading...') : 'Loading...';
+        practiceBtn.dataset.originalText = originalText;
+      } else {
+        const originalText = practiceBtn.textContent;
+        practiceBtn.textContent = window.t ? window.t('ui.loading', 'Loading...') : 'Loading...';
+        practiceBtn.dataset.originalText = originalText;
+      }
+      console.log('✅ Practice button found and disabled');
+    } else {
+      console.warn('⚠️ Practice button not found!');
+    }
+  } else {
+    console.log('✅ Loading state set on level container button, skipping quick access bar button');
+  }
+  
+  // Ensure practice UI exists and show loading indicator
+  if(typeof window.ensurePracticeUI === 'function') {
+    window.ensurePracticeUI();
+  }
+  const practiceCard = document.getElementById('practice-card');
+  if(practiceCard) {
+    practiceCard.style.display = '';
+    // Switch to practice tab to show loading state
+    if(typeof window.showTab === 'function') {
+      window.showTab('practice');
+    }
+    const practiceInner = document.getElementById('practice-inner');
+    if(practiceInner) {
+      practiceInner.innerHTML = '<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>Preparing practice session...</div></div>';
+    }
+  }
+  
+  isStartingPractice = true;
 
   try{
     console.log('🎯 Checking if startPracticeWithWordList is available...');
@@ -1593,104 +1907,201 @@ async function startSmartPractice(){
     // Check for specific custom level (level card clicked or practice button clicked)
     const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
     
-    // Use /api/words/learning API for all contexts (same as words tab)
-    // This API already filters by familiarity 1-4
     const targetLang = $('#target-lang')?.value || 'en';
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
       Object.assign(headers, window.authManager.getAuthHeaders());
     }
     
-    // Determine scope label based on context
+    const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
+    
+    // Determine scope label and collect words based on context
     if(activeLevelCard){
-      const levelNumberStr = activeLevelCard.dataset.level;
-      scopeLabel = levelNumberStr ? `Level ${levelNumberStr}` : 'Level';
-    } else if(isCustomLevelView){
-      scopeLabel = 'Story';
-    } else if(isStoryOverview){
-      scopeLabel = 'Stories';
-    } else {
-      scopeLabel = 'Course';
-    }
-    
-    try{
-      // Fetch words with familiarity 1-4 directly from API (same approach as words tab)
-      console.log(`🎯 Fetching words with familiarity 1-4 from API (scope: ${scopeLabel})`);
-      const response = await fetch(`/api/words/learning?language=${encodeURIComponent(targetLang)}&min_familiarity=1&max_familiarity=4&limit=1000`, { headers });
-      const js = await response.json();
-      if(js && js.success && Array.isArray(js.words)){
-        practiceCandidates = js.words.map(w => w.word || w).filter(Boolean);
-        console.log(`✅ Found ${practiceCandidates.length} words with familiarity 1-4 from API`);
-      } else {
-        console.warn('⚠️ API did not return words:', js);
-      }
-    }catch(e){
-      console.error('Error fetching words from API:', e);
-    }
-    
-    // Fallback: Standard level logic (only if no words found and in level group view)
-    if(practiceCandidates.length === 0 && SELECTED_LEVEL_GROUP && !isStoryOverview && !isCustomLevelView){
-      console.log(`🔍 No words from API, using standard level group logic`);
-      // Standard level group logic (only if in a specific level group view)
-      console.log(`🔍 Using standard level group logic`);
-      const levels = [];
-      if(SELECTED_LEVEL_GROUP){
-        console.log(`🔍 Using selected level group:`, SELECTED_LEVEL_GROUP);
-        for(let lvl = SELECTED_LEVEL_GROUP.start; lvl <= SELECTED_LEVEL_GROUP.end; lvl += 1){
-          levels.push(lvl);
+      // Context: Specific level - only practice words from that level with familiarity 1-4
+      const groupId = activeLevelCard.dataset.customGroupId;
+      const levelNumber = activeLevelCard.dataset.level;
+      scopeLabel = levelNumber ? `Level ${levelNumber}` : 'Level';
+      
+      console.log(`🎯 Context: Specific level (group: ${groupId}, level: ${levelNumber})`);
+      
+      try {
+        // Fetch the specific level data
+        const levelResponse = await fetch(`/api/custom-level-groups/${groupId}/levels/${levelNumber}`, { headers });
+        const levelData = await levelResponse.json();
+        
+        if(levelData && levelData.success && levelData.level) {
+          // Extract words from level content
+          const levelWords = extractWordsFromLevelContent(levelData.level.content);
+          console.log(`✅ Extracted ${levelWords.length} words from level ${levelNumber}`);
+          
+          // Filter by familiarity < 5 (all words that are not fully learned)
+          practiceCandidates = await filterWordsByFamiliarity(levelWords, targetLang, nativeLanguage, headers);
+          console.log(`✅ Filtered to ${practiceCandidates.length} words with familiarity < 5 (not fully learned)`);
+        } else {
+          console.warn('⚠️ Failed to fetch level data:', levelData);
         }
-        scopeLabel = SELECTED_LEVEL_GROUP.name || 'group';
-      }else{
-        console.log(`🔍 No selected level group, using all groups`);
-        const groups = ensureLevelGroups();
-        console.log(`🔍 Found ${groups.length} level groups`);
-        groups.forEach(group => {
-          for(let lvl = group.start; lvl <= group.end; lvl += 1){
+      } catch(e) {
+        console.error('Error fetching level data:', e);
+      }
+    } else if(isCustomLevelView){
+      // Context: Story view (10 levels visible) - practice words from that story group with familiarity 1-4
+      scopeLabel = 'Story';
+      
+      // Get the current story group ID from the levels container
+      const firstLevelCard = document.querySelector('.level-card[data-custom-group-id]');
+      const groupId = firstLevelCard?.dataset.customGroupId;
+      
+      console.log(`🎯 Context: Story view (group: ${groupId})`);
+      
+      if(groupId) {
+        try {
+          // Fetch bulk stats for all levels in the group
+          const bulkResponse = await fetch(`/api/custom-levels/${groupId}/bulk-stats`, { headers });
+          const bulkData = await bulkResponse.json();
+          
+          if(bulkData && bulkData.success && bulkData.levels) {
+            const allStoryWords = new Set();
+            
+            // Extract words from all levels in the story (fetch in parallel for better performance)
+            const levelPromises = [];
+            for(const levelNum in bulkData.levels) {
+              levelPromises.push(
+                fetch(`/api/custom-level-groups/${groupId}/levels/${levelNum}`, { headers })
+                  .then(response => response.json())
+                  .then(levelData => {
+                    if(levelData && levelData.success && levelData.level) {
+                      const levelWords = extractWordsFromLevelContent(levelData.level.content);
+                      return levelWords;
+                    }
+                    return [];
+                  })
+                  .catch(e => {
+                    console.warn(`Failed to fetch level ${levelNum}:`, e);
+                    return [];
+                  })
+              );
+            }
+            
+            // Wait for all level fetches to complete
+            const allLevelWordsArrays = await Promise.all(levelPromises);
+            allLevelWordsArrays.forEach(levelWords => {
+              levelWords.forEach(word => allStoryWords.add(word));
+            });
+            
+            const storyWordsArray = Array.from(allStoryWords);
+            console.log(`✅ Extracted ${storyWordsArray.length} unique words from story group ${groupId}`);
+            
+            // Filter by familiarity 1-4
+            practiceCandidates = await filterWordsByFamiliarity(storyWordsArray, targetLang, nativeLanguage, headers);
+            console.log(`✅ Filtered to ${practiceCandidates.length} words with familiarity 1-4`);
+          } else {
+            console.warn('⚠️ Failed to fetch bulk stats:', bulkData);
+          }
+        } catch(e) {
+          console.error('Error fetching story group data:', e);
+        }
+      }
+    } else if(isStoryOverview){
+      // Context: Story overview - practice all words currently learning (familiarity 1-4)
+      scopeLabel = 'Stories';
+      
+      console.log(`🎯 Context: Story overview - all learning words`);
+      
+      try{
+        // Fetch words with familiarity 1-4 directly from API
+        const response = await fetch(`/api/words/learning?language=${encodeURIComponent(targetLang)}&min_familiarity=1&max_familiarity=4&limit=1000`, { headers });
+        const js = await response.json();
+        if(js && js.success && Array.isArray(js.words)){
+          practiceCandidates = js.words.map(w => w.word || w).filter(Boolean);
+          console.log(`✅ Found ${practiceCandidates.length} words with familiarity 1-4 from API`);
+        } else {
+          console.warn('⚠️ API did not return words:', js);
+        }
+      }catch(e){
+        console.error('Error fetching words from API:', e);
+      }
+    } else {
+      // Context: Course overview - practice all words currently learning (familiarity 1-4)
+      scopeLabel = 'Course';
+      
+      console.log(`🎯 Context: Course overview - all learning words`);
+      
+      try{
+        // Fetch words with familiarity 1-4 directly from API
+        const response = await fetch(`/api/words/learning?language=${encodeURIComponent(targetLang)}&min_familiarity=1&max_familiarity=4&limit=1000`, { headers });
+        const js = await response.json();
+        if(js && js.success && Array.isArray(js.words)){
+          practiceCandidates = js.words.map(w => w.word || w).filter(Boolean);
+          console.log(`✅ Found ${practiceCandidates.length} words with familiarity 1-4 from API`);
+        } else {
+          console.warn('⚠️ API did not return words:', js);
+        }
+      }catch(e){
+        console.error('Error fetching words from API:', e);
+      }
+      
+      // Fallback: Standard level logic (only if no words found and in level group view)
+      if(practiceCandidates.length === 0 && SELECTED_LEVEL_GROUP){
+        console.log(`🔍 No words from API, using standard level group logic`);
+        const levels = [];
+        if(SELECTED_LEVEL_GROUP){
+          console.log(`🔍 Using selected level group:`, SELECTED_LEVEL_GROUP);
+          for(let lvl = SELECTED_LEVEL_GROUP.start; lvl <= SELECTED_LEVEL_GROUP.end; lvl += 1){
             levels.push(lvl);
           }
-        });
-        scopeLabel = 'course';
-      }
-
-      console.log(`🔍 Collected ${levels.length} levels for practice`);
-
-      if(!levels.length){
-        console.warn('⚠️ No levels found for practice');
-        const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
-          ? window.t('practice.no_completed_level', 'Kein abgeschlossenes Level gefunden')
-          : 'Kein abgeschlossenes Level gefunden';
-        alert(msg);
-        if(practiceBtn) practiceBtn.disabled = false;
-        return;
-      }
-
-      console.log(`🔍 Loading bulk data for ${levels.length} levels...`);
-      await ensureBulkDataForLevels(levels);
-      const { wordMap } = computeWordStatsForLevels(levels);
-      CURRENT_VIEW_WORD_MAP = wordMap;
-      updatePracticeButtonState();
-
-      console.log(`🔍 Word map contains ${wordMap.size} words`);
-      let checkedWords = 0;
-      CURRENT_VIEW_WORD_MAP.forEach(({ word, familiarity }) => {
-        if(!word) return;
-        checkedWords++;
-        const fam = Number(familiarity ?? 0);
-        // Filter: only familiarity 1-4 (learning words, not unknown or memorized)
-        if(fam >= 1 && fam <= 4){
-          practiceCandidates.push(word);
+          scopeLabel = SELECTED_LEVEL_GROUP.name || 'group';
         }
-      });
-      console.log(`🔍 Checked ${checkedWords} words, found ${practiceCandidates.length} with familiarity 1-4`);
+
+        console.log(`🔍 Collected ${levels.length} levels for practice`);
+
+        if(!levels.length){
+          console.warn('⚠️ No levels found for practice');
+          const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
+            ? window.t('practice.no_completed_level', 'Kein abgeschlossenes Level gefunden')
+            : 'Kein abgeschlossenes Level gefunden';
+          alert(msg);
+          if(practiceBtn) practiceBtn.disabled = false;
+          return;
+        }
+
+        console.log(`🔍 Loading bulk data for ${levels.length} levels...`);
+        await ensureBulkDataForLevels(levels);
+        const { wordMap } = computeWordStatsForLevels(levels);
+        CURRENT_VIEW_WORD_MAP = wordMap;
+        updatePracticeButtonState();
+
+        console.log(`🔍 Word map contains ${wordMap.size} words`);
+        let checkedWords = 0;
+        CURRENT_VIEW_WORD_MAP.forEach(({ word, familiarity }) => {
+          if(!word) return;
+          checkedWords++;
+          const fam = Number(familiarity ?? 0);
+          // Filter: only familiarity 1-4 (learning words, not unknown or memorized)
+          if(fam >= 1 && fam <= 4){
+            practiceCandidates.push(word);
+          }
+        });
+        console.log(`🔍 Checked ${checkedWords} words, found ${practiceCandidates.length} with familiarity 1-4`);
+      }
     }
 
     console.log(`🎯 Practice candidates collected: ${practiceCandidates.length} words (scope: ${scopeLabel})`);
     
     if(!practiceCandidates.length){
       console.warn('⚠️ No practice candidates found');
-      const msg = (typeof window !== 'undefined' && typeof window.t === 'function')
-        ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)')
-        : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
+      // Provide a more accurate message based on context
+      let msg = '';
+      if(activeLevelCard || isCustomLevelView) {
+        // For specific level or story view, words might all be unknown (familiarity 0) or memorized (familiarity 5)
+        msg = (typeof window !== 'undefined' && typeof window.t === 'function')
+          ? window.t('practice.no_words_to_practice', 'Keine Wörter zum Üben verfügbar (alle Wörter sind unbekannt oder bereits gelernt)')
+          : 'Keine Wörter zum Üben verfügbar (alle Wörter sind unbekannt oder bereits gelernt)';
+      } else {
+        // For overview, all words might be memorized
+        msg = (typeof window !== 'undefined' && typeof window.t === 'function')
+          ? window.t('levels.no_remaining_words', 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)')
+          : 'Keine übrig gebliebenen Wörter (max. Stufe erreicht)';
+      }
       alert(msg);
       if(practiceBtn){
         practiceBtn.disabled = false;
@@ -1725,8 +2136,42 @@ async function startSmartPractice(){
     console.error('Error starting smart practice:', error);
     alert('Practice-Start fehlgeschlagen: ' + (error?.message || error));
   }finally{
-    if(practiceBtn){
-      practiceBtn.disabled = false;
+    isStartingPractice = false;
+    
+    // Restore quick access bar button if it was modified
+    if(!fromLevelContainer) {
+      const practiceBtn = document.getElementById('smart-practice-btn');
+      if(practiceBtn){
+        practiceBtn.disabled = false;
+        // Restore original button text - update label node if it exists
+        if(practiceBtn.dataset.originalText) {
+          const labelNode = practiceBtn.querySelector('.btn-label');
+          if(labelNode){
+            labelNode.textContent = practiceBtn.dataset.originalText;
+          } else {
+            practiceBtn.textContent = practiceBtn.dataset.originalText;
+          }
+          delete practiceBtn.dataset.originalText;
+        }
+      }
+    }
+    
+    // Restore level container button if it was modified
+    if(fromLevelContainer) {
+      const activeLevelCard = document.querySelector('.level-card.active[data-custom-group-id]');
+      if(activeLevelCard) {
+        const practiceBtn = activeLevelCard.querySelector('.level-btn[data-i18n="buttons.practice"]');
+        if(practiceBtn && practiceBtn.dataset.originalText) {
+          practiceBtn.disabled = false;
+          const labelNode = practiceBtn.querySelector('.btn-label');
+          if(labelNode){
+            labelNode.textContent = practiceBtn.dataset.originalText;
+          } else {
+            practiceBtn.textContent = practiceBtn.dataset.originalText;
+          }
+          delete practiceBtn.dataset.originalText;
+        }
+      }
     }
   }
 }
@@ -1950,6 +2395,12 @@ async function showGroupsContainer(){
     } else {
       console.log('⚠️ removeGroupManagementFromQuickAccess function not available');
     }
+    
+    // Hide edit button when switching away from custom group
+    const editBtn = document.getElementById('levels-group-edit-btn');
+    const dropdown = document.getElementById('levels-group-edit-dropdown');
+    if (editBtn) editBtn.style.display = 'none';
+    if (dropdown) dropdown.style.display = 'none';
   } finally {
     GROUPS_LOADING_LOCK = false;
   }
@@ -2947,7 +3398,16 @@ async function openLevelTip(anchor, lvl, isDone){
               'daily life': 'topics.daily_life',
               'travel': 'topics.travel', 
               'work': 'topics.work',
+              'academic': 'topics.academic',
+              'family': 'topics.family',
+              'immigration': 'topics.immigration',
+              'culture': 'topics.culture',
+              'hobbies': 'topics.hobbies',
+              'healthcare': 'topics.healthcare',
+              'technology': 'topics.technology',
               'food': 'topics.food',
+              'romance': 'topics.romance',
+              'media': 'topics.media',
               'sich vorstellen': 'topics.daily_life', // Map to daily life
               'introduction': 'topics.daily_life',
               'greetings': 'topics.daily_life'
