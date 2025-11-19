@@ -6846,8 +6846,9 @@ def api_practice_start():
                     else:
                         fam = 0  # Word doesn't exist in words table
                     
-                    # Include if exclude_max is False or familiarity is 1-4
-                    if not exclude_max or (fam >= 1 and fam <= 4):
+                    # Include if exclude_max is False (all words) or familiarity is 0-4 (exclude only fully learned words with fam = 5)
+                    # This ensures unknown words (fam = 0) are also included in practice
+                    if not exclude_max or (fam >= 0 and fam <= 4):
                         words_to_practice.append(word)
                 
                 if not words_to_practice:
