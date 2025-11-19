@@ -701,10 +701,10 @@ function renderPracticeCard(){
   $('#pr-ipa') && ($('#pr-ipa').textContent = '');
   $('#pr-card')?.classList.remove('flipped');
   
-  const lang = $('#target-lang')?.value||'';
+  const lang = PR.language || $('#target-lang')?.value || '';
   
   // Use cached word data
-  if(w) {
+  if(w && lang) {
     // Store current word to verify audio matches
     const currentWordForAudio = w;
     
@@ -720,8 +720,25 @@ function renderPracticeCard(){
       if(cardEl) cardEl.classList.add('pr-loaded');
     });
     
-    // Play audio for current word only
-    ensurePracticeAudio(w, lang, true);
+    // Play audio for current word only (only if audio element exists)
+    const audioEl = document.getElementById('pr-audio-el');
+    if(audioEl) {
+      ensurePracticeAudio(w, lang, true);
+    } else {
+      console.warn('⚠️ Audio element not found, skipping audio playback');
+    }
+  } else {
+    // If word or language is missing, still try to remove loading state
+    if(cardEl) {
+      cardEl.classList.remove('pr-loading');
+      cardEl.classList.add('pr-loaded');
+    }
+    if(!w) {
+      console.warn('⚠️ renderPracticeCard: No current word set (PR.curr is empty)');
+    }
+    if(!lang) {
+      console.warn('⚠️ renderPracticeCard: No language set (PR.language and target-lang are empty)');
+    }
   }
   
   const btn = document.getElementById('pr-audio-btn'); 
@@ -832,7 +849,8 @@ async function applyPracticeStartResponse(js, fallbackLevel = 1, expectedTotal =
 export async function startPracticeForLevel(level, runIdOverride){
   ensurePracticeUI();
   // reset state
-  PR = {id:null, curr:'', remaining:0, seen:0, total:0, _next:null, _done:false};
+  const targetLang = $('#target-lang')?.value || 'en';
+  PR = {id:null, curr:'', remaining:0, seen:0, total:0, _next:null, _done:false, language: targetLang};
 
   // resolve run_id precedence: explicit override → current RUN → localStorage → summary API
   let run_id = runIdOverride || null;
