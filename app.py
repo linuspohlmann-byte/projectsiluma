@@ -6972,27 +6972,9 @@ def api_practice_grade():
                     """, (user_id, word_id, new_fam, now, new_fam, now))
                     conn.commit()
                     
-                    # Refresh custom level progress cache if this word is part of a custom level
-                    # This ensures familiarity counts are updated in custom_level_progress table
-                    try:
-                        from server.db_progress_cache import refresh_custom_level_progress
-                        # Get all custom level groups that might contain this word
-                        # We'll refresh progress for all groups (inefficient but ensures correctness)
-                        # TODO: Optimize by tracking which groups contain which words
-                        cursor = execute_query(conn, """
-                            SELECT DISTINCT group_id, level_number 
-                            FROM custom_level_progress 
-                            WHERE user_id = %s
-                        """, (user_id,))
-                        groups_to_refresh = cursor.fetchall()
-                        for group_row in groups_to_refresh:
-                            group_id = group_row[0] if isinstance(group_row, (tuple, list)) else group_row.get('group_id')
-                            level_number = group_row[1] if isinstance(group_row, (tuple, list)) else group_row.get('level_number')
-                            if group_id and level_number:
-                                refresh_custom_level_progress(user_id, group_id, level_number)
-                    except Exception as refresh_error:
-                        # Don't fail the practice grade if cache refresh fails
-                        print(f"⚠️ Failed to refresh custom level progress cache: {refresh_error}")
+                    # Note: Custom level progress cache is now updated on-demand (e.g., when viewing level overview)
+                    # This avoids expensive cache updates for every word rating, which was causing performance issues
+                    # The cache will be refreshed when needed, e.g., when the user opens the custom level groups page
             
             # For custom words practice, we can't determine next word without storing the list
             # Return empty response - frontend should handle queue management
@@ -7504,6 +7486,13 @@ app.register_blueprint(practice_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(user_bp)
 app.register_blueprint(custom_levels_bp)
+
+# Database access and Airtable sync blueprints
+from server.db_access_api import db_access_bp
+from server.airtable_sync_api import airtable_sync_bp
+app.register_blueprint(db_access_bp)
+app.register_blueprint(airtable_sync_bp)
+
 _register_debug_routes()
 
 # Add before_request handler for user context
