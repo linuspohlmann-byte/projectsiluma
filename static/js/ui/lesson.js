@@ -331,7 +331,7 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
   
   // Sequential loading for optimal performance:
   // 1. Load word data (needed for enrichment check)
-  // 2. Enrich words (needed for audio URLs)
+  // 2. Enrich words that need enrichment (this adds audio_url to cache)
   // 3. Preload audio (needs audio URLs from enrichment)
   // 4. Preload sentence audio (can happen in parallel)
   
@@ -341,12 +341,36 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
     await preloadWordsBatch(words, lang, nativeLang);
     console.log(`✅ Task ${taskIndex}: Word data loaded`);
     
-    // Step 2: Enrich words if needed (this adds audio_url to cache)
+    // Step 2: Check which words need enrichment and enrich only those
     const sentenceContext = String(task.text_target || '');
     const sentenceNative = String(task.text_native_ref || '');
-    if (progressCallback) progressCallback('Enriching words...');
-    await batchEnrichWords(words, lang, nativeLang, sentenceContext, sentenceNative);
-    console.log(`✅ Task ${taskIndex}: Word enrichment complete`);
+    
+    // Check which words need enrichment
+    const wordsNeedingEnrichment = [];
+    for (const w of words) {
+      const cached = cacheGet(w, lang);
+      const hasTranslation = !!(cached && (cached.translation || '').trim());
+      const hasBasicInfo = !!(cached && ((cached.lemma || '').trim() || (cached.pos || '').trim()));
+      const hasAdvancedInfo = !!(cached && (
+        (cached.ipa || '').trim() || 
+        (cached.example || '').trim() || 
+        (cached.synonyms || []).length > 0 ||
+        (cached.collocations || []).length > 0
+      ));
+      
+      // Only enrich if missing basic translation OR missing both lemma/pos AND advanced info
+      if (!hasTranslation || (!hasBasicInfo && !hasAdvancedInfo)) {
+        wordsNeedingEnrichment.push(w);
+      }
+    }
+    
+    if (wordsNeedingEnrichment.length > 0) {
+      if (progressCallback) progressCallback(`Enriching ${wordsNeedingEnrichment.length} words...`);
+      await batchEnrichWords(wordsNeedingEnrichment, lang, nativeLang, sentenceContext, sentenceNative);
+      console.log(`✅ Task ${taskIndex}: Enriched ${wordsNeedingEnrichment.length} words`);
+    } else {
+      console.log(`✅ Task ${taskIndex}: All words already enriched`);
+    }
     
     // Step 3: Preload word audio (now audio_urls should be in cache)
     if (progressCallback) progressCallback('Preloading audio...');
@@ -368,6 +392,107 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
   
   console.log(`✅ Task ${taskIndex}: All data preloaded`);
   if (progressCallback) progressCallback('Ready!');
+}
+
+// Preload and enrich ALL words in the level during loading screen
+// This ensures instant tooltip display for all words
+async function preloadAllLevelWords(progressCallback = null) {
+  if (!RUN.items || RUN.items.length === 0) {
+    console.log('⚠️ No items to preload');
+    return;
+  }
+  
+  const lang = RUN.target || (document.getElementById('target-lang')?.value || 'en');
+  const nativeLang = RUN.native || localStorage.getItem('siluma_native') || 'de';
+  
+  // Collect all unique words from all items
+  const allWords = new Set();
+  const wordContexts = new Map(); // word -> { sentence_context, sentence_native }
+  
+  for (const item of RUN.items) {
+    const words = collectWords(item);
+    for (const word of words) {
+      allWords.add(word);
+      // Store context for each word (use first occurrence)
+      if (!wordContexts.has(word)) {
+        wordContexts.set(word, {
+          sentence_context: String(item?.text_target || ''),
+          sentence_native: String(item?.text_native_ref || '')
+        });
+      }
+    }
+  }
+  
+  const wordsArray = Array.from(allWords);
+  if (wordsArray.length === 0) {
+    console.log('⚠️ No words to preload');
+    return;
+  }
+  
+  console.log(`🚀 Preloading ALL level words: ${wordsArray.length} words`);
+  
+  try {
+    // Step 1: Load all word data
+    if (progressCallback) progressCallback(`Loading ${wordsArray.length} words...`);
+    await preloadWordsBatch(wordsArray, lang, nativeLang);
+    console.log(`✅ All level words: Word data loaded`);
+    
+    // Step 2: Check which words need enrichment
+    const wordsNeedingEnrichment = [];
+    for (const w of wordsArray) {
+      const cached = cacheGet(w, lang);
+      const hasTranslation = !!(cached && (cached.translation || '').trim());
+      const hasBasicInfo = !!(cached && ((cached.lemma || '').trim() || (cached.pos || '').trim()));
+      const hasAdvancedInfo = !!(cached && (
+        (cached.ipa || '').trim() || 
+        (cached.example || '').trim() || 
+        (cached.synonyms || []).length > 0 ||
+        (cached.collocations || []).length > 0
+      ));
+      
+      // Only enrich if missing basic translation OR missing both lemma/pos AND advanced info
+      if (!hasTranslation || (!hasBasicInfo && !hasAdvancedInfo)) {
+        wordsNeedingEnrichment.push(w);
+      }
+    }
+    
+    // Step 3: Enrich words that need enrichment (batch by context)
+    if (wordsNeedingEnrichment.length > 0) {
+      if (progressCallback) progressCallback(`Enriching ${wordsNeedingEnrichment.length} words...`);
+      
+      // Group words by context for batch enrichment
+      const contextGroups = new Map();
+      for (const word of wordsNeedingEnrichment) {
+        const context = wordContexts.get(word) || { sentence_context: '', sentence_native: '' };
+        const contextKey = `${context.sentence_context}|${context.sentence_native}`;
+        if (!contextGroups.has(contextKey)) {
+          contextGroups.set(contextKey, { words: [], context });
+        }
+        contextGroups.get(contextKey).words.push(word);
+      }
+      
+      // Enrich each group
+      for (const [contextKey, group] of contextGroups) {
+        const { words, context } = group;
+        await batchEnrichWords(words, lang, nativeLang, context.sentence_context, context.sentence_native);
+      }
+      
+      console.log(`✅ All level words: Enriched ${wordsNeedingEnrichment.length} words`);
+    } else {
+      console.log(`✅ All level words: All words already enriched`);
+    }
+    
+    // Step 4: Preload audio for all words (non-blocking, happens in background)
+    if (progressCallback) progressCallback('Preloading audio...');
+    preloadWordsAudio(wordsArray, lang).catch(err => {
+      console.error('❌ Audio preload failed:', err);
+    });
+    
+    console.log(`✅ All level words: Preloading complete`);
+    if (progressCallback) progressCallback('Ready!');
+  } catch (err) {
+    console.error(`❌ All level words: Preloading failed:`, err);
+  }
 }
 
 // --- Audio replay button helper ---
@@ -1114,6 +1239,12 @@ async function batchEnrichWords(words, lang, nat, sentence_context, sentence_nat
       console.log('Words that need enrichment:', words);
       return;
     }
+    
+    // CRITICAL: After enrichment, refresh cache with enriched data
+    // This ensures the enriched data is available instantly when tooltip opens
+    console.log(`🔄 Refreshing cache for ${words.length} enriched words`);
+    await batchGetWords(words, lang);
+    console.log(`✅ Cache refreshed for enriched words`);
   } catch (err) {
     console.log('Batch enrichment error:', err);
   }
@@ -1350,13 +1481,27 @@ const WORD_UPDATE_BATCH_SIZE = 5; // Max items per batch
 // Cache for current familiarity values (optimistic updates)
 const familiarityCache = new Map();
 
+// Session-level familiarity cache: stores changes during practice/level session
+// Only committed to database at session end for performance
+let sessionFamiliarityCache = new Map(); // key: `${lang}:${word}`, value: familiarity level
+let sessionFamiliarityUpdates = []; // Array of {word, language, delta} for batch commit
+let isInActiveSession = false; // Flag to track if we're in an active practice/level session
+
 // Get cached familiarity or fetch if not cached
 async function getCachedFamiliarity(word, lang) {
   const cacheKey = `${lang}:${word.toLowerCase()}`;
+  
+  // 1. Check session cache first (most recent changes during current session)
+  if (sessionFamiliarityCache.has(cacheKey)) {
+    return sessionFamiliarityCache.get(cacheKey);
+  }
+  
+  // 2. Check persistent cache (from previous sessions)
   if (familiarityCache.has(cacheKey)) {
     return familiarityCache.get(cacheKey);
   }
   
+  // 3. Fetch from server if not in any cache
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
@@ -1366,6 +1511,8 @@ async function getCachedFamiliarity(word, lang) {
     const js = await r.json();
     const fam = parseInt(js?.familiarity||0,10)||0;
     familiarityCache.set(cacheKey, fam);
+    // Also set in session cache for consistency
+    sessionFamiliarityCache.set(cacheKey, fam);
     return fam;
   } catch(_) {
     return 0;
@@ -1373,22 +1520,49 @@ async function getCachedFamiliarity(word, lang) {
 }
 
 // Queue word update for batch processing
+// During active sessions, updates are cached and only committed at session end
 function queueWordUpdate(word, delta, lang) {
   if(!word) return;
   
   const cacheKey = `${lang}:${word.toLowerCase()}`;
-  const currentFam = familiarityCache.get(cacheKey) || 0;
+  
+  // Get current familiarity from session cache (most recent) or persistent cache
+  const currentFam = sessionFamiliarityCache.get(cacheKey) || familiarityCache.get(cacheKey) || 0;
   const newFam = Math.max(0, Math.min(5, currentFam + (Number(delta)||0)));
   
-  // Optimistic UI update (immediate feedback)
+  // Update session cache (for immediate UI feedback and subsequent reads)
+  sessionFamiliarityCache.set(cacheKey, newFam);
+  // Also update persistent cache for consistency
   familiarityCache.set(cacheKey, newFam);
+  
+  // Optimistic UI update (immediate feedback)
   updateFamiliarityUI(word, newFam);
   
-  // Add to batch queue
-  const existingIndex = wordUpdateQueue.findIndex(u => u.word === word && u.language === lang);
+  // Add to session update queue (for batch commit at session end)
+  const existingIndex = sessionFamiliarityUpdates.findIndex(u => u.word === word && u.language === lang);
   if (existingIndex >= 0) {
     // Merge with existing update (sum deltas)
-    wordUpdateQueue[existingIndex].delta += delta;
+    sessionFamiliarityUpdates[existingIndex].delta += delta;
+  } else {
+    sessionFamiliarityUpdates.push({ word, language: lang, delta });
+  }
+  
+  // During active session: cache only, don't send to server
+  if (isInActiveSession) {
+    // Clear any pending batch timeout (we're not sending during session)
+    if (wordUpdateBatchTimeout) {
+      clearTimeout(wordUpdateBatchTimeout);
+      wordUpdateBatchTimeout = null;
+    }
+    return; // Exit early - updates will be committed at session end
+  }
+  
+  // Outside active session: use original batching behavior (for backwards compatibility)
+  // Add to batch queue
+  const existingQueueIndex = wordUpdateQueue.findIndex(u => u.word === word && u.language === lang);
+  if (existingQueueIndex >= 0) {
+    // Merge with existing update (sum deltas)
+    wordUpdateQueue[existingQueueIndex].delta += delta;
   } else {
     wordUpdateQueue.push({ word, language: lang, delta });
   }
@@ -1408,7 +1582,113 @@ function queueWordUpdate(word, delta, lang) {
   }
 }
 
+// Commit all session-cached familiarity updates to server
+// Called at session end (finishLevel) to batch commit all changes
+async function commitSessionFamiliarityUpdates() {
+  if (sessionFamiliarityUpdates.length === 0) return;
+  
+  // Copy updates and clear queue
+  const updates = [...sessionFamiliarityUpdates];
+  sessionFamiliarityUpdates = [];
+  
+  try {
+    const lang = RUN.target || (document.getElementById('target-lang')?.value||'en');
+    const headers = { 'Content-Type': 'application/json' };
+    const nativeLanguage = localStorage.getItem('siluma_native') || 'en';
+    headers['X-Native-Language'] = nativeLanguage;
+    
+    if (window.authManager && window.authManager.isAuthenticated()) {
+      Object.assign(headers, window.authManager.getAuthHeaders());
+    }
+    
+    // Fetch current familiarities for all words in batch (from server, not cache)
+    // This ensures we have the latest server state before applying deltas
+    const familiarityPromises = updates.map(async (u) => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (window.authManager && window.authManager.isAuthenticated()) {
+          Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        const r = await fetch(`/api/word?word=${encodeURIComponent(u.word)}&language=${encodeURIComponent(u.language)}`, { headers });
+        const js = await r.json();
+        return parseInt(js?.familiarity||0,10)||0;
+      } catch(_) {
+        // Fallback to session cache if fetch fails
+        const cacheKey = `${u.language}:${u.word.toLowerCase()}`;
+        return sessionFamiliarityCache.get(cacheKey) || 0;
+      }
+    });
+    const currentFams = await Promise.all(familiarityPromises);
+    
+    // Calculate final familiarities by applying deltas to server state
+    const batchUpdates = updates.map((u, i) => {
+      const currentFam = currentFams[i] || 0;
+      const newFam = Math.max(0, Math.min(5, currentFam + (Number(u.delta)||0)));
+      return {
+        word: u.word,
+        language: u.language,
+        familiarity: newFam,
+        delta: u.delta
+      };
+    });
+    
+    // Include level context if available
+    const levelContext = {};
+    if (RUN._customGroupId && RUN._customLevelNumber) {
+      levelContext.group_id = RUN._customGroupId;
+      levelContext.level_number = RUN._customLevelNumber;
+    }
+    
+    // Send batch update
+    const response = await fetch('/api/words/batch-update', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ 
+        updates: batchUpdates,
+        level_context: levelContext
+      })
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        // Update persistent cache with confirmed values
+        batchUpdates.forEach(u => {
+          const cacheKey = `${u.language}:${u.word.toLowerCase()}`;
+          familiarityCache.set(cacheKey, u.familiarity);
+          // Keep session cache in sync
+          sessionFamiliarityCache.set(cacheKey, u.familiarity);
+        });
+        
+        // Invalidate words cache once (not per word)
+        try {
+          if (typeof window.invalidateWordsCache === 'function') {
+            window.invalidateWordsCache(lang);
+          }
+        } catch(_) {}
+        
+        // Trigger level stats refresh if needed
+        if (typeof window.debouncedApplyLevelStates === 'function') {
+          window.debouncedApplyLevelStates();
+        }
+        
+        console.log(`✅ Successfully committed ${batchUpdates.length} familiarity updates`);
+      } else {
+        console.warn('⚠️ Batch update returned success=false:', result);
+      }
+    } else {
+      console.warn('⚠️ Batch update request failed with status', response.status);
+    }
+  } catch(error) {
+    console.error('❌ Error committing session familiarity updates:', error);
+    // On error, we'll keep the updates in session cache for potential retry
+    // But don't restore to sessionFamiliarityUpdates as that would cause infinite retries
+    // Instead, log the error and let the user know
+  }
+}
+
 // Send batched word updates to server
+// Used for updates outside active sessions (backwards compatibility)
 async function sendBatchedWordUpdates() {
   if (wordUpdateQueue.length === 0) return;
   
@@ -2331,6 +2611,15 @@ async function submitAnswer(){
 async function finishLevel(){
   try{ window._eval_context = 'lesson'; }catch(_){ }
   window._customEvalProgress = null;
+  
+  // Commit all cached familiarity updates before finishing
+  if (isInActiveSession && sessionFamiliarityUpdates.length > 0) {
+    console.log(`💾 Committing ${sessionFamiliarityUpdates.length} cached familiarity updates at session end`);
+    await commitSessionFamiliarityUpdates();
+  }
+  
+  // End session: disable caching mode
+  isInActiveSession = false;
   try{
     window._mc_ratio = (RUN.mcTotal>0) ? (RUN.mcCorrect/RUN.mcTotal) : null; window._mc_inject = true;
     window._sb_ratio = (RUN.sbTotal>0) ? (RUN.sbCorrect/RUN.sbTotal) : null; window._sb_inject = true;
@@ -2402,6 +2691,14 @@ async function finishLevel(){
   }
 
   if (isCustomLevel) {
+    // Set level context for evaluation before clearing
+    if (finishedLevelNumber) {
+      window._lt_level = finishedLevelNumber;
+    }
+    if (finishedGroupId) {
+      window._customEvalGroupId = finishedGroupId; // Store groupId for evaluation
+    }
+    
     RUN._customGroupId = null;
     RUN._customLevelNumber = null;
   }
@@ -2482,6 +2779,14 @@ async function startLevel(lvl){
       buildTaskQueue();
       const firstTask = RUN.queue && RUN.queue[0];
       const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
+      
+      // NEW: Preload ALL level words first (ensures instant tooltip for all words)
+      showLoader('Loading all words...');
+      await preloadAllLevelWords((progress) => {
+        if (window.showLoader) {
+          window.showLoader(`Loading all words... ${progress}`);
+        }
+      });
       
       // NEW: Preload first task COMPLETELY before showing
       if (firstItem) {
@@ -2607,6 +2912,14 @@ async function startLevel(lvl){
       const firstTask = RUN.queue && RUN.queue[0];
       const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
       
+      // NEW: Preload ALL level words first (ensures instant tooltip for all words)
+      showLoader('Loading all words...');
+      await preloadAllLevelWords((progress) => {
+        if (window.showLoader) {
+          window.showLoader(`Loading all words... ${progress}`);
+        }
+      });
+      
       // NEW: Preload first task COMPLETELY before showing
       if (firstItem) {
         const firstTaskIndex = firstTask ? firstTask.i : 0;
@@ -2728,6 +3041,14 @@ async function startLevel(lvl){
     buildTaskQueue();
     const firstTask = RUN.queue && RUN.queue[0];
     const firstItem = firstTask ? RUN.items[firstTask.i] : RUN.items[0];
+    
+    // NEW: Preload ALL level words first (ensures instant tooltip for all words)
+    showLoader('Loading all words...');
+    await preloadAllLevelWords((progress) => {
+      if (window.showLoader) {
+        window.showLoader(`Loading all words... ${progress}`);
+      }
+    });
     
     // NEW: Preload first task COMPLETELY before showing (same as custom levels)
     if (firstItem) {
