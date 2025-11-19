@@ -134,6 +134,21 @@ function applyCustomLevelProgressData(levelElement, progressData) {
         }
     } catch (_e) { /* ignore */ }
 
+    // Remove legacy highlighting classes from buttons to prevent interference
+    // Button colors are now controlled by CSS based on level card classes (same as circle)
+    try {
+        const startBtn = levelElement.querySelector('.level-btn.primary');
+        const practiceBtn = levelElement.querySelector('.level-btn:not(.primary)');
+        if (startBtn) {
+            startBtn.classList.remove('highlighted-blue', 'highlighted-green', 'highlighted-gold', 'highlighted-orange');
+            startBtn.dataset.colorSet = 'true'; // Prevent legacy code interference
+        }
+        if (practiceBtn) {
+            practiceBtn.classList.remove('highlighted-blue', 'highlighted-green', 'highlighted-gold', 'highlighted-orange');
+            practiceBtn.dataset.colorSet = 'true'; // Prevent legacy code interference
+        }
+    } catch (_e) { /* ignore */ }
+
     levelElement.dataset.colorSet = 'true';
     return normalized;
 }
@@ -258,14 +273,14 @@ async function loadCustomLevelGroups() {
             const loadedGroups = result.groups.map(group => ({
                 id: group.id,
                 group_name: group.name,
+                context_description: group.context_description || '',
+                motivation: group.motivation || '',
                 language: group.language,
                 native_language: group.native_language,
+                cefr_level: group.cefr_level || 'A1',
                 level_count: group.level_count,
                 total_words: group.total_words,
                 completed_levels: group.completed_levels,
-                // Add placeholder fields for compatibility
-                context_description: '',
-                cefr_level: 'A1',
                 num_levels: group.level_count,
                 created_at: new Date().toISOString()
             }));
@@ -350,7 +365,39 @@ function renderCustomLevelGroups() {
     `;
     
     console.log(`🎨 Rendering ${customLevelGroups.length} custom groups + create card`);
-    const groupsHTML = customLevelGroups.map(group => renderCustomGroupCard(group)).join('');
+    
+    // Filter stories by topic/motivation and CEFR level
+    const topicSelect = document.getElementById('topic');
+    const cefrSelect = document.getElementById('cefr');
+    const selectedTopic = topicSelect ? (topicSelect.value || '').trim() : '';
+    const selectedCefr = cefrSelect ? (cefrSelect.value || '').trim() : '';
+    
+    // Filter groups based on selected filters
+    const filteredGroups = customLevelGroups.filter(group => {
+        // Filter by motivation/topic if selected
+        if (selectedTopic) {
+            const groupMotivation = (group.motivation || '').trim();
+            if (groupMotivation !== selectedTopic) {
+                return false;
+            }
+        }
+        
+        // Filter by CEFR level if selected
+        if (selectedCefr) {
+            const groupCefr = (group.cefr_level || 'A1').trim();
+            if (groupCefr !== selectedCefr) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    console.log(`📊 Filtered ${filteredGroups.length} groups from ${customLevelGroups.length} (topic: ${selectedTopic || 'any'}, cefr: ${selectedCefr || 'any'})`);
+    
+    // Build HTML with filtered stories (no grouping)
+    const groupsHTML = filteredGroups.map(group => renderCustomGroupCard(group)).join('');
+    
     console.log('📝 First group card HTML length:', groupsHTML.substring(0, 200).length, 'chars');
     
     container.innerHTML = `
@@ -360,6 +407,9 @@ function renderCustomLevelGroups() {
         </div>
     `;
     console.log('✅ Custom groups rendered successfully');
+    
+    // Setup filter listeners after rendering
+    setupCustomGroupsFilterListeners();
     
     // Debug: Check the grid element
     const grid = container.querySelector('.level-groups-grid');
@@ -490,10 +540,6 @@ function renderCustomGroupCard(group) {
                 <div class="level-group-meta" style="opacity: 0.5;">
                     <div class="level-group-stat">
                         <div class="level-group-stat-value">-</div>
-                        <div>Level</div>
-                    </div>
-                    <div class="level-group-stat">
-                        <div class="level-group-stat-value">-</div>
                         <div>Wörter</div>
                     </div>
                     <div class="level-group-stat">
@@ -516,16 +562,11 @@ function renderCustomGroupCard(group) {
         <div class="level-group-card custom-level-group" data-group-id="${group.id}" onclick="startCustomGroup(${group.id})" style="cursor: pointer;">
             <div class="level-group-thumb">
                 <div class="level-group-title">${escapeHtml(group.group_name)}</div>
-                <div class="level-group-range">${escapeHtml(group.context_description)}</div>
-                <div class="level-group-date" style="margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.8);">
+                <div class="level-group-date">
                     Erstellt ${timeAgo}
                 </div>
             </div>
             <div class="level-group-meta">
-                <div class="level-group-stat">
-                    <div class="level-group-stat-value">${group.level_count || group.num_levels || 0}</div>
-                    <div>Level</div>
-                </div>
                 <div class="level-group-stat">
                     <div class="level-group-stat-value">${group.total_words || 0}</div>
                     <div>Wörter</div>
@@ -847,6 +888,11 @@ async function updateCustomGroup(groupId) {
         // Close modal
         closeEditModal();
         
+        // If we're currently viewing this group, refresh it
+        if (window.currentCustomGroup && window.currentCustomGroup.id === groupId) {
+            await refreshCurrentGroup(groupId);
+        }
+        
         // Reload custom level groups to get updated data
         await loadCustomLevelGroups();
         
@@ -880,9 +926,14 @@ async function createCustomGroup() {
     // Use the group name as provided by the user
     const groupName = formData.get('group_name');
     
+    // Get topic from the dropdown (motivation)
+    const topicSelect = document.getElementById('topic');
+    const motivation = topicSelect ? (topicSelect.value || '').trim() : '';
+    
     const data = {
         group_name: groupName,
         context_description: formData.get('context_description'),
+        motivation: motivation,
         language: currentLanguage,
         native_language: currentNativeLanguage,
         cefr_level: localStorage.getItem('siluma_cefr_' + currentLanguage) || 'A1',
@@ -909,6 +960,7 @@ async function createCustomGroup() {
         id: placeholderId,
         group_name: groupName,
         context_description: data.context_description,
+        motivation: data.motivation || '',
         level_count: 0,
         total_words: 0,
         completed_levels: 0,
@@ -1640,6 +1692,13 @@ async function startCustomGroup(groupId) {
             window.showTab('levels');
         }
         
+        // Setup edit button immediately after setting currentCustomGroup
+        setTimeout(() => {
+            if (typeof setupGroupEditButton === 'function') {
+                setupGroupEditButton(groupId);
+            }
+        }, 50);
+        
         // Use the same system as standard level groups
         if (window.SELECTED_LEVEL_GROUP !== undefined) {
             window.SELECTED_LEVEL_GROUP = {
@@ -1946,6 +2005,208 @@ async function showGroupsContainer() {
 }
 
 // Add group management buttons to existing quick access
+// Setup edit button in story header
+function setupGroupEditButton(groupId) {
+    console.log('🔧 Setting up edit button for group:', groupId);
+    
+    const editBtn = document.getElementById('levels-group-edit-btn');
+    const dropdown = document.getElementById('levels-group-edit-dropdown');
+    const editOption = document.getElementById('levels-group-edit-option');
+    const publishOption = document.getElementById('levels-group-publish-option');
+    const unpublishOption = document.getElementById('levels-group-unpublish-option');
+    const deleteOption = document.getElementById('levels-group-delete-option');
+    
+    if (!editBtn || !dropdown) {
+        console.log('⚠️ Edit button or dropdown not found');
+        return;
+    }
+    
+    // Get group data - try multiple sources
+    let group = window.currentCustomGroup?.group;
+    
+    // If not found in currentCustomGroup, try to find it in customLevelGroups array
+    if (!group && customLevelGroups) {
+        const foundGroup = customLevelGroups.find(g => g.id === groupId);
+        if (foundGroup) {
+            group = foundGroup;
+            console.log('✅ Found group in customLevelGroups array');
+        }
+    }
+    
+    // If still not found, fetch it
+    if (!group) {
+        console.log('⚠️ Group data not available, fetching...');
+        // Try to fetch group data
+        fetch(`/api/custom-level-groups/${groupId}`, {
+            headers: window.authManager && window.authManager.isAuthenticated() 
+                ? window.authManager.getAuthHeaders() 
+                : {}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.group) {
+                // Update currentCustomGroup if it exists
+                if (window.currentCustomGroup) {
+                    window.currentCustomGroup.group = data.group;
+                }
+                // Setup button with fetched data
+                setupGroupEditButtonWithData(groupId, data.group);
+            } else {
+                console.log('⚠️ Could not fetch group data');
+                editBtn.style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.log('⚠️ Error fetching group:', error);
+            editBtn.style.display = 'none';
+        });
+        return;
+    }
+    
+    setupGroupEditButtonWithData(groupId, group);
+}
+
+// Setup edit button with group data
+function setupGroupEditButtonWithData(groupId, group) {
+    console.log('🔧 Setting up edit button with data for group:', groupId, group);
+    
+    const editBtn = document.getElementById('levels-group-edit-btn');
+    const dropdown = document.getElementById('levels-group-edit-dropdown');
+    const editWrapper = editBtn?.closest('.levels-group-edit-wrapper');
+    const editOption = document.getElementById('levels-group-edit-option');
+    const publishOption = document.getElementById('levels-group-publish-option');
+    const unpublishOption = document.getElementById('levels-group-unpublish-option');
+    const deleteOption = document.getElementById('levels-group-delete-option');
+    
+    if (!editBtn || !dropdown) {
+        console.log('⚠️ Edit button or dropdown not found');
+        return;
+    }
+    
+    // Check if current user owns this group (you may need to add user_id check)
+    // For now, show it if group exists
+    editBtn.style.display = 'inline-flex';
+    console.log('✅ Edit button displayed');
+    
+    // Remove existing event listeners by cloning elements
+    const newEditBtn = editBtn.cloneNode(true);
+    editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+    
+    // Set up dropdown toggle
+    let dropdownOpen = false;
+    newEditBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownOpen = !dropdownOpen;
+        dropdown.style.display = dropdownOpen ? 'flex' : 'none';
+        
+        // Position dropdown relative to button (already positioned via CSS relative to wrapper)
+        // Just ensure it's visible and properly aligned
+        if (dropdownOpen) {
+            // Dropdown is already positioned relative to the wrapper via CSS
+            // No need to calculate position manually since it's in a relative wrapper
+        }
+        
+        // Close dropdown when clicking outside
+        if (dropdownOpen) {
+            const closeDropdown = (event) => {
+                if (!dropdown.contains(event.target) && !newEditBtn.contains(event.target)) {
+                    dropdownOpen = false;
+                    dropdown.style.display = 'none';
+                    document.removeEventListener('click', closeDropdown);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closeDropdown), 0);
+        }
+    });
+    
+    // Set up edit option
+    if (editOption) {
+        const newEditOption = editOption.cloneNode(true);
+        editOption.parentNode.replaceChild(newEditOption, editOption);
+        newEditOption.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            dropdownOpen = false;
+            editCustomGroup(groupId);
+        });
+    }
+    
+    // Set up publish/unpublish options based on current status
+    const isPublished = group.status === 'published';
+    if (publishOption) {
+        publishOption.style.display = isPublished ? 'none' : 'flex';
+        const newPublishOption = publishOption.cloneNode(true);
+        publishOption.parentNode.replaceChild(newPublishOption, publishOption);
+        newPublishOption.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            dropdownOpen = false;
+            await publishCustomGroup(groupId);
+            // Refresh group data and update UI
+            await refreshCurrentGroup(groupId);
+        });
+    }
+    
+    if (unpublishOption) {
+        unpublishOption.style.display = isPublished ? 'flex' : 'none';
+        const newUnpublishOption = unpublishOption.cloneNode(true);
+        unpublishOption.parentNode.replaceChild(newUnpublishOption, unpublishOption);
+        newUnpublishOption.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            dropdownOpen = false;
+            await unpublishCustomGroup(groupId);
+            // Refresh group data and update UI
+            await refreshCurrentGroup(groupId);
+        });
+    }
+    
+    // Set up delete option
+    if (deleteOption) {
+        const newDeleteOption = deleteOption.cloneNode(true);
+        deleteOption.parentNode.replaceChild(newDeleteOption, deleteOption);
+        newDeleteOption.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            dropdown.style.display = 'none';
+            dropdownOpen = false;
+            await deleteCustomGroup(groupId);
+        });
+    }
+}
+
+// Refresh current group data and update UI
+async function refreshCurrentGroup(groupId) {
+    try {
+        const headers = {};
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            Object.assign(headers, window.authManager.getAuthHeaders());
+        }
+        
+        const response = await fetch(`/api/custom-level-groups/${groupId}`, { headers });
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.group) {
+                // Update current group data
+                if (window.currentCustomGroup) {
+                    window.currentCustomGroup.group = data.group;
+                }
+                
+                // Update edit button dropdown options
+                setupGroupEditButton(groupId);
+                
+                // Update header subtitle if needed
+                const subtitleEl = document.getElementById('levels-group-subtitle');
+                if (subtitleEl && data.group) {
+                    const levels = data.levels || [];
+                    subtitleEl.innerHTML = `${levels.length} Level • ${data.group.cefr_level || 'A1'} • ${data.group.context_description || 'Custom Content'}`;
+                }
+            }
+        }
+    } catch (error) {
+        console.log('Error refreshing group:', error);
+    }
+}
+
 function addGroupManagementToQuickAccess(groupId) {
     console.log('➕ Adding group management buttons to quick access for group:', groupId);
     
@@ -1976,27 +2237,8 @@ function addGroupManagementToQuickAccess(groupId) {
         console.log('⚠️ "Level erstellen" button not found');
     }
     
-    // Add only edit button to quick access
-    const groupManagementButtons = [
-        {
-            icon: '✏️',
-            label: 'Bearbeiten',
-            description: 'Gruppe bearbeiten',
-            onclick: `editCustomGroup(${groupId})`
-        }
-    ];
-    
-    // Insert buttons directly into existing grid
-    groupManagementButtons.forEach(button => {
-        const buttonHtml = `
-            <button class="quick-action-btn" onclick="${button.onclick}" title="${button.label}">
-                <span class="btn-icon">${button.icon}</span>
-                <span class="btn-label">${button.label}</span>
-                <span class="btn-description">${button.description}</span>
-            </button>
-        `;
-        buttonsContainer.insertAdjacentHTML('beforeend', buttonHtml);
-    });
+    // Note: Edit button is now in the header, so we don't add it to quick access anymore
+    // But we keep this function for backwards compatibility
 }
 
 // Remove group management buttons from quick access
@@ -2249,14 +2491,34 @@ async function renderCustomLevels(groupId, levels) {
         headerEl.style.display = '';
     }
     
+    // Show edit button in header if user owns this group
+    // Use setTimeout to ensure window.currentCustomGroup is set
+    setTimeout(() => {
+        setupGroupEditButton(groupId);
+    }, 100);
+    
     // Add group management buttons to existing quick access
     addGroupManagementToQuickAccess(groupId);
     
+    
+    // Hide edit button when leaving the story view
+    const editBtn = document.getElementById('levels-group-edit-btn');
+    if (editBtn) {
+        editBtn.style.display = 'none';
+    }
+    const dropdown = document.getElementById('levels-group-edit-dropdown');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
     
     // Bind the standard back button if not already bound
     const backBtn = document.getElementById('levels-group-back');
     if (backBtn && !backBtn.dataset.bound) {
         backBtn.addEventListener('click', () => {
+            // Hide edit button
+            if (editBtn) editBtn.style.display = 'none';
+            if (dropdown) dropdown.style.display = 'none';
+            
             // Clear custom group context
             window.currentCustomGroup = null;
             window.currentCustomLevel = null;
@@ -2322,6 +2584,15 @@ async function renderCustomLevels(groupId, levels) {
             card.dataset.cachedProgressData = JSON.stringify(cachedData);
             // Apply progress data directly from cache for immediate UI update
             applyCustomLevelProgressData(card, cachedData);
+            
+            // Update title from bulk-stats if available
+            if (cachedData.title && cachedData.title !== `Level ${levelNumber}`) {
+                const titleEl = card.querySelector('.level-title');
+                if (titleEl) {
+                    titleEl.textContent = cachedData.title;
+                    console.log(`✅ Updated custom level ${levelNumber} title to: ${cachedData.title}`);
+                }
+            }
         } else {
             // Only make individual API call if cache is missing (shouldn't happen normally)
         setTimeout(() => {
@@ -2756,7 +3027,7 @@ function updateCustomLevelCompletionCircle(levelElement, progressPercent) {
     }
 }
 
-// Load familiarity data for custom level back side (optimized with cache)
+// Load familiarity data for custom level back side - reads directly from custom_level_progress table
 async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId) {
     try {
         // Check if we have cached data first
@@ -2774,7 +3045,7 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
             }
         }
         
-        // Fallback to API if no cached data
+        // Single API call to read from custom_level_progress table
         const familiarityCounts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
         
         try {
@@ -2783,24 +3054,38 @@ async function loadCustomLevelFamiliarityData(levelElement, levelNumber, groupId
                 Object.assign(headers, window.authManager.getAuthHeaders());
             }
             
-            console.log('🔧 Fetching custom level familiarity from API:', groupId, levelNumber);
-            const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/familiarity`, {
+            console.log('🔧 Fetching custom level progress from custom_level_progress table:', groupId, levelNumber);
+            const response = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/progress`, {
                 headers: headers
             });
             
             if (response.ok) {
-                const familiarityData = await response.json();
-                if (familiarityData.success) {
-                    Object.assign(familiarityCounts, familiarityData.familiarity_counts || {});
-                    console.log('✅ Custom level familiarity loaded from API:', familiarityData);
+                const progressData = await response.json();
+                if (progressData.success && progressData.fam_counts) {
+                    // Convert string keys to numbers for consistency
+                    Object.keys(progressData.fam_counts).forEach(key => {
+                        const numKey = parseInt(key);
+                        if (!isNaN(numKey) && numKey >= 0 && numKey <= 5) {
+                            familiarityCounts[numKey] = parseInt(progressData.fam_counts[key]) || 0;
+                        }
+                    });
+                    console.log('✅ Custom level progress loaded from custom_level_progress table:', familiarityCounts);
+                    
+                    // Update cache for future use
+                    levelElement.dataset.cachedProgressData = JSON.stringify({
+                        fam_counts: familiarityCounts,
+                        total_words: progressData.total_words || 0,
+                        score: progressData.score,
+                        status: progressData.status
+                    });
                 } else {
-                    console.log('⚠️ Familiarity API returned error:', familiarityData.error);
+                    console.log('⚠️ Progress API returned no data:', progressData);
                 }
             } else {
-                console.log('⚠️ Familiarity API not available for custom level, using defaults. Status:', response.status);
+                console.log('⚠️ Progress API not available. Status:', response.status);
             }
         } catch (error) {
-            console.log('⚠️ No familiarity data available for custom level, using defaults:', error.message);
+            console.log('⚠️ Error fetching progress data:', error.message);
         }
         
         updateFamiliarityUI(levelElement, familiarityCounts);
@@ -3772,6 +4057,15 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
             if (normalized) {
                 try {
                     card.dataset.cachedProgressData = JSON.stringify(normalized);
+                    
+                    // Update title from bulk-stats if available
+                    if (normalized.title && normalized.title !== `Level ${levelNumber}`) {
+                        const titleEl = card.querySelector('.level-title');
+                        if (titleEl) {
+                            titleEl.textContent = normalized.title;
+                            console.log(`✅ Updated custom level ${levelNumber} title in bulk: ${normalized.title}`);
+                        }
+                    }
                 } catch (_e) { /* ignore */ }
             }
 
@@ -3995,9 +4289,33 @@ function handleCustomLevelPractice(groupId, levelNumber) {
     }
 }
 
+// Setup dropdown change listeners for filtering
+function setupCustomGroupsFilterListeners() {
+    const topicSelect = document.getElementById('topic');
+    const cefrSelect = document.getElementById('cefr');
+    
+    // Remove existing listeners to avoid duplicates
+    if (topicSelect && topicSelect.dataset.customGroupsFilterBound !== 'true') {
+        topicSelect.addEventListener('change', () => {
+            console.log('📊 Topic filter changed, re-rendering custom groups...');
+            renderCustomLevelGroups();
+        });
+        topicSelect.dataset.customGroupsFilterBound = 'true';
+    }
+    
+    if (cefrSelect && cefrSelect.dataset.customGroupsFilterBound !== 'true') {
+        cefrSelect.addEventListener('change', () => {
+            console.log('📊 CEFR filter changed, re-rendering custom groups...');
+            renderCustomLevelGroups();
+        });
+        cefrSelect.dataset.customGroupsFilterBound = 'true';
+    }
+}
+
 window.handleCustomLevelStart = handleCustomLevelStart;
 window.handleCustomLevelPractice = handleCustomLevelPractice;
 window.showCustomLevelGroupsInLibrary = showCustomLevelGroupsInLibrary;
 window.loadCustomLevelGroups = loadCustomLevelGroups;
 window.renderCustomLevelGroups = renderCustomLevelGroups;
 window.showGroupsContainer = showGroupsContainer;
+window.setupCustomGroupsFilterListeners = setupCustomGroupsFilterListeners;
