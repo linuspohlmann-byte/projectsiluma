@@ -911,7 +911,8 @@ export async function startPracticeWithWordList(wordList, label = 'custom'){
     };
     
     ensurePracticeUI();
-    PR = {id:null, curr:'', remaining:0, seen:0, total:0, _next:null, _done:false, _queue:[], _qi:0};
+    const targetLang = $('#target-lang')?.value || 'en';
+    PR = {id:null, curr:'', remaining:0, seen:0, total:0, _next:null, _done:false, _queue:[], _qi:0, language: targetLang};
 
     const normalizedWords = [];
     const seen = new Set();
@@ -936,8 +937,6 @@ export async function startPracticeWithWordList(wordList, label = 'custom'){
     PR.curr = normalizedWords[0] || ''; // Set first word immediately for faster start
     PR.total = normalizedWords.length;
     PR.level = 0; // Mark as custom word list
-
-    const targetLang = $('#target-lang')?.value || 'en';
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
       Object.assign(headers, window.authManager.getAuthHeaders());
