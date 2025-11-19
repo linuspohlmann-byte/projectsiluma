@@ -1102,26 +1102,51 @@ async function markAndNext(mark){
 }
 
 // Preload next words in background (data only, no audio playback)
+// Uses sequential requests with delays to prevent overwhelming the server
 async function preloadNextWords(count = 3) {
   if(!PR._queue || !PR._queue.length) return;
-  const lang = $('#target-lang')?.value || '';
+  const lang = PR.language || $('#target-lang')?.value || '';
+  if(!lang) return; // Don't preload if language is not set
+  
   const startIdx = PR._qi + 1;
   const wordsToPreload = PR._queue.slice(startIdx, startIdx + count);
   
-  // Preload word data only (audio URLs will be cached when needed)
-  // Don't call ensurePracticeAudio as it plays audio - we just want to cache the URLs
-  const preloadPromises = wordsToPreload.map(async word => {
-    // Preload word data (which includes audio_url)
-    const wordData = await getWordData(word, lang);
-    // Preload audio URL into cache without playing
-    if(wordData && wordData.audio_url) {
-      const cacheKey = `${word.toLowerCase()}_${lang}`;
-      audioCache.set(cacheKey, wordData.audio_url);
-    }
-  });
+  if(wordsToPreload.length === 0) return;
   
-  // Don't await - let it run in background
-  Promise.all(preloadPromises).catch(() => {});
+  // Preload word data sequentially with small delays to prevent server overload
+  // This prevents 502 errors from too many simultaneous requests
+  for(let i = 0; i < wordsToPreload.length; i++) {
+    const word = wordsToPreload[i];
+    try {
+      // Check cache first to avoid unnecessary API calls
+      const cached = wordCache.get(word, lang);
+      if(cached) {
+        // Word already cached, just cache audio URL if available
+        if(cached.audio_url) {
+          const cacheKey = `${word.toLowerCase()}_${lang}`;
+          audioCache.set(cacheKey, cached.audio_url);
+        }
+        continue; // Skip API call for cached words
+      }
+      
+      // Preload word data (which includes audio_url)
+      const wordData = await getWordData(word, lang);
+      // Preload audio URL into cache without playing
+      if(wordData && wordData.audio_url) {
+        const cacheKey = `${word.toLowerCase()}_${lang}`;
+        audioCache.set(cacheKey, wordData.audio_url);
+      }
+      
+      // Small delay between requests to prevent overwhelming the server
+      if(i < wordsToPreload.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+      }
+    } catch(e) {
+      // Log error but continue with next word
+      console.warn(`⚠️ Failed to preload word "${word}":`, e);
+      // Don't break the loop - continue with next word
+    }
+  }
 }
 
 async function gotoNextPractice(){
