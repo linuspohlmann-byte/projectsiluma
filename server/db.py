@@ -2244,6 +2244,32 @@ CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
         'description': 'Generic error message when AI fill throws',
         'en': '❌ Error during AI fill: {error}',
         'de': '❌ Fehler während der KI-Ergänzung: {error}'
+    },
+    {
+        'reference_key': 'ui.loading',
+        'description': 'Loading text shown on buttons and UI elements',
+        'en': 'Loading...',
+        'de': 'Lädt...',
+        'fr': 'Chargement...',
+        'it': 'Caricamento...',
+        'es': 'Cargando...',
+        'pt': 'Carregando...',
+        'ru': 'Загрузка...',
+        'tr': 'Yükleniyor...',
+        'ka': 'იტვირთება...'
+    },
+    {
+        'reference_key': 'practice.preparing_session',
+        'description': 'Message shown while preparing practice session',
+        'en': 'Preparing practice session...',
+        'de': 'Übung wird vorbereitet...',
+        'fr': 'Préparation de la session...',
+        'it': 'Preparazione della sessione...',
+        'es': 'Preparando sesión...',
+        'pt': 'Preparando sessão...',
+        'ru': 'Подготовка сессии...',
+        'tr': 'Oturum hazırlanıyor...',
+        'ka': 'სესია მზადდება...'
     }
 ]
 
