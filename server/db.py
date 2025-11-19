@@ -453,6 +453,7 @@ def create_custom_level_groups_table():
                     native_language VARCHAR(10) NOT NULL,
                     group_name VARCHAR(255) NOT NULL,
                     context_description TEXT NOT NULL,
+                    topic VARCHAR(100) DEFAULT 'daily life',
                     cefr_level VARCHAR(10) DEFAULT 'A1',
                     num_levels INTEGER DEFAULT 10,
                     status VARCHAR(50) DEFAULT 'active',
@@ -471,6 +472,7 @@ def create_custom_level_groups_table():
                     native_language TEXT NOT NULL,
                     group_name TEXT NOT NULL,
                     context_description TEXT NOT NULL,
+                    topic TEXT DEFAULT 'daily life',
                     cefr_level TEXT DEFAULT 'A1',
                     num_levels INTEGER DEFAULT 10,
                     status TEXT DEFAULT 'active',
@@ -524,6 +526,54 @@ def create_custom_levels_table():
                 )
             ''')
             conn.commit()
+        
+        # Run migration to add topic column if it doesn't exist
+        migrate_custom_level_groups_add_topic()
+    finally:
+        conn.close()
+
+def migrate_custom_level_groups_add_topic():
+    """Add topic column to existing custom_level_groups table"""
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax - check if column exists first
+            result = execute_query(conn, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'custom_level_groups' AND column_name = 'topic'
+            ''')
+            
+            if not result.fetchone():
+                print("Adding topic column to custom_level_groups table...")
+                execute_query(conn, '''
+                    ALTER TABLE custom_level_groups 
+                    ADD COLUMN topic VARCHAR(100) DEFAULT 'daily life'
+                ''')
+                print("✅ Added topic column to custom_level_groups table")
+            else:
+                print("topic column already exists in custom_level_groups table")
+        else:
+            # SQLite syntax - check if column exists first
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(custom_level_groups)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'topic' not in columns:
+                print("Adding topic column to custom_level_groups table...")
+                cursor.execute('''
+                    ALTER TABLE custom_level_groups 
+                    ADD COLUMN topic TEXT DEFAULT 'daily life'
+                ''')
+                conn.commit()
+                print("✅ Added topic column to custom_level_groups table")
+            else:
+                print("topic column already exists in custom_level_groups table")
+                
+    except Exception as e:
+        print(f"Error adding topic column: {e}")
     finally:
         conn.close()
 
@@ -1365,23 +1415,7 @@ def init_db():
             );
         """)
         
-        # Ensure marketplace group ratings table exists (PostgreSQL)
-        execute_query(conn, """
-            CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
-                id SERIAL PRIMARY KEY,
-                group_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                stars INTEGER NOT NULL CHECK (stars >= 1 AND stars <= 5),
-                comment TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, group_id),
-                FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-            );
-        """)
-        
-        # Marketplace group ratings table
+        # Marketplace group ratings table (PostgreSQL)
         execute_query(conn, """
             CREATE TABLE IF NOT EXISTS custom_level_group_ratings (
                 id SERIAL PRIMARY KEY,

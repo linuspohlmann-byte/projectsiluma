@@ -8,9 +8,17 @@ from typing import List, Dict, Optional
 from server.db_config import get_database_config, get_db_connection, execute_query
 from server.db import _coerce_row_to_dict
 
+# Flag to ensure tables are only created once
+_marketplace_tables_created = False
 
 def create_marketplace_tables():
     """Create tables for tracking downloads and notifications"""
+    global _marketplace_tables_created
+    
+    # Skip if already created in this process
+    if _marketplace_tables_created:
+        return
+    
     config = get_database_config()
     conn = get_db_connection()
     
@@ -114,6 +122,7 @@ def create_marketplace_tables():
             cursor.close()
         
         conn.commit()
+        _marketplace_tables_created = True
         print("✅ Marketplace tables created successfully")
         
     except Exception as e:

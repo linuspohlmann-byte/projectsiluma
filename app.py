@@ -182,7 +182,15 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 
 # Configure CORS to allow all origins for development and production
-CORS(app, origins=["*"], allow_headers=["Content-Type", "Authorization", "X-Native-Language", "X-Requested-With"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], supports_credentials=True)
+# Note: When using origins="*", supports_credentials must be False (browser security restriction)
+CORS(app, 
+     origins="*",  # Allow all origins
+     allow_headers=["Content-Type", "Authorization", "X-Native-Language", "X-Requested-With", "Accept"], 
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"], 
+     supports_credentials=False,  # Must be False when origins="*"
+     max_age=3600,
+     expose_headers=["Content-Type", "Content-Length"],
+     automatic_options=True)  # Automatically handle OPTIONS requests
 
 from pathlib import Path
 import tempfile
@@ -3765,16 +3773,7 @@ def api_get_notifications():
         if not user_id:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
-        from server.marketplace_notifications import (
-            get_user_notifications,
-            create_marketplace_tables
-        )
-        
-        # Ensure tables exist
-        try:
-            create_marketplace_tables()
-        except Exception as e:
-            print(f"⚠️ Warning: Could not ensure marketplace tables exist: {e}")
+        from server.marketplace_notifications import get_user_notifications
         
         unread_only = request.args.get('unread_only', 'false').lower() == 'true'
         limit = int(request.args.get('limit', 50))
@@ -3801,16 +3800,7 @@ def api_get_unread_notification_count():
         if not user_id:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
-        from server.marketplace_notifications import (
-            get_unread_notification_count,
-            create_marketplace_tables
-        )
-        
-        # Ensure tables exist
-        try:
-            create_marketplace_tables()
-        except Exception as e:
-            print(f"⚠️ Warning: Could not ensure marketplace tables exist: {e}")
+        from server.marketplace_notifications import get_unread_notification_count
         
         count = get_unread_notification_count(user_id)
         
@@ -3890,12 +3880,8 @@ def api_import_marketplace_custom_level_group(group_id):
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
         # Track this download
-        from server.marketplace_notifications import (
-            track_marketplace_download,
-            create_marketplace_tables
-        )
+        from server.marketplace_notifications import track_marketplace_download
         try:
-            create_marketplace_tables()
             track_marketplace_download(group_id, user_id)
         except Exception as e:
             print(f"⚠️ Warning: Could not track download: {e}")
@@ -4238,6 +4224,115 @@ def api_get_custom_level_progress(group_id, level_number):
         
     except Exception as e:
         print(f"Error getting custom level progress: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@custom_levels_bp.get('/api/custom-levels/<int:group_id>/<int:level_number>/progress-direct')
+@require_auth(optional=True)
+def api_get_custom_level_progress_direct(group_id, level_number):
+    """Get progress data directly from PostgreSQL custom_level_progress table"""
+    try:
+        # Get user from Flask's g object (set by require_auth decorator)
+        user = g.current_user
+        user_id = user['id'] if user else None
+        
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': 'Authentication required'
+            }), 401
+        
+        # Query PostgreSQL directly (rebuild entirely, do not reuse existing logic)
+        from server.db_config import get_database_config, get_db_connection, execute_query
+        from server.db import _coerce_row_to_dict
+        
+        config = get_database_config()
+        if config['type'] != 'postgresql':
+            return jsonify({
+                'success': False,
+                'error': 'Direct progress endpoint requires PostgreSQL'
+            }), 500
+        
+        conn = get_db_connection()
+        try:
+            result = execute_query(conn, """
+                SELECT total_words, familiarity_0, familiarity_1, familiarity_2,
+                       familiarity_3, familiarity_4, familiarity_5, 
+                       score, status, completed_at, last_updated
+                FROM custom_level_progress
+                WHERE user_id = %s AND group_id = %s AND level_number = %s
+                LIMIT 1
+            """, (user_id, group_id, level_number))
+            
+            row = result.fetchone()
+            
+            if not row:
+                # Return default values if no progress data exists
+                return jsonify({
+                    'success': True,
+                    'total_words': 0,
+                    'familiarity_0': 0,
+                    'familiarity_1': 0,
+                    'familiarity_2': 0,
+                    'familiarity_3': 0,
+                    'familiarity_4': 0,
+                    'familiarity_5': 0,
+                    'score': None,
+                    'status': 'not_started',
+                    'completed_at': None,
+                    'last_updated': None
+                })
+            
+            # Convert row to dict
+            description = getattr(result, 'description', None)
+            row_dict = _coerce_row_to_dict(row, description)
+            
+            if not row_dict and hasattr(row, 'keys'):
+                row_dict = {key: row[key] for key in row.keys()}
+            
+            if not row_dict and isinstance(row, (list, tuple)) and len(row) >= 11:
+                # Handle tuple/list format
+                row_dict = {
+                    'total_words': row[0],
+                    'familiarity_0': row[1],
+                    'familiarity_1': row[2],
+                    'familiarity_2': row[3],
+                    'familiarity_3': row[4],
+                    'familiarity_4': row[5],
+                    'familiarity_5': row[6],
+                    'score': row[7],
+                    'status': row[8],
+                    'completed_at': row[9],
+                    'last_updated': row[10]
+                }
+            
+            if not row_dict:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to parse database result'
+                }), 500
+            
+            # Return direct database values
+            return jsonify({
+                'success': True,
+                'total_words': int(row_dict.get('total_words') or 0),
+                'familiarity_0': int(row_dict.get('familiarity_0') or 0),
+                'familiarity_1': int(row_dict.get('familiarity_1') or 0),
+                'familiarity_2': int(row_dict.get('familiarity_2') or 0),
+                'familiarity_3': int(row_dict.get('familiarity_3') or 0),
+                'familiarity_4': int(row_dict.get('familiarity_4') or 0),
+                'familiarity_5': int(row_dict.get('familiarity_5') or 0),
+                'score': row_dict.get('score'),
+                'status': row_dict.get('status', 'not_started'),
+                'completed_at': row_dict.get('completed_at'),
+                'last_updated': row_dict.get('last_updated')
+            })
+        finally:
+            conn.close()
+        
+    except Exception as e:
+        print(f"Error getting custom level progress (direct): {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -6876,6 +6971,28 @@ def api_practice_grade():
                         DO UPDATE SET familiarity = %s, updated_at = %s
                     """, (user_id, word_id, new_fam, now, new_fam, now))
                     conn.commit()
+                    
+                    # Refresh custom level progress cache if this word is part of a custom level
+                    # This ensures familiarity counts are updated in custom_level_progress table
+                    try:
+                        from server.db_progress_cache import refresh_custom_level_progress
+                        # Get all custom level groups that might contain this word
+                        # We'll refresh progress for all groups (inefficient but ensures correctness)
+                        # TODO: Optimize by tracking which groups contain which words
+                        cursor = execute_query(conn, """
+                            SELECT DISTINCT group_id, level_number 
+                            FROM custom_level_progress 
+                            WHERE user_id = %s
+                        """, (user_id,))
+                        groups_to_refresh = cursor.fetchall()
+                        for group_row in groups_to_refresh:
+                            group_id = group_row[0] if isinstance(group_row, (tuple, list)) else group_row.get('group_id')
+                            level_number = group_row[1] if isinstance(group_row, (tuple, list)) else group_row.get('level_number')
+                            if group_id and level_number:
+                                refresh_custom_level_progress(user_id, group_id, level_number)
+                    except Exception as refresh_error:
+                        # Don't fail the practice grade if cache refresh fails
+                        print(f"⚠️ Failed to refresh custom level progress cache: {refresh_error}")
             
             # For custom words practice, we can't determine next word without storing the list
             # Return empty response - frontend should handle queue management

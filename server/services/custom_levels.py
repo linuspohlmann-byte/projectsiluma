@@ -16,6 +16,7 @@ from server.services.llm import (
     llm_generate_sentences,
     suggest_topic,
     suggest_level_title,
+    suggest_level_title_from_sentences,
     cefr_norm,
     llm_enrich_word,
     llm_enrich_words_batch,
@@ -33,6 +34,7 @@ def create_custom_level_group(
     native_language: str,
     group_name: str,
     context_description: str,
+    motivation: str = "",
     cefr_level: str = "A1",
     num_levels: int = 10,
 ) -> Optional[int]:
@@ -66,9 +68,9 @@ def create_custom_level_group(
                 conn,
                 """
                 INSERT INTO custom_level_groups 
-                (user_id, language, native_language, group_name, context_description, 
+                (user_id, language, native_language, group_name, context_description, motivation,
                  cefr_level, num_levels, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """,
                 (
@@ -77,6 +79,7 @@ def create_custom_level_group(
                     native_language,
                     group_name,
                     context_description,
+                    motivation,
                     cefr_level,
                     num_levels,
                     now,
@@ -99,9 +102,9 @@ def create_custom_level_group(
             cursor = conn.execute(
                 """
                 INSERT INTO custom_level_groups 
-                (user_id, language, native_language, group_name, context_description, 
+                (user_id, language, native_language, group_name, context_description, motivation,
                  cefr_level, num_levels, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     user_id,
@@ -109,6 +112,7 @@ def create_custom_level_group(
                     native_language,
                     group_name,
                     context_description,
+                    motivation,
                     cefr_level,
                     num_levels,
                     now,
@@ -759,16 +763,7 @@ def delete_custom_level_group(group_id: int, user_id: int) -> bool:
     Automatically unpublishes from marketplace and notifies downloaders if published.
     """
     from server.db_config import get_database_config, get_db_connection, execute_query
-    from server.marketplace_notifications import (
-        notify_content_removed,
-        create_marketplace_tables
-    )
-    
-    # Ensure tables exist
-    try:
-        create_marketplace_tables()
-    except Exception as e:
-        print(f"⚠️ Warning: Could not ensure marketplace tables exist: {e}")
+    from server.marketplace_notifications import notify_content_removed
     
     conn = get_db()
     try:
@@ -1421,6 +1416,32 @@ def generate_custom_levels_parallel(group_id: int, language: str, native_languag
             topic = level_info["topic"]
             sentences = level_info["sentences"]
             
+            # Generate title from actual sentences if we have sentences
+            if sentences and len(sentences) > 0:
+                try:
+                    # Get previous titles from already processed levels
+                    previous_titles = []
+                    for prev_info in level_data:
+                        if prev_info["level_number"] < i:
+                            previous_titles.append(prev_info.get("title", ""))
+                    
+                    # Generate title from sentences
+                    new_title = suggest_level_title_from_sentences(
+                        language,
+                        native_language,
+                        sentences,
+                        i,
+                        cefr_level,
+                        context_description,
+                        previous_titles
+                    )
+                    
+                    if new_title and new_title != f"Level {i}":
+                        level_title = new_title
+                        print(f"✅ Generated title from sentences for level {i}: {level_title}")
+                except Exception as e:
+                    print(f"⚠️ Error generating title from sentences for level {i}: {e}")
+            
             # Create level content
             level_content = create_level_content(i, level_title, topic, sentences, context_description, word_hashes, language, native_language)
             
@@ -1690,6 +1711,67 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
                 content['items'] = items
                 content['sentences_generated'] = True
                 print(f"✅ Generated {len(items)} sentences for level {group_id}/{level_number}")
+                
+                # Generate title based on actual sentences
+                try:
+                    # Get group info for context
+                    group_data = get_custom_level_group(group_id, None)
+                    context_description = group_data.get('context_description', '') if group_data else ''
+                    cefr_level = group_data.get('cefr_level', 'A1') if group_data else 'A1'
+                    
+                    # Get previous titles from other levels in the group
+                    previous_titles = []
+                    try:
+                        all_levels = get_custom_levels_for_group(group_id, group_data)
+                        for level in all_levels:
+                            if level['level_number'] < level_number:
+                                previous_titles.append(level.get('title', ''))
+                    except Exception as e:
+                        print(f"⚠️ Could not fetch previous titles: {e}")
+                    
+                    # Generate title from sentences
+                    new_title = suggest_level_title_from_sentences(
+                        language, 
+                        native_language, 
+                        items,  # Pass items as sentences
+                        level_number,
+                        cefr_level,
+                        context_description,
+                        previous_titles
+                    )
+                    
+                    if new_title and new_title != f"Level {level_number}":
+                        # Update title in database
+                        from server.db_config import get_database_config, get_db_connection, execute_query
+                        config = get_database_config()
+                        conn = get_db_connection()
+                        try:
+                            if config['type'] == 'postgresql':
+                                execute_query(conn, """
+                                    UPDATE custom_levels 
+                                    SET title = %s, updated_at = CURRENT_TIMESTAMP
+                                    WHERE group_id = %s AND level_number = %s
+                                """, (new_title, group_id, level_number))
+                            else:
+                                cur = conn.cursor()
+                                cur.execute("""
+                                    UPDATE custom_levels 
+                                    SET title = ?, updated_at = ?
+                                    WHERE group_id = ? AND level_number = ?
+                                """, (new_title, datetime.now(UTC).isoformat(), group_id, level_number))
+                            conn.commit()
+                            print(f"✅ Generated and updated title for level {group_id}/{level_number}: {new_title}")
+                        except Exception as e:
+                            print(f"⚠️ Error updating title in database: {e}")
+                            conn.rollback()
+                        finally:
+                            conn.close()
+                    else:
+                        print(f"⚠️ Generated title was fallback, keeping existing title")
+                except Exception as e:
+                    print(f"⚠️ Error generating title from sentences: {e}")
+                    import traceback
+                    traceback.print_exc()
             else:
                 # Fallback: generate simple placeholder sentences when LLM is unavailable
                 print(f"⚠️ Failed to generate sentences via LLM for level {group_id}/{level_number} — using fallback sentences")

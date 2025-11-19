@@ -107,18 +107,9 @@ try:
     except Exception as config_error:
         print(f"⚠️  Warning: Could not load Railway config: {config_error}")
     
-    # Add CORS support for Railway
-    @app.after_request
-    def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-        return response
-    
-    # Add OPTIONS handler for CORS preflight requests
-    @app.route('/<path:path>', methods=['OPTIONS'])
-    def handle_options(path):
-        return '', 200
+    # CORS is already configured in app.py with Flask-CORS
+    # Flask-CORS automatically handles OPTIONS requests and adds CORS headers
+    # No need for manual CORS handling here
     
     # Start background sync for Railway
     start_background_sync()
