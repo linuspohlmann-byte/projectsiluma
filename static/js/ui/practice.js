@@ -868,7 +868,7 @@ export async function startPracticeForLevel(level, runIdOverride){
   }
 
   // start practice
-  const targetLang = $('#target-lang')?.value || 'en';
+  // targetLang already declared above, reuse it
   
   // Get auth headers if user is logged in
   const headers = { 'Content-Type': 'application/json' };
