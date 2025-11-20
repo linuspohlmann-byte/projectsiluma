@@ -98,7 +98,19 @@ function normalizeCustomProgressForLesson(progress) {
   });
   const totalWords = Number(progress.total_words !== undefined ? progress.total_words : Object.values(counts).reduce((sum, val) => sum + Number(val || 0), 0)) || 0;
   const completedWords = Number(counts[5] || 0);
-  const scoreRaw = progress.score_raw !== undefined ? progress.score_raw : progress.score;
+  
+  // For evaluation page: prefer session_score (session performance) over progress score
+  // session_score represents how many questions were answered correctly in this session
+  // score represents actual learning progress (weighted familiarity distribution)
+  let scoreRaw;
+  if (progress.session_score !== undefined && progress.session_score !== null) {
+    // Use session_score for evaluation display (session performance)
+    scoreRaw = progress.session_score;
+  } else {
+    // Fallback to progress score if session_score not available
+    scoreRaw = progress.score_raw !== undefined ? progress.score_raw : progress.score;
+  }
+  
   const scoreRatio = normalizeScoreForLesson(scoreRaw);
   const scorePercent = Math.round(scoreRatio * 100);
   const progressPercent = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
