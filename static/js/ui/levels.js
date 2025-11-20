@@ -1753,30 +1753,33 @@ export function bindPracticeActionButtons(){
 }
 
 // Helper function to extract words from custom level content
+// CRITICAL: This function must use the SAME normalization as the server:
+// - lowercase conversion
+// - trailing punctuation removal
+// - only use item.words (no fallback to text_target for consistency)
 function extractWordsFromLevelContent(levelContent) {
   const words = new Set();
   if(levelContent && levelContent.items) {
     for(const item of levelContent.items) {
       // Extract from item.words array (preferred, already tokenized)
+      // This matches the server-side logic in calculate_word_count_from_content
       if(item.words && Array.isArray(item.words)) {
         for(const word of item.words) {
           if(word && word.trim()) {
-            // Keep original case for familiarity lookup (don't lowercase)
-            words.add(word.trim());
+            // CRITICAL: Use same normalization as server (lowercase + trailing punctuation removal)
+            // This ensures consistency with server-side word counting
+            const cleanWord = word.trim().toLowerCase().replace(/[.!?,;:—–-]+$/, '');
+            if(cleanWord) {
+              words.add(cleanWord);
+            }
           }
         }
+      } else {
+        // Log warning if item.words is missing (should not happen in normal flow)
+        console.warn('⚠️ extractWordsFromLevelContent: item.words is missing or empty for item:', item);
       }
-      // Fallback: Also extract from text_target if words array is missing
-      // This ensures we don't miss any words
-      if((!item.words || item.words.length === 0) && item.text_target) {
-        // Simple word extraction from text (split by spaces and punctuation)
-        const textWords = item.text_target.match(/[\p{L}\p{M}]+/gu) || [];
-        for(const word of textWords) {
-          if(word && word.trim()) {
-            words.add(word.trim());
-          }
-        }
-      }
+      // NOTE: Removed fallback to text_target to ensure consistency with server-side logic
+      // Server only uses item.words, so client should too
     }
   }
   return Array.from(words);
