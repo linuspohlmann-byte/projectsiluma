@@ -7488,11 +7488,18 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(user_bp)
 app.register_blueprint(custom_levels_bp)
 
-# Database access and Airtable sync blueprints
-from server.db_access_api import db_access_bp
-from server.airtable_sync_api import airtable_sync_bp
-app.register_blueprint(db_access_bp)
-app.register_blueprint(airtable_sync_bp)
+# Database access and Airtable sync blueprints (optional)
+try:
+    from server.db_access_api import db_access_bp
+    app.register_blueprint(db_access_bp)
+except ImportError:
+    print("⚠️ server.db_access_api not found, skipping db_access_bp registration")
+
+try:
+    from server.airtable_sync_api import airtable_sync_bp
+    app.register_blueprint(airtable_sync_bp)
+except ImportError:
+    print("⚠️ server.airtable_sync_api not found, skipping airtable_sync_bp registration")
 
 _register_debug_routes()
 
