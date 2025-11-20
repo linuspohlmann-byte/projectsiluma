@@ -991,6 +991,7 @@ async function preloadAllPracticeWords(words, progressCallback = null) {
   }
   
   console.log(`🚀 Preloading ALL practice words: ${normalizedWords.length} words`);
+  console.log(`📝 Practice words list:`, normalizedWords);
   
   try {
     // Step 1: Load all word data using batch API
@@ -1068,11 +1069,18 @@ async function preloadAllPracticeWords(words, progressCallback = null) {
         (wordData.collocations || []).length > 0
       ));
       
+      console.log(`🔍 Word "${w}": hasTranslation=${hasTranslation}, hasBasicInfo=${hasBasicInfo}, hasAdvancedInfo=${hasAdvancedInfo}`);
+      
       // Only enrich if missing basic translation OR missing both lemma/pos AND advanced info
       if (!hasTranslation || (!hasBasicInfo && !hasAdvancedInfo)) {
         wordsNeedingEnrichment.push(w);
+        console.log(`  → Needs enrichment`);
+      } else {
+        console.log(`  → Already enriched`);
       }
     }
+    
+    console.log(`📊 Words needing enrichment: ${wordsNeedingEnrichment.length}/${normalizedWords.length}`, wordsNeedingEnrichment);
     
     // Step 3: Enrich words that need enrichment
     if (wordsNeedingEnrichment.length > 0) {
@@ -1126,20 +1134,60 @@ async function preloadAllPracticeWords(words, progressCallback = null) {
       }
       
       if (enrichResponse.ok) {
-        // Refresh cache for enriched words
-        for (const word of wordsNeedingEnrichment) {
-          try {
-            const enrichedData = await getWordData(word, lang);
-            if (enrichedData && window.cachePut) {
-              window.cachePut(enrichedData);
+        const enrichData = await enrichResponse.json();
+        console.log(`📥 Enrichment API response:`, enrichData);
+        
+        // CRITICAL: Refresh cache for enriched words by fetching them again
+        // This ensures we have the latest data after enrichment
+        if (progressCallback) progressCallback(`Refreshing ${wordsNeedingEnrichment.length} enriched words...`);
+        
+        // Use batch API to refresh all enriched words at once
+        const refreshResponse = await fetch('/api/words/batch', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            words: wordsNeedingEnrichment,
+            language: lang,
+            native_language: nativeLang
+          })
+        });
+        
+        if (refreshResponse.ok) {
+          const refreshData = await refreshResponse.json();
+          if (refreshData.success && refreshData.words) {
+            // Update cache with refreshed data
+            Object.values(refreshData.words).forEach(wordData => {
+              if (wordData && wordData.word) {
+                wordCache.set(wordData.word, lang, wordData);
+                if (window.cachePut) {
+                  window.cachePut(wordData);
+                }
+                console.log(`✅ Refreshed cache for "${wordData.word}": translation=${!!wordData.translation}`);
+              }
+            });
+          }
+        } else {
+          // Fallback: refresh individually
+          for (const word of wordsNeedingEnrichment) {
+            try {
+              const enrichedData = await getWordData(word, lang);
+              if (enrichedData) {
+                wordCache.set(word, lang, enrichedData);
+                if (window.cachePut) {
+                  window.cachePut(enrichedData);
+                }
+                console.log(`✅ Refreshed cache for "${word}": translation=${!!enrichedData.translation}`);
+              }
+            } catch (e) {
+              console.warn(`⚠️ Failed to refresh cache for enriched word "${word}":`, e);
             }
-          } catch (e) {
-            console.warn(`⚠️ Failed to refresh cache for enriched word "${word}":`, e);
           }
         }
+        
         console.log(`✅ All practice words: Enriched ${wordsNeedingEnrichment.length} words`);
       } else {
-        console.warn('⚠️ Batch enrichment failed:', enrichResponse.status, enrichResponse.statusText);
+        const errorText = await enrichResponse.text();
+        console.warn('⚠️ Batch enrichment failed:', enrichResponse.status, enrichResponse.statusText, errorText);
       }
     } else {
       console.log(`✅ All practice words: All words already enriched`);
