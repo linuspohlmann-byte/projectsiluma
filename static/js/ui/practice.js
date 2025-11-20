@@ -926,6 +926,44 @@ export async function startPracticeForLevel(level, runIdOverride){
     });
   }
   
+  // CRITICAL: Restore the practice card HTML structure before rendering
+  // The practice-inner was replaced with loading text, so we need to restore it
+  const practiceInner = document.getElementById('practice-inner');
+  if (practiceInner && !document.getElementById('pr-card')) {
+    // Restore the practice card HTML structure
+    practiceInner.innerHTML = `
+      <div id="pr-card" class="pr-flip">
+        <div class="pr-front">
+          <div class="pr-instr" data-i18n="practice.translate_in_head">Im Kopf übersetzen. Dann bewerten.</div>
+          <div class="pr-center">
+            <div id="pr-word" class="pr-word"></div>
+            <div class="pr-ipa-row">
+              <div id="pr-ipa" class="pr-ipa"></div>
+              <button id="pr-audio-btn" class="btn" title="Audio abspielen" data-i18n-title="practice.audio_play">🔊</button>
+              <audio id="pr-audio-el" preload="auto" style="display:none"></audio>
+            </div>
+          </div>
+          <div class="pr-front-actions">
+            <button id="pr-flip-front" class="btn" data-i18n="practice.flip_card">Drehen</button>
+          </div>
+        </div>
+        <div class="pr-back">
+          <div class="pr-back-center">
+            <div id="pr-trans" class="pr-translation"></div>
+            <div id="pr-ex" class="pr-sec pr-ex pr-example"></div>
+            <div id="pr-fam" class="pr-fam"></div>
+          </div>
+          <div class="pr-back-actions">
+            <button id="pr-bad"  class="pr-rating-btn" data-i18n="practice.not_good">Nicht gut</button>
+            <button id="pr-okay" class="pr-rating-btn" data-i18n="practice.okay">Okay</button>
+            <button id="pr-good" class="pr-rating-btn" data-i18n="practice.very_good">Sehr gut</button>
+          </div>
+        </div>
+      </div>`;
+    // Re-bind controls after restoring HTML
+    bindPracticeControls();
+  }
+  
   // Now render the practice card with all data ready
   // This will show the first word and start the practice
   renderPracticeCard();
@@ -1181,6 +1219,44 @@ export async function startPracticeWithWordList(wordList, label = 'custom'){
         practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}<br><small>${progress}</small></div></div>`;
       }
     });
+    
+    // CRITICAL: Restore the practice card HTML structure before rendering
+    // The practice-inner was replaced with loading text, so we need to restore it
+    const practiceInner = document.getElementById('practice-inner');
+    if (practiceInner && !document.getElementById('pr-card')) {
+      // Restore the practice card HTML structure
+      practiceInner.innerHTML = `
+        <div id="pr-card" class="pr-flip">
+          <div class="pr-front">
+            <div class="pr-instr" data-i18n="practice.translate_in_head">Im Kopf übersetzen. Dann bewerten.</div>
+            <div class="pr-center">
+              <div id="pr-word" class="pr-word"></div>
+              <div class="pr-ipa-row">
+                <div id="pr-ipa" class="pr-ipa"></div>
+                <button id="pr-audio-btn" class="btn" title="Audio abspielen" data-i18n-title="practice.audio_play">🔊</button>
+                <audio id="pr-audio-el" preload="auto" style="display:none"></audio>
+              </div>
+            </div>
+            <div class="pr-front-actions">
+              <button id="pr-flip-front" class="btn" data-i18n="practice.flip_card">Drehen</button>
+            </div>
+          </div>
+          <div class="pr-back">
+            <div class="pr-back-center">
+              <div id="pr-trans" class="pr-translation"></div>
+              <div id="pr-ex" class="pr-sec pr-ex pr-example"></div>
+              <div id="pr-fam" class="pr-fam"></div>
+            </div>
+            <div class="pr-back-actions">
+              <button id="pr-bad"  class="pr-rating-btn" data-i18n="practice.not_good">Nicht gut</button>
+              <button id="pr-okay" class="pr-rating-btn" data-i18n="practice.okay">Okay</button>
+              <button id="pr-good" class="pr-rating-btn" data-i18n="practice.very_good">Sehr gut</button>
+            </div>
+          </div>
+        </div>`;
+      // Re-bind controls after restoring HTML
+      bindPracticeControls();
+    }
     
     const headers = { 'Content-Type': 'application/json' };
     if (window.authManager && window.authManager.isAuthenticated()) {
