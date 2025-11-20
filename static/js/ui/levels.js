@@ -583,12 +583,15 @@ async function applyLevelStates(){
         const prevLevel = lvl - 1;
         const prevLevelData = data.levels[prevLevel] || data.levels[String(prevLevel)];
             if (prevLevelData && prevLevelData.success) {
-              const prevUserProgress = prevLevelData.user_progress;
-              const prevStatus = prevUserProgress?.status || prevLevelData.status;
-              const prevScore = prevUserProgress?.score || prevLevelData.last_score;
-          const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+              // Check if previous level is completed based on PROGRESS (familiarity), not score
+              const prevFamCounts = prevLevelData.fam_counts || {};
+              const prevTotalWords = prevLevelData.total_words || 0;
+              const prevLearnedWords = (prevFamCounts[5] || 0) + (prevFamCounts[4] || 0) + (prevFamCounts[3] || 0);
+              const prevLearnedPercent = prevTotalWords > 0 ? (prevLearnedWords / prevTotalWords * 100) : 0;
+              const prevStatus = prevLevelData.user_progress?.status || prevLevelData.status;
+              const isPrevCompleted = prevStatus === 'completed' && prevLearnedPercent >= 80;
               
-              console.log(`Level ${lvl} unlock check - Prev Level ${prevLevel}: status=${prevStatus}, score=${prevScore}, isCompleted=${isPrevCompleted}`);
+              console.log(`Level ${lvl} unlock check - Prev Level ${prevLevel}: status=${prevStatus}, learnedPercent=${prevLearnedPercent.toFixed(1)}%, isCompleted=${isPrevCompleted}`);
           
           if(isPrevCompleted) {
                 isUnlocked = true;

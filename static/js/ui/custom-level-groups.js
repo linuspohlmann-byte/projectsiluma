@@ -3669,6 +3669,25 @@ async function getUserProgressForGroup(groupId) {
     return {};
 }
 
+// Helper function to check if level is completed based on progress (familiarity counts)
+function isLevelCompletedByProgress(levelData) {
+    if (!levelData) return false;
+    
+    // Check status first
+    const status = levelData.user_progress?.status || levelData.status;
+    if (status === 'completed') {
+        // Verify with familiarity counts: ≥80% words at familiarity ≥3
+        const famCounts = levelData.fam_counts || {};
+        const totalWords = levelData.total_words || 0;
+        if (totalWords === 0) return false;
+        
+        const learnedWords = (famCounts[5] || 0) + (famCounts[4] || 0) + (famCounts[3] || 0);
+        const learnedPercent = (learnedWords / totalWords) * 100;
+        return learnedPercent >= 80;
+    }
+    return false;
+}
+
 // Determine which levels should be unlocked based on user progress
 function determineUnlockedLevels(userProgress, totalLevels) {
     const unlockedLevels = [];
@@ -3680,13 +3699,10 @@ function determineUnlockedLevels(userProgress, totalLevels) {
             // Level 1 is always unlocked
             unlockedLevels.push(levelNum);
         } else {
-            // Check if previous level is completed with good score
+            // Check if previous level is completed based on PROGRESS (familiarity), not score
             const prevLevelData = userProgress[levelNum - 1];
             if (prevLevelData && prevLevelData.success) {
-                const prevUserProgress = prevLevelData.user_progress;
-                const prevStatus = prevUserProgress?.status || prevLevelData.status;
-                const prevScore = prevUserProgress?.score || prevLevelData.last_score;
-                const isPrevCompleted = prevStatus === 'completed' && Number(prevScore || 0) > 0.6;
+                const isPrevCompleted = isLevelCompletedByProgress(prevLevelData);
                 
                 if (isPrevCompleted) {
                     unlockedLevels.push(levelNum);
