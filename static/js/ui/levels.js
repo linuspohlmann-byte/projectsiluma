@@ -1796,13 +1796,21 @@ async function filterWordsByFamiliarity(words, language, nativeLanguage, headers
       let js = await response.json();
       
       // Check both js.data.familiarity and js.familiarity for compatibility
+      // CRITICAL: API returns data directly in response object, not in js.data
       let familiarity = null;
       if(js && js.success) {
-        if(js.data && js.data.familiarity !== undefined) {
-          familiarity = Number(js.data.familiarity || 0);
-        } else if(js.familiarity !== undefined) {
+        // API returns: {success: true, word: "...", familiarity: 0, ...}
+        if(js.familiarity !== undefined) {
           familiarity = Number(js.familiarity || 0);
+        } else if(js.data && js.data.familiarity !== undefined) {
+          familiarity = Number(js.data.familiarity || 0);
+        } else {
+          // If no familiarity found, treat as 0 (unknown word)
+          familiarity = 0;
         }
+      } else {
+        // API returned success: false, treat as unknown (0)
+        familiarity = 0;
       }
       
       // If not found with original case, try lowercase
@@ -1812,37 +1820,59 @@ async function filterWordsByFamiliarity(words, language, nativeLanguage, headers
         js = await response.json();
         
         if(js && js.success) {
-          if(js.data && js.data.familiarity !== undefined) {
-            familiarity = Number(js.data.familiarity || 0);
-          } else if(js.familiarity !== undefined) {
+          if(js.familiarity !== undefined) {
             familiarity = Number(js.familiarity || 0);
+          } else if(js.data && js.data.familiarity !== undefined) {
+            familiarity = Number(js.data.familiarity || 0);
+          } else {
+            familiarity = 0;
           }
+        } else {
+          familiarity = 0;
         }
+      }
+      
+      // Log for debugging
+      if(familiarity === null) {
+        console.warn(`⚠️ Could not determine familiarity for word "${word}", treating as 0`);
+        familiarity = 0;
       }
       
       return { word, familiarity };
     } catch(e) {
       console.warn(`Failed to get familiarity for word "${word}":`, e);
-      return { word, familiarity: null };
+      // Treat errors as unknown (0) - include in practice
+      return { word, familiarity: 0 };
     }
   });
   
   // Wait for all requests to complete
   const results = await Promise.all(familiarityPromises);
   
+  // Debug: Log all familiarity results
+  const familiarityBreakdown = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, null: 0};
+  results.forEach(({ word, familiarity }) => {
+    const famKey = familiarity !== null ? familiarity : 'null';
+    familiarityBreakdown[famKey] = (familiarityBreakdown[famKey] || 0) + 1;
+  });
+  console.log(`📊 Familiarity breakdown for ${words.length} words:`, familiarityBreakdown);
+  
   // Filter: all words with familiarity < 5 (not fully learned)
   // This includes: 0 (unknown), 1 (seen), 2 (learning), 3 (familiar), 4 (strong)
   // Excludes: 5 (memorized/fully learned)
   results.forEach(({ word, familiarity }) => {
-    // If familiarity is null (word not in database), include it (treat as 0)
-    // If familiarity is 0-4, include it
-    // If familiarity is 5, exclude it (fully learned)
-    if(familiarity === null || (familiarity !== null && familiarity < 5)) {
+    // CRITICAL: Treat null as 0 (unknown word, should be included)
+    const famValue = familiarity !== null ? familiarity : 0;
+    
+    if(famValue < 5) {
       filteredWords.push(word);
+    } else {
+      console.log(`⏭️ Excluding word "${word}" with familiarity ${famValue} (fully learned)`);
     }
   });
   
   console.log(`📊 Filtered ${filteredWords.length} words with familiarity < 5 from ${words.length} total words`);
+  console.log(`📊 Excluded ${words.length - filteredWords.length} words with familiarity = 5 (fully learned)`);
   return filteredWords;
 }
 
