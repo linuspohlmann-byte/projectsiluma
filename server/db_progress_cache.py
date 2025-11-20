@@ -482,8 +482,8 @@ def calculate_familiarity_counts_from_user_words(user_id: int, group_id: int, le
             words = item.get('words', [])
             for word in words:
                 if word and word.strip():
-                    # Remove trailing punctuation before adding (KEEP original case!)
-                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip())
+                    # Remove trailing punctuation before adding (use lowercase for consistency)
+                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
                     if clean_word:
                         all_words.add(clean_word)
         
