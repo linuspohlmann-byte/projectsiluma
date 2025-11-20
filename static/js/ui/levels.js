@@ -1754,10 +1754,23 @@ function extractWordsFromLevelContent(levelContent) {
   const words = new Set();
   if(levelContent && levelContent.items) {
     for(const item of levelContent.items) {
+      // Extract from item.words array (preferred, already tokenized)
       if(item.words && Array.isArray(item.words)) {
         for(const word of item.words) {
           if(word && word.trim()) {
-            words.add(word.trim().toLowerCase());
+            // Keep original case for familiarity lookup (don't lowercase)
+            words.add(word.trim());
+          }
+        }
+      }
+      // Fallback: Also extract from text_target if words array is missing
+      // This ensures we don't miss any words
+      if((!item.words || item.words.length === 0) && item.text_target) {
+        // Simple word extraction from text (split by spaces and punctuation)
+        const textWords = item.text_target.match(/[\p{L}\p{M}]+/gu) || [];
+        for(const word of textWords) {
+          if(word && word.trim()) {
+            words.add(word.trim());
           }
         }
       }
