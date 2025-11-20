@@ -846,8 +846,9 @@ async function applyPracticeStartResponse(js, fallbackLevel = 1, expectedTotal =
   setPracticeProgress(PR.seen, PR.remaining, PR.total);
   showTab('practice');
   bindPracticeControls();
-  // Don't render here - let the caller handle rendering after preloading
-  // renderPracticeCard();
+  // Render practice card - will be called after preloading in startPracticeForLevel
+  // For startPracticeWithWordList, preloading happens before applyPracticeStartResponse
+  renderPracticeCard();
 }
 
 export async function startPracticeForLevel(level, runIdOverride){
@@ -898,7 +899,8 @@ export async function startPracticeForLevel(level, runIdOverride){
     }
   }
 
-  // assign state first to build the queue
+  // CRITICAL: First build the queue by calling applyPracticeStartResponse
+  // This sets up PR.curr, PR._queue, etc.
   await applyPracticeStartResponse(js, level, js.total || js.remaining || 0);
   
   // CRITICAL: Collect ALL words that will be used in this practice session
@@ -925,6 +927,7 @@ export async function startPracticeForLevel(level, runIdOverride){
   }
   
   // Now render the practice card with all data ready
+  // This will show the first word and start the practice
   renderPracticeCard();
 }
 
