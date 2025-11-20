@@ -7518,21 +7518,27 @@ _register_debug_routes()
 @app.after_request
 def after_request_handler(response):
     """Ensure CORS headers are always set, even if Flask-CORS doesn't set them"""
-    # Add CORS headers if not already present
-    if 'Access-Control-Allow-Origin' not in response.headers:
-        response.headers['Access-Control-Allow-Origin'] = '*'
-    if 'Access-Control-Allow-Methods' not in response.headers:
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-    if 'Access-Control-Allow-Headers' not in response.headers:
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Native-Language, X-Requested-With, Accept'
-    if 'Access-Control-Expose-Headers' not in response.headers:
-        response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Content-Length'
-    if 'Access-Control-Max-Age' not in response.headers:
-        response.headers['Access-Control-Max-Age'] = '3600'
-    
-    # Handle preflight OPTIONS requests
-    if request.method == 'OPTIONS':
-        response.status_code = 200
+    try:
+        # Add CORS headers if not already present
+        if 'Access-Control-Allow-Origin' not in response.headers:
+            response.headers['Access-Control-Allow-Origin'] = '*'
+        if 'Access-Control-Allow-Methods' not in response.headers:
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+        if 'Access-Control-Allow-Headers' not in response.headers:
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Native-Language, X-Requested-With, Accept'
+        if 'Access-Control-Expose-Headers' not in response.headers:
+            response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Content-Length'
+        if 'Access-Control-Max-Age' not in response.headers:
+            response.headers['Access-Control-Max-Age'] = '3600'
+        
+        # Handle preflight OPTIONS requests
+        try:
+            if hasattr(request, 'method') and request.method == 'OPTIONS':
+                response.status_code = 200
+        except Exception:
+            pass  # Ignore if request is not available
+    except Exception as e:
+        print(f"Error in after_request handler: {e}")
     
     return response
 
