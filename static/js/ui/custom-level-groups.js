@@ -117,8 +117,10 @@ function applyCustomLevelProgressData(levelElement, progressData) {
 
     const progressFill = levelElement.querySelector('.level-progress-fill');
     if (progressFill) progressFill.style.width = `${normalized.progress_percent}%`;
-
-    updateCustomLevelCompletionCircle(levelElement, normalized.score_percent);
+    
+    // Use progress_percent for completion circle (actual learning progress)
+    // NOT score_percent (which is for evaluation page only)
+    updateCustomLevelCompletionCircle(levelElement, normalized.progress_percent);
     
     // Only update familiarity UI if card is flipped (backside visible)
     // This prevents overwriting correct values before user flips the card
@@ -2387,11 +2389,10 @@ async function renderCustomLevels(groupId, levels) {
             const cachedFamiliarity = window.cachedFamiliarityData[groupId][levelNumber];
             totalWords = cachedFamiliarity.total_words || 0;
             learnedWords = cachedFamiliarity.fam_counts && cachedFamiliarity.fam_counts[5] ? cachedFamiliarity.fam_counts[5] : 0;
-            // Calculate score percent from score (normalize first, then convert to percent)
-            // Score can be 0-100 or 0-1, normalizeScoreValue handles both
-            if (cachedFamiliarity.score !== null && cachedFamiliarity.score !== undefined) {
-                const normalizedScore = normalizeScoreValue(cachedFamiliarity.score);
-                scorePercent = Math.round(normalizedScore * 100);
+            // Calculate progress percent based on learned words (familiarity 5)
+            // This represents actual learning progress, not session score
+            if (totalWords > 0) {
+                scorePercent = Math.round((learnedWords / totalWords) * 100);
             } else {
                 scorePercent = 0;
             }
@@ -2402,7 +2403,12 @@ async function renderCustomLevels(groupId, levels) {
             const cachedProgress = window.cachedGroupProgress[levelNumber];
             totalWords = cachedProgress.total_words || 0;
             learnedWords = cachedProgress.completed_words || (cachedProgress.fam_counts && cachedProgress.fam_counts[5]) || 0;
-            scorePercent = cachedProgress.score_percent || 0;
+            // Calculate progress percent based on learned words, not score_percent
+            if (totalWords > 0) {
+                scorePercent = Math.round((learnedWords / totalWords) * 100);
+            } else {
+                scorePercent = 0;
+            }
         }
         
         // If no progress data, estimate word count from content
@@ -3384,11 +3390,11 @@ function updateFrontsideWithPreloadedData(groupId, levels) {
         // Extract data (same as backside uses)
         const totalWords = cachedFamiliarity.total_words || 0;
         const learnedWords = cachedFamiliarity.fam_counts && cachedFamiliarity.fam_counts[5] ? cachedFamiliarity.fam_counts[5] : 0;
-        let scorePercent = 0;
-        // Normalize score first (handles both 0-1 and 0-100 formats), then convert to percent
-        if (cachedFamiliarity.score !== null && cachedFamiliarity.score !== undefined) {
-            const normalizedScore = normalizeScoreValue(cachedFamiliarity.score);
-            scorePercent = Math.round(normalizedScore * 100);
+        // Calculate progress percent based on learned words (familiarity 5)
+        // This represents actual learning progress, not session score
+        let progressPercent = 0;
+        if (totalWords > 0) {
+            progressPercent = Math.round((learnedWords / totalWords) * 100);
         }
         
         // Update frontside elements
@@ -3404,11 +3410,11 @@ function updateFrontsideWithPreloadedData(groupId, levels) {
         
         const completionCircleText = card.querySelector('.completion-circle-text');
         if (completionCircleText) {
-            completionCircleText.textContent = `${scorePercent}%`;
+            completionCircleText.textContent = `${progressPercent}%`;
         }
         
-        // Update completion circle visual
-        updateCustomLevelCompletionCircle(card, scorePercent);
+        // Update completion circle visual (use progress_percent, not score_percent)
+        updateCustomLevelCompletionCircle(card, progressPercent);
         
         // Update progress bar
         const progressFill = card.querySelector('.level-progress-fill');
