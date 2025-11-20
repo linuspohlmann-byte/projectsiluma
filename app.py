@@ -6861,8 +6861,13 @@ def api_practice_start():
                     # This ensures unknown words (fam = 0) are also included in practice
                     if not exclude_max or (fam >= 0 and fam <= 4):
                         words_to_practice.append(word)
+                    else:
+                        print(f"⏭️ Excluding word '{word}' from practice (familiarity={fam}, exclude_max={exclude_max})")
+                
+                print(f"📊 Practice filter: {len(custom_words)} words provided, {len(words_to_practice)} words after filtering (exclude_max={exclude_max})")
                 
                 if not words_to_practice:
+                    print(f"❌ No words available for practice after filtering. Provided words: {custom_words[:10]}...")
                     return jsonify({
                         'success': False,
                         'error': 'No words available for practice'

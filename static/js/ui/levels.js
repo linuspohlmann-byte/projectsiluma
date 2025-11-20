@@ -1985,10 +1985,25 @@ async function startSmartPractice(fromLevelContainer = false){
           // Extract words from level content
           const levelWords = extractWordsFromLevelContent(levelData.level.content);
           console.log(`✅ Extracted ${levelWords.length} words from level ${levelNumber}`);
+          console.log(`📝 Extracted words:`, levelWords);
+          
+          // Get total words from progress data for comparison
+          if(levelData.level.progress) {
+            const totalWordsFromProgress = levelData.level.progress.total_words || 0;
+            console.log(`📊 Total words from progress data: ${totalWordsFromProgress}`);
+            if(totalWordsFromProgress !== levelWords.length) {
+              console.warn(`⚠️ DISCREPANCY: Extracted ${levelWords.length} words but progress shows ${totalWordsFromProgress} words`);
+            }
+          }
           
           // Filter by familiarity < 5 (all words that are not fully learned)
           practiceCandidates = await filterWordsByFamiliarity(levelWords, targetLang, nativeLanguage, headers);
           console.log(`✅ Filtered to ${practiceCandidates.length} words with familiarity < 5 (not fully learned)`);
+          console.log(`📝 Practice candidates:`, practiceCandidates);
+          
+          if(practiceCandidates.length === 0 && levelWords.length > 0) {
+            console.warn(`⚠️ No practice candidates found, but ${levelWords.length} words were extracted. All words might have familiarity 5.`);
+          }
         } else {
           console.warn('⚠️ Failed to fetch level data:', levelData);
         }
