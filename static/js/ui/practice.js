@@ -822,10 +822,8 @@ async function applyPracticeStartResponse(js, fallbackLevel = 1, expectedTotal =
         const pick = await nextFromQueueSkippingMemorized();
         if(pick) PR.curr = pick;
         
-        // Preload all words in queue in background (non-blocking)
-        preloadAllPracticeWords(PR._queue, null).catch(err => {
-          console.warn('Background preload of practice queue failed:', err);
-        });
+        // Queue is already preloaded before applyPracticeStartResponse is called
+    // No need to preload again here
       }
       const lang = $('#target-lang')?.value||'';
       if(PR.curr && await isMemorized(PR.curr, lang)){
@@ -848,7 +846,8 @@ async function applyPracticeStartResponse(js, fallbackLevel = 1, expectedTotal =
   setPracticeProgress(PR.seen, PR.remaining, PR.total);
   showTab('practice');
   bindPracticeControls();
-  renderPracticeCard();
+  // Don't render here - let the caller handle rendering after preloading
+  // renderPracticeCard();
 }
 
 export async function startPracticeForLevel(level, runIdOverride){
@@ -889,11 +888,6 @@ export async function startPracticeForLevel(level, runIdOverride){
   let js = null; try{ js = await r.json(); }catch(_){ js = null; }
   if(!r.ok || !js || js.success === false){ const msg = (js && (js.error||js.message)) || ('HTTP '+r.status); alert('Practice-Start fehlgeschlagen: '+msg); return; }
 
-  // NEW: Preload practice words before showing practice
-  // Collect words from server response and queue
-  const practiceWords = [];
-  if (js.word) practiceWords.push(js.word);
-  
   // Show loading state
   const practiceCard = document.getElementById('practice-card');
   if (practiceCard) {
@@ -903,10 +897,25 @@ export async function startPracticeForLevel(level, runIdOverride){
       practiceInner.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg);opacity:0.8"><div>${preparingText}</div></div>`;
     }
   }
+
+  // assign state first to build the queue
+  await applyPracticeStartResponse(js, level, js.total || js.remaining || 0);
   
-  // Preload initial word if available
-  if (practiceWords.length > 0) {
-    await preloadAllPracticeWords(practiceWords, (progress) => {
+  // CRITICAL: Collect ALL words that will be used in this practice session
+  const allPracticeWords = new Set();
+  if (js.word) allPracticeWords.add(js.word);
+  if (PR.curr) allPracticeWords.add(PR.curr);
+  if (PR._queue && PR._queue.length > 0) {
+    PR._queue.forEach(word => {
+      if (word) allPracticeWords.add(word);
+    });
+  }
+  
+  const practiceWordsArray = Array.from(allPracticeWords);
+  
+  // Preload ALL practice words BEFORE showing the practice (blocking)
+  if (practiceWordsArray.length > 0) {
+    await preloadAllPracticeWords(practiceWordsArray, (progress) => {
       const practiceInner = document.getElementById('practice-inner');
       if (practiceInner) {
         const preparingText = window.t ? window.t('practice.preparing_session', 'Preparing practice session...') : 'Preparing practice session...';
@@ -914,17 +923,9 @@ export async function startPracticeForLevel(level, runIdOverride){
       }
     });
   }
-
-  // assign state
-  await applyPracticeStartResponse(js, level, js.total || js.remaining || 0);
   
-  // After queue is built, preload all words in queue
-  if (PR._queue && PR._queue.length > 0) {
-    // Preload remaining words in background (non-blocking)
-    preloadAllPracticeWords(PR._queue, null).catch(err => {
-      console.warn('Background preload of practice queue failed:', err);
-    });
-  }
+  // Now render the practice card with all data ready
+  renderPracticeCard();
 }
 
 // Preload and enrich ALL words in a practice session
@@ -1048,13 +1049,15 @@ async function preloadAllPracticeWords(words, progressCallback = null) {
       }
       
       // Check if we're in a custom level context
-      const isCustomLevel = window.RUN && (window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP);
+      // Check multiple sources: RUN context, SELECTED_CUSTOM_GROUP, or from practice level context
+      const groupId = (window.RUN && window.RUN._customGroupId) || window.SELECTED_CUSTOM_GROUP || null;
+      const levelNumber = (window.RUN && window.RUN._customLevelNumber) || window.SELECTED_CUSTOM_LEVEL || null;
+      const isCustomLevel = !!(groupId && levelNumber);
+      
       let enrichResponse;
       
       if (isCustomLevel) {
-        const groupId = window.RUN._customGroupId || window.SELECTED_CUSTOM_GROUP;
-        const levelNumber = window.RUN._customLevelNumber || window.SELECTED_CUSTOM_LEVEL || 1;
-        
+        console.log(`🔧 Using custom level enrich_batch API for practice: group ${groupId}, level ${levelNumber}`);
         enrichResponse = await fetch(`/api/custom-levels/${groupId}/${levelNumber}/enrich_batch`, {
           method: 'POST',
           headers: enrichHeaders,
@@ -1067,6 +1070,7 @@ async function preloadAllPracticeWords(words, progressCallback = null) {
           })
         });
       } else {
+        console.log(`🔧 Using standard enrich_batch API for practice`);
         enrichResponse = await fetch('/api/word/enrich_batch', {
           method: 'POST',
           headers: enrichHeaders,
