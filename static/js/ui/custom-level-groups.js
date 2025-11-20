@@ -139,22 +139,20 @@ function applyCustomLevelProgressData(levelElement, progressData) {
 
     try {
         levelElement.classList.remove('done', 'gold');
-        // Calculate learned words percentage (familiarity ≥3)
-        const famCounts = normalized.fam_counts || {};
-        const learnedWords = (famCounts[5] || 0) + (famCounts[4] || 0) + (famCounts[3] || 0);
-        const learnedPercent = normalized.total_words > 0 ? (learnedWords / normalized.total_words * 100) : 0;
         
-        if (normalized.status === 'completed') {
-            // Gold if ≥80% learned, done otherwise
-            if (learnedPercent >= 80) {
-                levelElement.classList.add('gold');
-            } else {
-                levelElement.classList.add('done');
-            }
-        } else if (learnedPercent > 0) {
-            // Show progress if any words learned
+        // Calculate Familiarity 5 percentage (unified logic)
+        const fam5Percent = getFamiliarity5Percent(normalized);
+        
+        // Unified color logic based on Familiarity 5:
+        // Gold: >90% with Familiarity 5
+        // Green: >50% with Familiarity 5
+        // Blue/Gray: handled by unlock logic
+        if (hasFamiliarity5Above90(normalized)) {
+            levelElement.classList.add('gold');
+        } else if (hasFamiliarity5Above50(normalized)) {
             levelElement.classList.add('done');
         }
+        // If <50%, no color class (stays blue/gray based on unlock status)
     } catch (_e) { /* ignore */ }
 
     // Remove legacy highlighting classes from buttons to prevent interference
@@ -3670,6 +3668,26 @@ async function getUserProgressForGroup(groupId) {
 }
 
 // Helper function to check if level is completed based on progress (familiarity counts)
+// Helper function to calculate Familiarity 5 percentage
+function getFamiliarity5Percent(levelData) {
+    if (!levelData) return 0;
+    const famCounts = levelData.fam_counts || {};
+    const totalWords = levelData.total_words || 0;
+    if (totalWords === 0) return 0;
+    const fam5Words = famCounts[5] || 0;
+    return (fam5Words / totalWords) * 100;
+}
+
+// Helper function to check if level has >50% Familiarity 5 (for unlocking next level)
+function hasFamiliarity5Above50(levelData) {
+    return getFamiliarity5Percent(levelData) > 50;
+}
+
+// Helper function to check if level has >90% Familiarity 5 (for gold status)
+function hasFamiliarity5Above90(levelData) {
+    return getFamiliarity5Percent(levelData) > 90;
+}
+
 function isLevelCompletedByProgress(levelData) {
     if (!levelData) return false;
     
@@ -3699,12 +3717,12 @@ function determineUnlockedLevels(userProgress, totalLevels) {
             // Level 1 is always unlocked
             unlockedLevels.push(levelNum);
         } else {
-            // Check if previous level is completed based on PROGRESS (familiarity), not score
+            // Check if previous level has >50% Familiarity 5 (unified unlock logic)
             const prevLevelData = userProgress[levelNum - 1];
             if (prevLevelData && prevLevelData.success) {
-                const isPrevCompleted = isLevelCompletedByProgress(prevLevelData);
+                const prevHasFam5Above50 = hasFamiliarity5Above50(prevLevelData);
                 
-                if (isPrevCompleted) {
+                if (prevHasFam5Above50) {
                     unlockedLevels.push(levelNum);
                 } else {
                     // Stop at first locked level
@@ -4221,22 +4239,22 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                         levelElement.classList.remove('locked', 'done');
                         console.log(`Custom level ${levelNumber} marked as unlocked (Level 1)`);
                     } else if (levelNumber > 1) {
-                        // Check if previous level is completed
+                        // Check if previous level has >50% Familiarity 5 (unified unlock logic)
                         const prevLevel = levelNumber - 1;
                         const prevLevelData = data.levels[prevLevel];
                         if (prevLevelData && prevLevelData.success) {
-                            // Check if previous level is completed based on PROGRESS (familiarity), not score
-                            const isPrevCompleted = isLevelCompletedByProgress(prevLevelData);
+                            // Check if previous level has >50% Familiarity 5
+                            const prevHasFam5Above50 = hasFamiliarity5Above50(prevLevelData);
                             
-                            if (isPrevCompleted) {
+                            if (prevHasFam5Above50) {
                                 isUnlocked = true;
                                 levelElement.classList.add('unlocked');
                                 levelElement.classList.remove('locked', 'done');
-                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} completed based on progress)`);
+                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} has >50% Familiarity 5)`);
                             } else {
                                 levelElement.classList.add('locked');
                                 levelElement.classList.remove('unlocked', 'done');
-                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} not completed - progress < 80%)`);
+                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} has <50% Familiarity 5)`);
                             }
                         } else {
                             levelElement.classList.add('locked');
@@ -4471,42 +4489,31 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                 } catch (_e) { /* ignore */ }
             }
 
-            // Check if level is completed based on PROGRESS (familiarity counts), not score
-            const isCompleted = isLevelCompletedByProgress(levelData);
+            // Calculate Familiarity 5 percentage (unified logic)
+            const fam5Percent = getFamiliarity5Percent(levelData);
+            const prevFam5Percent = getFamiliarity5Percent(prevLevelData);
             
-            // Calculate learned words percentage for progress check
-            const famCounts = levelData?.fam_counts || {};
-            const totalWords = levelData?.total_words || 0;
-            const learnedWords = (famCounts[5] || 0) + (famCounts[4] || 0) + (famCounts[3] || 0);
-            const learnedPercent = totalWords > 0 ? (learnedWords / totalWords * 100) : 0;
-            const hasProgress = learnedPercent > 0;
-            
-            // Check previous level completion based on PROGRESS (familiarity), not score
-            const prevCompleted = isLevelCompletedByProgress(prevLevelData);
+            // Check if previous level has >50% Familiarity 5 (for unlocking)
+            const prevHasFam5Above50 = hasFamiliarity5Above50(prevLevelData);
             
             // Debug logging
             if (levelNumber > 1) {
                 console.log(`🔓 Level ${levelNumber} unlock check:`, {
                     prevLevel: levelNumber - 1,
                     prevLevelData: prevLevelData,
-                    prevStatus: prevLevelData?.status,
-                    prevCompleted: prevCompleted,
-                    prevLearnedPercent: prevLevelData ? (() => {
-                        const prevFamCounts = prevLevelData.fam_counts || {};
-                        const prevTotalWords = prevLevelData.total_words || 0;
-                        const prevLearnedWords = (prevFamCounts[5] || 0) + (prevFamCounts[4] || 0) + (prevFamCounts[3] || 0);
-                        return prevTotalWords > 0 ? (prevLearnedWords / prevTotalWords * 100) : 0;
-                    })() : 0,
+                    prevFam5Percent: prevFam5Percent,
+                    prevHasFam5Above50: prevHasFam5Above50,
+                    currentFam5Percent: fam5Percent,
                     familiarityDataExists: !!familiarityData,
-                    familiarityDataForPrevLevel: familiarityData && familiarityData[levelNumber - 1],
-                    allowStart: prevCompleted || levelNumber === 1
+                    familiarityDataForPrevLevel: familiarityData && familiarityData[levelNumber - 1]
                 });
             }
 
+            // Unified unlock logic: Level 1 OR previous level has >50% Familiarity 5
             let allowStart = false;
             if (levelNumber === 1) {
                 allowStart = true;
-            } else if (prevCompleted) {
+            } else if (prevHasFam5Above50) {
                 allowStart = true;
             } else if (!prevLevelData) {
                 // If no data for previous level, check if it exists in familiarity data
@@ -4514,17 +4521,17 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                 console.log(`⚠️ Level ${levelNumber}: No data for previous level ${levelNumber - 1}`);
             }
 
-            // Color based on PROGRESS (learned words percentage), not score
-            if (isCompleted) {
-                // Gold if ≥80% learned, done otherwise
-                if (learnedPercent >= 80) {
-                    card.classList.add('gold');
-                } else {
-                    card.classList.add('done');
-                }
-            } else if (hasProgress) {
+            // Unified color logic based on Familiarity 5:
+            // Gold: >90% with Familiarity 5
+            // Green: >50% with Familiarity 5
+            // Blue/Gray: handled by unlock logic below
+            card.classList.remove('done', 'gold');
+            if (hasFamiliarity5Above90(levelData)) {
+                card.classList.add('gold');
+            } else if (hasFamiliarity5Above50(levelData)) {
                 card.classList.add('done');
             }
+            // If <50%, no color class (stays blue/gray based on unlock status)
 
             if (allowStart) {
                 card.classList.add('unlocked');

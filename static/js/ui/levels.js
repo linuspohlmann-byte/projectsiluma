@@ -579,28 +579,27 @@ async function applyLevelStates(){
         statusText = window.t ? window.t('status.available', 'Available') : 'Available';
         console.log(`Level ${lvl} als 'unlocked' markiert (Level 1 - erste Lektion) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
       } else if(lvl > 1) {
-            // Check if previous level is completed using bulk data
+            // Check if previous level has >50% Familiarity 5 (unified unlock logic)
         const prevLevel = lvl - 1;
         const prevLevelData = data.levels[prevLevel] || data.levels[String(prevLevel)];
             if (prevLevelData && prevLevelData.success) {
-              // Check if previous level is completed based on PROGRESS (familiarity), not score
+              // Calculate Familiarity 5 percentage for previous level
               const prevFamCounts = prevLevelData.fam_counts || {};
               const prevTotalWords = prevLevelData.total_words || 0;
-              const prevLearnedWords = (prevFamCounts[5] || 0) + (prevFamCounts[4] || 0) + (prevFamCounts[3] || 0);
-              const prevLearnedPercent = prevTotalWords > 0 ? (prevLearnedWords / prevTotalWords * 100) : 0;
-              const prevStatus = prevLevelData.user_progress?.status || prevLevelData.status;
-              const isPrevCompleted = prevStatus === 'completed' && prevLearnedPercent >= 80;
+              const prevFam5Words = prevFamCounts[5] || 0;
+              const prevFam5Percent = prevTotalWords > 0 ? (prevFam5Words / prevTotalWords * 100) : 0;
+              const prevHasFam5Above50 = prevFam5Percent > 50;
               
-              console.log(`Level ${lvl} unlock check - Prev Level ${prevLevel}: status=${prevStatus}, learnedPercent=${prevLearnedPercent.toFixed(1)}%, isCompleted=${isPrevCompleted}`);
+              console.log(`Level ${lvl} unlock check - Prev Level ${prevLevel}: Fam5Percent=${prevFam5Percent.toFixed(1)}%, hasFam5Above50=${prevHasFam5Above50}`);
           
-          if(isPrevCompleted) {
+          if(prevHasFam5Above50) {
                 isUnlocked = true;
             statusText = window.t ? window.t('status.available', 'Available') : 'Available';
-            console.log(`Level ${lvl} als 'unlocked' markiert (vorheriges Level ${prevLevel} erfolgreich abgeschlossen) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
+            console.log(`Level ${lvl} als 'unlocked' markiert (vorheriges Level ${prevLevel} hat >50% Familiarity 5) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
           } else {
                 isUnlocked = false;
                 statusText = window.t ? window.t('status.locked', 'Locked') : 'Locked';
-            console.log(`Level ${lvl} als 'locked' markiert (vorheriges Level ${prevLevel} nicht erfolgreich abgeschlossen) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
+            console.log(`Level ${lvl} als 'locked' markiert (vorheriges Level ${prevLevel} hat <50% Familiarity 5) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
           }
         } else {
               isUnlocked = false;
@@ -1003,41 +1002,20 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
     // Remove existing status classes (but preserve unlocked/locked)
     levelElement.classList.remove('done', 'gold');
     
-    // Check if level is completed using stored completion status
-    const isCompleted = levelElement.dataset.isCompleted === 'true';
-    console.log(`Level ${lvl} completion check: isCompleted=${isCompleted} (from dataset), dataset.isCompleted="${levelElement.dataset.isCompleted}", progressPercent=${progressPercent}%`);
-    
-    // Use cached data for completion status instead of making API call
-    let actualIsCompleted = isCompleted;
-    if (!isCompleted) {
-      const cachedCompletionData = levelElement.dataset.bulkData;
-      if (cachedCompletionData) {
-        try {
-          const data = JSON.parse(cachedCompletionData);
-          actualIsCompleted = data.status === 'completed';
-          console.log(`Level ${lvl} fallback completion check: actualIsCompleted=${actualIsCompleted} (from cached data)`);
-        } catch (error) {
-          console.log('Error parsing cached data for completion check:', error);
-        }
-      }
-    }
-    
-    const isAvailable = levelElement.classList.contains('unlocked');
-    
-    // Add appropriate class based on completion status and word progress
-    // New logic: Gold = completed & 100% words, Green = completed & <100% words, Blue = available, Gray = locked
-    if (actualIsCompleted && progressPercent >= 100) {
+    // Unified color logic based on Familiarity 5:
+    // Gold: >90% with Familiarity 5
+    // Green: >50% with Familiarity 5
+    // Blue/Gray: handled by unlock logic (preserved from existing classes)
+    if (progressPercent > 90) {
       levelElement.classList.add('gold');
-      console.log(`Level ${lvl} marked as GOLD (completed & 100% words learned - ${completedWords}/${totalWords})`);
-    } else if (actualIsCompleted && progressPercent > 0) {
+      console.log(`Level ${lvl} marked as GOLD (>90% Familiarity 5 - ${completedWords}/${totalWords})`);
+    } else if (progressPercent > 50) {
       levelElement.classList.add('done');
-      console.log(`Level ${lvl} marked as DONE (completed & ${progressPercent}% words learned - ${completedWords}/${totalWords})`);
-    } else if (actualIsCompleted && progressPercent === 0) {
-      levelElement.classList.add('done');
-      console.log(`Level ${lvl} marked as DONE (completed but 0% words learned - ${completedWords}/${totalWords})`);
+      console.log(`Level ${lvl} marked as DONE (>50% Familiarity 5 - ${completedWords}/${totalWords})`);
     } else {
-      // Level is available but not completed, or locked - stays as unlocked/locked (blue/gray)
-      console.log(`Level ${lvl} stays as unlocked/locked (${actualIsCompleted ? 'completed' : isAvailable ? 'available' : 'locked'} & ${progressPercent}% words learned - ${completedWords}/${totalWords})`);
+      // Level is available but <50% - stays as unlocked/locked (blue/gray)
+      const isAvailable = levelElement.classList.contains('unlocked');
+      console.log(`Level ${lvl} stays as ${isAvailable ? 'unlocked (blue)' : 'locked (gray)'} (<50% Familiarity 5 - ${completedWords}/${totalWords})`);
     }
     
     // Mark this level as having its color set to prevent interference

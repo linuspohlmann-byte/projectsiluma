@@ -2983,7 +2983,7 @@ async function startLevel(lvl){
   }
   
   // Standard level logic (existing code)
-  // Check if level is locked (60% requirement)
+  // Check if level is locked (unified unlock logic: previous level must have >50% Familiarity 5)
   if (lvl > 1) {
     const prevLevel = lvl - 1;
     const prevLevelElement = document.querySelector(`[data-level="${prevLevel}"]`);
@@ -2991,15 +2991,19 @@ async function startLevel(lvl){
     if (prevLevelElement && prevLevelElement.dataset.bulkData) {
       try {
         const prevLevelData = JSON.parse(prevLevelElement.dataset.bulkData);
-        const prevScore = prevLevelData?.last_score || 0;
-        const isPrevCompleted = prevLevelData?.status === 'completed' && Number(prevScore) > 0.6;
+        // Calculate Familiarity 5 percentage for previous level
+        const prevFamCounts = prevLevelData?.fam_counts || {};
+        const prevTotalWords = prevLevelData?.total_words || 0;
+        const prevFam5Words = prevFamCounts[5] || 0;
+        const prevFam5Percent = prevTotalWords > 0 ? (prevFam5Words / prevTotalWords * 100) : 0;
+        const prevHasFam5Above50 = prevFam5Percent > 50;
         
-        if (!isPrevCompleted) {
+        if (!prevHasFam5Above50) {
           // Show elegant locked message instead of starting level
           if (typeof window.showLevelLockedMessage === 'function') {
-            window.showLevelLockedMessage(lvl, prevLevel, prevScore);
+            window.showLevelLockedMessage(lvl, prevLevel, prevFam5Percent);
           } else {
-            const lockedMsg = tt('lesson.level_locked', 'Level {level} is locked. Complete level {requiredLevel} with at least 60%.')
+            const lockedMsg = tt('lesson.level_locked', 'Level {level} is locked. Complete level {requiredLevel} with at least 50% words learned.')
               .replace('{level}', lvl)
               .replace('{requiredLevel}', prevLevel);
             alert(lockedMsg);
