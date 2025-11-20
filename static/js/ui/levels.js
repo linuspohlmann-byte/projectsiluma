@@ -1923,6 +1923,13 @@ async function startSmartPractice(fromLevelContainer = false){
       const levelNumber = activeLevelCard.dataset.level;
       scopeLabel = levelNumber ? `Level ${levelNumber}` : 'Level';
       
+      // CRITICAL: Set custom level context for enrichment API
+      if (groupId && levelNumber) {
+        window.SELECTED_CUSTOM_GROUP = groupId;
+        window.SELECTED_CUSTOM_LEVEL = levelNumber;
+        console.log(`🔧 Set custom level context for practice: group ${groupId}, level ${levelNumber}`);
+      }
+      
       console.log(`🎯 Context: Specific level (group: ${groupId}, level: ${levelNumber})`);
       
       try {
