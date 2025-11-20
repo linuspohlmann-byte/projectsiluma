@@ -56,7 +56,16 @@ function normalizeProgressPayload(progressData) {
     const scoreRatio = normalizeScoreValue(payload.score);
     const scorePercent = Math.round(scoreRatio * 100);
     const progressPercent = totalWords > 0 ? Math.round((completedWords / totalWords) * 100) : 0;
-    const status = payload.status || (scorePercent > 0 ? 'completed' : 'not_started');
+    
+    // Determine status based on PROGRESS (familiarity counts), not score
+    // Level is "completed" if ≥80% of words are at familiarity ≥3 (familiar or better)
+    const learnedWords = (
+        (famCounts[5] || 0) +  // Memorized
+        (famCounts[4] || 0) +  // Strong
+        (famCounts[3] || 0)    // Familiar
+    );
+    const learnedPercent = totalWords > 0 ? (learnedWords / totalWords * 100) : 0;
+    const status = payload.status || (learnedPercent >= 80 ? 'completed' : (learnedPercent > 0 ? 'in_progress' : 'not_started'));
     
     return {
         success: payload.success !== false,
@@ -130,13 +139,20 @@ function applyCustomLevelProgressData(levelElement, progressData) {
 
     try {
         levelElement.classList.remove('done', 'gold');
+        // Calculate learned words percentage (familiarity ≥3)
+        const famCounts = normalized.fam_counts || {};
+        const learnedWords = (famCounts[5] || 0) + (famCounts[4] || 0) + (famCounts[3] || 0);
+        const learnedPercent = normalized.total_words > 0 ? (learnedWords / normalized.total_words * 100) : 0;
+        
         if (normalized.status === 'completed') {
-            if (normalized.score_percent >= 80) {
+            // Gold if ≥80% learned, done otherwise
+            if (learnedPercent >= 80) {
                 levelElement.classList.add('gold');
             } else {
                 levelElement.classList.add('done');
             }
-        } else if (normalized.progress_percent > 0 || normalized.score_percent > 0) {
+        } else if (learnedPercent > 0) {
+            // Show progress if any words learned
             levelElement.classList.add('done');
         }
     } catch (_e) { /* ignore */ }
@@ -4193,21 +4209,18 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                         const prevLevel = levelNumber - 1;
                         const prevLevelData = data.levels[prevLevel];
                         if (prevLevelData && prevLevelData.success) {
-                            const prevUserProgress = prevLevelData.user_progress;
-                            const prevStatus = prevUserProgress?.status || prevLevelData.status;
-                            const prevScore = prevUserProgress?.score || prevLevelData.last_score;
-                            const prevNormalizedScore = normalizeScoreValue(prevScore);
-                            const isPrevCompleted = prevStatus === 'completed' && prevNormalizedScore > 0.6;
+                            // Check if previous level is completed based on PROGRESS (familiarity), not score
+                            const isPrevCompleted = isLevelCompletedByProgress(prevLevelData);
                             
                             if (isPrevCompleted) {
                                 isUnlocked = true;
                                 levelElement.classList.add('unlocked');
                                 levelElement.classList.remove('locked', 'done');
-                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} completed)`);
+                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} completed based on progress)`);
                             } else {
                                 levelElement.classList.add('locked');
                                 levelElement.classList.remove('unlocked', 'done');
-                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} not completed)`);
+                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} not completed - progress < 80%)`);
                             }
                         } else {
                             levelElement.classList.add('locked');
@@ -4442,20 +4455,18 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                 } catch (_e) { /* ignore */ }
             }
 
-            const isCompleted = levelData?.status === 'completed';
-            const hasProgress = levelData ? Number(levelData.score_percent || 0) > 0 : false;
+            // Check if level is completed based on PROGRESS (familiarity counts), not score
+            const isCompleted = isLevelCompletedByProgress(levelData);
             
-            // Check previous level completion with score > 0.6 (same logic as score display)
-            // Use normalized score (0-1) for comparison, not percent
-            const prevScore = prevLevelData?.score !== undefined 
-                ? prevLevelData.score 
-                : (prevLevelData?.score_percent !== undefined 
-                    ? prevLevelData.score_percent / 100 
-                    : 0);
+            // Calculate learned words percentage for progress check
+            const famCounts = levelData?.fam_counts || {};
+            const totalWords = levelData?.total_words || 0;
+            const learnedWords = (famCounts[5] || 0) + (famCounts[4] || 0) + (famCounts[3] || 0);
+            const learnedPercent = totalWords > 0 ? (learnedWords / totalWords * 100) : 0;
+            const hasProgress = learnedPercent > 0;
             
-            // Unlock if previous level has score > 0.6, regardless of status
-            // Status might not be 'completed' even if score is high enough
-            const prevCompleted = prevScore > 0.6;
+            // Check previous level completion based on PROGRESS (familiarity), not score
+            const prevCompleted = isLevelCompletedByProgress(prevLevelData);
             
             // Debug logging
             if (levelNumber > 1) {
@@ -4463,9 +4474,13 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                     prevLevel: levelNumber - 1,
                     prevLevelData: prevLevelData,
                     prevStatus: prevLevelData?.status,
-                    prevScore: prevScore,
-                    prevScorePercent: Math.round(prevScore * 100),
                     prevCompleted: prevCompleted,
+                    prevLearnedPercent: prevLevelData ? (() => {
+                        const prevFamCounts = prevLevelData.fam_counts || {};
+                        const prevTotalWords = prevLevelData.total_words || 0;
+                        const prevLearnedWords = (prevFamCounts[5] || 0) + (prevFamCounts[4] || 0) + (prevFamCounts[3] || 0);
+                        return prevTotalWords > 0 ? (prevLearnedWords / prevTotalWords * 100) : 0;
+                    })() : 0,
                     familiarityDataExists: !!familiarityData,
                     familiarityDataForPrevLevel: familiarityData && familiarityData[levelNumber - 1],
                     allowStart: prevCompleted || levelNumber === 1
@@ -4483,8 +4498,10 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                 console.log(`⚠️ Level ${levelNumber}: No data for previous level ${levelNumber - 1}`);
             }
 
+            // Color based on PROGRESS (learned words percentage), not score
             if (isCompleted) {
-                if (Number(levelData.score_percent || 0) >= 80) {
+                // Gold if ≥80% learned, done otherwise
+                if (learnedPercent >= 80) {
                     card.classList.add('gold');
                 } else {
                     card.classList.add('done');
