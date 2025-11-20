@@ -4408,7 +4408,7 @@ def api_enrich_custom_level_words(group_id, level_number):
         if not words:
             return jsonify({'success': True, 'enriched_count': 0, 'total_words': 0})
         
-        # Check which words already exist (batch query)
+        # Check which words already exist WITH COMPLETE DATA (translation AND pos)
         from server.db_config import get_database_config, get_db_connection, execute_query
         config = get_database_config()
         conn = get_db_connection()
@@ -4417,10 +4417,12 @@ def api_enrich_custom_level_words(group_id, level_number):
         try:
             if config['type'] == 'postgresql':
                 # OPTIMIZATION: Use ANY with array instead of multiple OR conditions
-                # This is much more efficient for PostgreSQL
+                # CRITICAL: Only skip words that have BOTH translation AND pos (complete data)
                 result = execute_query(conn, '''
                     SELECT word FROM words 
                     WHERE word = ANY(%s) AND language = %s AND native_language = %s
+                    AND translation IS NOT NULL AND translation != ''
+                    AND pos IS NOT NULL AND pos != ''
                 ''', (words, language, native_language))
                 for row in result.fetchall():
                     from server.db import _coerce_row_to_dict
@@ -4428,12 +4430,14 @@ def api_enrich_custom_level_words(group_id, level_number):
                     if row_dict and row_dict.get('word'):
                         existing_words.add(row_dict['word'])
             else:
-                # SQLite batch check
+                # SQLite batch check - only words with complete data
                 cur = conn.cursor()
                 placeholders = ','.join(['?'] * len(words))
                 query = f'''
                     SELECT word FROM words 
                     WHERE word IN ({placeholders}) AND language = ? AND native_language = ?
+                    AND translation IS NOT NULL AND translation != ''
+                    AND pos IS NOT NULL AND pos != ''
                 '''
                 result = cur.execute(query, words + [language, native_language])
                 for row in result.fetchall():
@@ -4444,11 +4448,11 @@ def api_enrich_custom_level_words(group_id, level_number):
         finally:
             conn.close()
         
-        # Filter out words that already exist
+        # Filter out words that already exist WITH COMPLETE DATA
         words_to_enrich = [w for w in words if w not in existing_words]
         
         if not words_to_enrich:
-            print(f"All {len(words)} words already exist, skipping enrichment")
+            print(f"All {len(words)} words already exist with complete data, skipping enrichment")
             # Still generate audio for all words
             try:
                 from server.services.tts import batch_ensure_tts_for_words
