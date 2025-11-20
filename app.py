@@ -4156,11 +4156,18 @@ def api_finish_custom_level(group_id, level_number):
         from server.db_progress_cache import get_custom_level_progress
         progress_data = get_custom_level_progress(user_id, group_id, level_number)
         
+        # Return both session_score (for evaluation display) and progress_score (for level cards)
+        # session_score: Performance in this session (0-100)
+        # progress_score: Actual learning progress based on familiarity (0-100)
+        session_score_int = int(round(score * 100)) if score <= 1.1 else int(round(score))
+        session_score_int = max(0, min(100, session_score_int))
+        
         return jsonify({
             'success': True,
             'message': 'Custom level completed',
-            'score': progress_data.get('score') if progress_data else None,
-            'status': progress_data.get('status') if progress_data else ('completed' if (score or 0) >= 0.6 else 'in_progress'),
+            'session_score': session_score_int,  # Score from this session (for evaluation page)
+            'score': progress_data.get('score') if progress_data else None,  # Progress-based score (for level cards)
+            'status': progress_data.get('status') if progress_data else 'in_progress',
             'fam_counts': progress_data.get('fam_counts', {}) if progress_data else {},
             'total_words': progress_data.get('total_words', 0) if progress_data else 0,
             'completed_at': progress_data.get('completed_at') if progress_data else None
