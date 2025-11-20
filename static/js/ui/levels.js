@@ -1787,11 +1787,13 @@ async function filterWordsByFamiliarity(words, language, nativeLanguage, headers
   const nativeLang = nativeLanguage || localStorage.getItem('siluma_native') || 'en';
   
   // Fetch familiarities for all words in parallel for better performance
+  // CRITICAL: Try both original case and lowercase for compatibility
   const familiarityPromises = words.map(async (word) => {
     try {
-      const url = `/api/word?word=${encodeURIComponent(word)}&language=${encodeURIComponent(language)}&native_language=${encodeURIComponent(nativeLang)}`;
-      const response = await fetch(url, { headers });
-      const js = await response.json();
+      // Try original case first
+      let url = `/api/word?word=${encodeURIComponent(word)}&language=${encodeURIComponent(language)}&native_language=${encodeURIComponent(nativeLang)}`;
+      let response = await fetch(url, { headers });
+      let js = await response.json();
       
       // Check both js.data.familiarity and js.familiarity for compatibility
       let familiarity = null;
@@ -1800,6 +1802,21 @@ async function filterWordsByFamiliarity(words, language, nativeLanguage, headers
           familiarity = Number(js.data.familiarity || 0);
         } else if(js.familiarity !== undefined) {
           familiarity = Number(js.familiarity || 0);
+        }
+      }
+      
+      // If not found with original case, try lowercase
+      if(familiarity === null && word !== word.toLowerCase()) {
+        url = `/api/word?word=${encodeURIComponent(word.toLowerCase())}&language=${encodeURIComponent(language)}&native_language=${encodeURIComponent(nativeLang)}`;
+        response = await fetch(url, { headers });
+        js = await response.json();
+        
+        if(js && js.success) {
+          if(js.data && js.data.familiarity !== undefined) {
+            familiarity = Number(js.data.familiarity || 0);
+          } else if(js.familiarity !== undefined) {
+            familiarity = Number(js.familiarity || 0);
+          }
         }
       }
       
