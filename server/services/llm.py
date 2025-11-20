@@ -773,6 +773,96 @@ def suggest_level_title(target_lang: str, native_lang: str, topic: str, level: i
     except Exception:
         return f"{topic}" if topic and topic.lower() not in ['level 1', 'level 2', 'level 3', 'level 4', 'level 5'] else f"Level {level}"
 
+def suggest_level_title_from_sentences(target_lang: str, native_lang: str, sentences: list, level: int, cefr: str = 'A1', context_description: str = '', previous_titles: list = None) -> str:
+    """Generate a level title based on the actual sentences in the level."""
+    if not OPENAI_KEY:
+        return f"Level {level}"
+    
+    try:
+        # Extract sentences text
+        if isinstance(sentences, list):
+            if len(sentences) > 0 and isinstance(sentences[0], dict):
+                # If sentences are dicts with text_target or text fields
+                sentences_text = [s.get('text_target', s.get('text', '')) for s in sentences if s.get('text_target') or s.get('text')]
+            else:
+                # If sentences are just strings
+                sentences_text = [str(s) for s in sentences if s]
+        else:
+            sentences_text = []
+        
+        if not sentences_text:
+            return f"Level {level}"
+        
+        # Create context from sentences
+        sentences_context = "\n".join(sentences_text[:10])  # Use first 10 sentences
+        
+        # Add previous titles context for better uniqueness
+        story_context = ""
+        if previous_titles and len(previous_titles) > 0:
+            story_context = f" Previous chapter titles were: {', '.join(previous_titles[:level-1])}. "
+            story_context += f"CRITICAL: Create a UNIQUE title that is completely different from all previous titles. "
+        
+        # Create CEFR-specific complexity guidance
+        cefr_guidance = {
+            'A0': "Use extremely simple, single-word or two-word titles.",
+            'A1': "Use very simple, basic vocabulary.",
+            'A2': "Use simple, everyday vocabulary.",
+            'B1': "Use intermediate vocabulary.",
+            'B2': "Use more complex vocabulary.",
+            'C1': "Use advanced vocabulary.",
+            'C2': "Use sophisticated, nuanced vocabulary."
+        }
+        
+        complexity_guidance = cefr_guidance.get(cefr, cefr_guidance['A1'])
+        
+        sys_msg = {'role':'system','content': 'Return ONLY a short, engaging level title (max 6 words), no punctuation, no quotes. Create a coherent story chapter title based on the content.'}
+        user_msg = {'role':'user','content': (
+            f"Create a level title based on these sentences from a language learning story. "
+            f"Target language: {target_lang}. Native language: {native_lang}. "
+            f"Main story context: {context_description}. "
+            f"Level: {level} of 10. CEFR: {cefr}. "
+            f"{story_context}"
+            f"Sentences in this level:\n{sentences_context}\n\n"
+            f"Create a title that captures the essence of these sentences. "
+            f"Write the title in the native language '{native_lang}' so the learner can understand it. "
+            f"IMPORTANT: Adjust complexity based on CEFR level {cefr}. {complexity_guidance}. "
+            f"CRITICAL: Each level must have a UNIQUE, DISTINCT title. Avoid repetition. "
+            f"Output only the title."
+        )}
+        
+        temperature_map = {
+            'A0': 0.7,
+            'A1': 0.7,
+            'A2': 0.7,
+            'B1': 0.8,
+            'B2': 0.8,
+            'C1': 0.8,
+            'C2': 0.9
+        }
+        
+        temperature = temperature_map.get(cefr, 0.7)
+        
+        payload_llm = {
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'messages': [sys_msg, user_msg],
+            'temperature': temperature
+        }
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {OPENAI_KEY}'}
+        data = _http_json(f'{OPENAI_BASE}/chat/completions', payload_llm, headers)
+        if not data or not isinstance(data, dict):
+            return f"Level {level}"
+        choices = data.get('choices', [])
+        if not choices or not isinstance(choices, list) or len(choices) == 0:
+            return f"Level {level}"
+        text = choices[0].get('message', {}).get('content', '')
+        title = (text or '').strip().strip('"').strip("'").replace('\n',' ').strip()
+        if title and len(title) > 60:
+            title = title[:60].rsplit(' ',1)[0]
+        return title or f"Level {level}"
+    except Exception as e:
+        print(f"⚠️ Error in suggest_level_title_from_sentences: {e}")
+        return f"Level {level}"
+
 # ---------------- Tokenization ----------------
 
 def tokenize_words(text: str):
