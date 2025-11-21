@@ -8859,6 +8859,15 @@
             // Handle settings tab specific functionality
             if (tabName === 'settings') {
                 loadSettings();
+                // Show admin section when settings tab is activated
+                setTimeout(() => {
+                    const adminSection = document.getElementById('admin-section');
+                    if (adminSection) {
+                        adminSection.style.display = 'block';
+                        adminSection.style.visibility = 'visible';
+                        console.log('✅ Admin section shown');
+                    }
+                }, 100);
             }
         }
         

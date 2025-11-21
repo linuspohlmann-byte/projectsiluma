@@ -2918,6 +2918,15 @@ export function showTab(tab){
             if (typeof window.loadSettings === 'function') {
                 window.loadSettings();
             }
+            // Show admin section when settings tab is activated
+            setTimeout(() => {
+                const adminSection = document.getElementById('admin-section');
+                if (adminSection) {
+                    adminSection.style.display = 'block';
+                    adminSection.style.visibility = 'visible';
+                    console.log('✅ Admin section shown when settings tab activated');
+                }
+            }, 100);
         } else if (tab === 'courses') {
             console.log('🌍 Calling courses callback...');
             if (typeof window.loadCourseCards === 'function') {
