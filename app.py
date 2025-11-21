@@ -5547,6 +5547,18 @@ def api_admin_cleanup_duplicates():
         
         print(f"🔄 Admin user {user_id} triggered cleanup (dry_run={dry_run})")
         
+        # Check if cleanup service is reachable
+        try:
+            health_response = requests.get(
+                f'{cleanup_service_url}/health',
+                timeout=5
+            )
+            health_response.raise_for_status()
+            print(f"✅ Cleanup service is reachable")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Warning: Could not reach cleanup service health endpoint: {e}")
+            # Continue anyway, might be a temporary issue
+        
         # Call cleanup service
         try:
             response = requests.post(

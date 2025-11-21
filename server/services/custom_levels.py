@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-from server.db import get_db, upsert_word_row, _coerce_row_to_dict
+from server.db import get_db, upsert_word_row, _coerce_row_to_dict, normalize_word
 from server.db_config import get_database_config, get_db_connection, execute_query
 from server.services.llm import (
     llm_generate_sentences,
@@ -340,8 +340,8 @@ def generate_custom_levels_original(group_id: int, language: str, native_languag
                     words = sentence_data.get('words', [])
                     for word in words:
                         if word and word.strip():
-                            # Remove trailing punctuation before adding
-                            clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                            # Normalize word using centralized function
+                            clean_word = normalize_word(word)
                             if clean_word:
                                 all_words.add(clean_word)
                 else:
@@ -350,8 +350,8 @@ def generate_custom_levels_original(group_id: int, language: str, native_languag
                     words = text_target.split()
                     for word in words:
                         if word and word.strip():
-                            # Remove trailing punctuation before adding
-                            clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                            # Normalize word using centralized function
+                            clean_word = normalize_word(word)
                             if clean_word:
                                 all_words.add(clean_word)
         
@@ -402,9 +402,9 @@ def calculate_word_count_from_content(content: Dict[str, Any]) -> int:
         words = item.get('words', [])
         for word in words:
             if word and word.strip():
-                # Remove trailing punctuation before adding to set
-                clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
-                if clean_word:  # Only add if there's still content after removing punctuation
+                # Normalize word using centralized function
+                clean_word = normalize_word(word)
+                if clean_word:  # Only add if there's still content after normalization
                     all_words.add(clean_word)
     
     return len(all_words)
@@ -1184,10 +1184,8 @@ def migrate_existing_custom_levels_to_multi_user() -> Dict[str, Any]:
                         for item in content.get("items", []):
                             for word in item.get("words", []):
                                 if word and word.strip():
-                                    # Remove trailing punctuation before adding
-                                    clean_word = re.sub(
-                                        r"[.!?,;:—–-]+$", "", word.strip().lower()
-                                    )
+                                    # Normalize word using centralized function
+                                    clean_word = normalize_word(word)
                                     if clean_word:
                                         all_words.add(clean_word)
 
@@ -1425,8 +1423,8 @@ def generate_custom_levels_parallel(group_id: int, language: str, native_languag
                             words = sentence_data.get('words', [])
                             for word in words:
                                 if word and word.strip():
-                                    # Remove trailing punctuation before adding
-                                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                                    # Normalize word using centralized function
+                                    clean_word = normalize_word(word)
                                     if clean_word:
                                         all_words.add(clean_word)
                     
@@ -1857,8 +1855,8 @@ def enrich_custom_level_words_on_demand(group_id: int, level_number: int, langua
                 
                 for word in words:
                     if word and word.strip():
-                        # Remove trailing punctuation before adding
-                        clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
+                        # Normalize word using centralized function
+                        clean_word = normalize_word(word)
                         if clean_word:
                             all_words.add(clean_word)
                 

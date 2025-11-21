@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Section Test</title>
+</head>
+<body>
+    <h1>Admin Section Test</h1>
+    <button onclick="testAdminSection()">Test Admin Section</button>
+    <div id="result"></div>
+    
+    <script>
+        function testAdminSection() {
+            const adminSection = document.getElementById('admin-section');
+            const result = document.getElementById('result');
+            
+            if (adminSection) {
+                result.innerHTML = `
+                    <h2>✅ Element gefunden!</h2>
+                    <p>Display: ${adminSection.style.display || 'not set'}</p>
+                    <p>Visibility: ${adminSection.style.visibility || 'not set'}</p>
+                    <p>Computed Display: ${window.getComputedStyle(adminSection).display}</p>
+                    <p>Computed Visibility: ${window.getComputedStyle(adminSection).visibility}</p>
+                    <button onclick="showAdmin()">Zeige Admin-Bereich</button>
+                `;
+            } else {
+                result.innerHTML = '<h2>❌ Element nicht gefunden!</h2>';
+            }
+        }
+        
+        function showAdmin() {
+            const adminSection = document.getElementById('admin-section');
+            if (adminSection) {
+                adminSection.style.display = 'block';
+                adminSection.style.visibility = 'visible';
+                console.log('Admin section forced visible');
+            }
+        }
+    </script>
+</body>
+</html>
+
