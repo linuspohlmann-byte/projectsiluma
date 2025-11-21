@@ -77,13 +77,13 @@ class SettingsManager {
         document.body.style.overflow = 'hidden';
         
         // Ensure current settings are loaded before populating form
-        this.ensureCurrentSettings().then(() => {
+        this.ensureCurrentSettings().then(async () => {
             this.populateSettingsForm();
             this.loadUserStats();
             // Ensure native language dropdown is properly populated and localized
             this.ensureNativeLanguageDropdown();
-            // Check if user is admin and show admin section
-            this.checkAdminAccess();
+            // Check if user is admin and show admin section (await to ensure user data is loaded)
+            await this.checkAdminAccess();
         });
     }
     
@@ -925,21 +925,72 @@ class SettingsManager {
         if (successElement) successElement.style.display = 'none';
     }
 
-    checkAdminAccess() {
+    async checkAdminAccess() {
         // Check if user is admin (user_id == 2)
         const adminSection = document.getElementById('admin-section');
-        if (!adminSection) return;
+        if (!adminSection) {
+            console.warn('⚠️ Admin section element not found in DOM');
+            return;
+        }
 
+        console.log('🔍 Checking admin access...');
+        console.log('  - authManager exists:', !!window.authManager);
+        console.log('  - isAuthenticated:', window.authManager?.isAuthenticated());
+        console.log('  - currentUser:', window.authManager?.currentUser);
+
+        // Ensure user data is loaded
         if (window.authManager && window.authManager.isAuthenticated()) {
-            // Get user ID from auth manager
-            const user = window.authManager.currentUser;
-            if (user && user.id === 2) {
+            // Try to get user ID from currentUser
+            let userId = null;
+            
+            if (window.authManager.currentUser) {
+                userId = window.authManager.currentUser.id;
+                console.log('  - User ID from currentUser:', userId);
+            } else {
+                // If currentUser is not loaded, try to load it
+                console.log('  - Loading user data...');
+                await window.authManager.loadCurrentUser();
+                userId = window.authManager.currentUser?.id;
+                console.log('  - User ID after loadCurrentUser:', userId);
+            }
+            
+            // Also try to get from API if still not available
+            if (!userId || userId === null || userId === undefined) {
+                console.log('  - Fetching user data from API...');
+                try {
+                    const response = await fetch('/api/auth/me', {
+                        headers: window.authManager.getAuthHeaders()
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('  - API response:', data);
+                        if (data.success && data.user) {
+                            userId = data.user.id;
+                            window.authManager.currentUser = data.user;
+                            console.log('  - User ID from API:', userId);
+                        }
+                    } else {
+                        console.warn('  - API response not OK:', response.status);
+                    }
+                } catch (error) {
+                    console.error('  - Error fetching user data:', error);
+                }
+            }
+            
+            // Convert to number for comparison (in case it's a string)
+            const userIdNum = userId ? Number(userId) : null;
+            console.log('🔍 Final admin check - User ID:', userIdNum, '(type:', typeof userIdNum, ')');
+            
+            if (userIdNum === 2) {
                 adminSection.style.display = 'block';
+                console.log('✅ Admin section shown (User ID is 2)');
             } else {
                 adminSection.style.display = 'none';
+                console.log('ℹ️ Admin section hidden (User ID:', userIdNum, 'is not 2)');
             }
         } else {
             adminSection.style.display = 'none';
+            console.log('ℹ️ Admin section hidden (not authenticated)');
         }
     }
 
