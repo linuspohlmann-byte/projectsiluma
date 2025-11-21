@@ -76,13 +76,29 @@ class SettingsManager {
         document.getElementById('settings-modal').style.justifyContent = 'center';
         document.body.style.overflow = 'hidden';
         
+        // Show admin section immediately for all authenticated users
+        const adminSection = document.getElementById('admin-section');
+        if (adminSection) {
+            // Check if user has session token (more reliable than isAuthenticated())
+            const hasSession = window.authManager?.sessionToken || localStorage.getItem('session_token');
+            if (hasSession || (window.authManager && window.authManager.isAuthenticated())) {
+                adminSection.style.display = 'block';
+                console.log('✅ Admin section shown immediately (has session)');
+            } else {
+                adminSection.style.display = 'none';
+                console.log('ℹ️ Admin section hidden (no session)');
+            }
+        } else {
+            console.error('❌ Admin section element not found!');
+        }
+        
         // Ensure current settings are loaded before populating form
         this.ensureCurrentSettings().then(async () => {
             this.populateSettingsForm();
             this.loadUserStats();
             // Ensure native language dropdown is properly populated and localized
             this.ensureNativeLanguageDropdown();
-            // Check if user is admin and show admin section (await to ensure user data is loaded)
+            // Check admin access again (in case auth state changed)
             await this.checkAdminAccess();
         });
     }
@@ -936,11 +952,18 @@ class SettingsManager {
         console.log('🔍 Checking admin access...');
         console.log('  - authManager exists:', !!window.authManager);
         console.log('  - isAuthenticated:', window.authManager?.isAuthenticated());
+        console.log('  - sessionToken:', !!window.authManager?.sessionToken);
 
-        // Show admin section if user is authenticated
-        if (window.authManager && window.authManager.isAuthenticated()) {
+        // Show admin section if user is authenticated OR has session token
+        const isAuth = window.authManager && (
+            window.authManager.isAuthenticated() || 
+            window.authManager.sessionToken ||
+            localStorage.getItem('session_token')
+        );
+
+        if (isAuth) {
             adminSection.style.display = 'block';
-            console.log('✅ Admin section shown (user is authenticated)');
+            console.log('✅ Admin section shown');
         } else {
             adminSection.style.display = 'none';
             console.log('ℹ️ Admin section hidden (not authenticated)');
