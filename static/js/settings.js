@@ -1320,13 +1320,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize theme again to ensure everything is properly set up
     await window.settingsManager.initializeTheme();
     
-    // Force show admin section for testing
-    setTimeout(() => {
+    // Force show admin section and keep it visible
+    const ensureAdminVisible = () => {
         const adminSection = document.getElementById('admin-section');
         if (adminSection) {
-            adminSection.style.display = 'block';
-            adminSection.style.visibility = 'visible';
-            console.log('✅ Admin section forced visible on page load');
+            const computed = window.getComputedStyle(adminSection);
+            if (computed.display === 'none' || computed.visibility === 'hidden') {
+                adminSection.style.display = 'block';
+                adminSection.style.visibility = 'visible';
+                console.log('✅ Admin section forced visible');
+            }
         }
-    }, 1000);
+    };
+    
+    // Check immediately
+    ensureAdminVisible();
+    
+    // Check after delay
+    setTimeout(ensureAdminVisible, 500);
+    setTimeout(ensureAdminVisible, 1000);
+    setTimeout(ensureAdminVisible, 2000);
+    
+    // Watch for changes to admin section
+    const adminSection = document.getElementById('admin-section');
+    if (adminSection) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    ensureAdminVisible();
+                }
+            });
+        });
+        
+        observer.observe(adminSection, {
+            attributes: true,
+            attributeFilter: ['style', 'class']
+        });
+        
+        console.log('✅ Admin section observer set up');
+    }
 });
