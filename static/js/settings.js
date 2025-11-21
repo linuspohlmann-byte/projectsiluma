@@ -1319,4 +1319,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.settingsManager = new SettingsManager();
     // Initialize theme again to ensure everything is properly set up
     await window.settingsManager.initializeTheme();
+    
+    // Force show admin section for testing
+    setTimeout(() => {
+        const adminSection = document.getElementById('admin-section');
+        if (adminSection) {
+            adminSection.style.display = 'block';
+            adminSection.style.visibility = 'visible';
+            console.log('✅ Admin section forced visible on page load');
+        }
+    }, 1000);
 });
