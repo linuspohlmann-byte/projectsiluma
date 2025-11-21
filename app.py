@@ -1,4 +1,5 @@
 import os, json, sqlite3, io, csv, random
+import requests
 from flask import Flask, request, jsonify, send_from_directory, Blueprint, g, Response, stream_with_context
 from server.services.s3_storage import s3_storage
 from flask_cors import CORS
@@ -12,7 +13,7 @@ from server.db import (
     get_localization_entry, upsert_localization_entry, get_all_localization_entries,
     get_localization_for_language, get_missing_translations,
     get_user_word_familiarity_by_word, update_user_word_familiarity_by_word,
-    _coerce_row_to_dict,
+    _coerce_row_to_dict, normalize_word,
     # marketplace ratings helpers
     upsert_group_rating, get_group_rating_stats, get_recent_group_comments, create_custom_level_group_ratings_table
 )
@@ -1473,11 +1474,14 @@ def debug_create_progress_cache_table():
 def debug_migrate_word_count():
     """Add word_count column to custom_levels table and populate existing data"""
     try:
-        from server.db import migrate_custom_levels_add_word_count
+        from server.db import migrate_custom_levels_add_word_count, migrate_custom_levels_add_word_ids
         from server.services.custom_levels import get_custom_levels_for_group, calculate_word_count_from_content
         
         # Add the word_count column
         migrate_custom_levels_add_word_count()
+        
+        # Add the word_ids column for performance optimization
+        migrate_custom_levels_add_word_ids()
         
         # Populate word counts for existing levels
         print("🔄 Populating word counts for existing custom levels...")
@@ -2163,6 +2167,50 @@ def api_word_tts():
         }), 500
 
 
+@words_bp.post('/api/words/tts/batch')
+def api_words_tts_batch():
+    """Batch generate TTS for multiple words at once"""
+    try:
+        payload = request.get_json(force=True) or {}
+        words = payload.get('words', [])
+        language = (payload.get('language') or '').strip()
+        sentence_contexts = payload.get('sentence_contexts', {})  # Optional: word -> sentence mapping
+        
+        if not words or not isinstance(words, list) or not language:
+            return jsonify({'success': False, 'error': 'words (array) and language required'}), 400
+        
+        # Check if we're in Railway environment and TTS is disabled
+        if os.environ.get('RAILWAY_ENVIRONMENT') and not os.environ.get('OPENAI_API_KEY'):
+            print(f"⚠️ Railway environment without OpenAI API key - TTS disabled")
+            return jsonify({'success': False, 'error': 'TTS service unavailable'}), 503
+        
+        # Use batch TTS function
+        from server.services.tts import batch_ensure_tts_for_words
+        audio_results = batch_ensure_tts_for_words(words, language, sentence_contexts)
+        
+        # Convert S3 URLs to proxy URLs to avoid CORS issues
+        # Note: convert_s3_url_to_proxy_url is defined in this file (app.py), not in s3_storage
+        result = {}
+        for word, audio_url in audio_results.items():
+            if audio_url:
+                result[word] = convert_s3_url_to_proxy_url(audio_url)
+            else:
+                result[word] = None
+        
+        return jsonify({'success': True, 'audio_urls': result})
+    
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Batch TTS API error: {e}")
+        print(f"❌ Traceback: {error_trace}")
+        return jsonify({
+            'success': False, 
+            'error': f'Batch TTS service error: {str(e)}',
+            'error_type': type(e).__name__
+        }), 500
+
+
 @words_bp.post('/api/sentence/tts')
 def api_sentence_tts():
     try:
@@ -2753,40 +2801,73 @@ def api_get_custom_level(group_id, level_number):
             language = group.get('language', 'en')
             native_language = group.get('native_language', 'de')
             
-            # Extract words from level content
-            level_words = []
-            if level.get('content') and level['content'].get('items'):
-                for item in level['content']['items']:
-                    words = item.get('words', [])
-                    for word in words:
-                        if word and word.strip():
-                            level_words.append(word.strip().lower())
+            # OPTIMIZATION: Use word_ids if available (much faster than extracting words)
+            word_ids = level.get('word_ids')
             
-            # Ensure words exist in global database and add to user's familiarity database
-            if level_words:
-                print(f"🔤 Ensuring {len(level_words)} words from custom level {group_id}/{level_number} are in familiarity database")
+            if word_ids:
+                # Fast path: Use stored word_ids directly
+                print(f"⚡ Using word_ids for level {group_id}/{level_number}: {len(word_ids)} word IDs")
                 
-                # Ensure words exist in global database
-                ensure_words_exist(level_words, language, native_language)
+                # Ensure word_ids still exist (referential integrity check)
+                from server.db import ensure_words_exist_by_ids, batch_ensure_user_word_familiarity_by_ids
                 
-                # Batch add words to user's familiarity database (much faster than individual calls)
-                try:
-                    from server.db import batch_ensure_user_word_familiarity
-                    batch_ensure_user_word_familiarity(
-                        user_id=user_id,
-                        words=level_words,
-                        language=language,
-                        native_language=native_language,
-                        default_familiarity=0
+                if ensure_words_exist_by_ids(word_ids):
+                    # Batch add words to user's familiarity database using IDs directly
+                    try:
+                        batch_ensure_user_word_familiarity_by_ids(
+                            user_id=user_id,
+                            word_ids=word_ids,
+                            default_familiarity=0
                         )
-                    print(f"✅ Ensured all words from custom level {group_id}/{level_number} are in familiarity database")
-                except Exception as e:
-                    print(f"⚠️ Error batch adding words to familiarity database: {e}")
-                    import traceback
-                    traceback.print_exc()
+                        print(f"✅ Ensured all words from custom level {group_id}/{level_number} are in familiarity database (using word_ids)")
+                    except Exception as e:
+                        print(f"⚠️ Error batch adding words to familiarity database by IDs: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    # Some word_ids are missing - fallback to sync
+                    print(f"⚠️ Some word_ids missing, re-syncing level {group_id}/{level_number}")
+                    from server.services.custom_levels import sync_custom_level_words_to_postgresql
+                    if level.get('content'):
+                        sync_custom_level_words_to_postgresql(group_id, level_number, level['content'], language, native_language)
+            else:
+                # Fallback: Extract words from content (for old levels without word_ids)
+                print(f"📝 Fallback: Extracting words from content for level {group_id}/{level_number}")
+                level_words = []
+                if level.get('content') and level['content'].get('items'):
+                    for item in level['content']['items']:
+                        words = item.get('words', [])
+                        for word in words:
+                            if word and word.strip():
+                                level_words.append(word.strip().lower())
+                
+                # Ensure words exist in global database and add to user's familiarity database
+                if level_words:
+                    print(f"🔤 Ensuring {len(level_words)} words from custom level {group_id}/{level_number} are in familiarity database")
+                    
+                    # Ensure words exist in global database
+                    ensure_words_exist(level_words, language, native_language)
+                    
+                    # Batch add words to user's familiarity database (much faster than individual calls)
+                    try:
+                        from server.db import batch_ensure_user_word_familiarity
+                        batch_ensure_user_word_familiarity(
+                            user_id=user_id,
+                            words=level_words,
+                            language=language,
+                            native_language=native_language,
+                            default_familiarity=0
+                            )
+                        print(f"✅ Ensured all words from custom level {group_id}/{level_number} are in familiarity database")
+                    except Exception as e:
+                        print(f"⚠️ Error batch adding words to familiarity database: {e}")
+                        import traceback
+                        traceback.print_exc()
             
         except Exception as e:
             print(f"⚠️ Error ensuring words in familiarity database: {e}")
+            import traceback
+            traceback.print_exc()
             # Continue anyway - don't fail the level loading
         
         return jsonify({
@@ -4156,17 +4237,19 @@ def api_finish_custom_level(group_id, level_number):
         from server.db_progress_cache import get_custom_level_progress
         progress_data = get_custom_level_progress(user_id, group_id, level_number)
         
-        # Return both session_score (for evaluation display) and progress_score (for level cards)
-        # session_score: Performance in this session (0-100)
-        # progress_score: Actual learning progress based on familiarity (0-100)
+        # Return session_score (for evaluation display) and score from DB (for level cards)
+        # Both are the same now - session_score stored in DB
         session_score_int = int(round(score * 100)) if score <= 1.1 else int(round(score))
         session_score_int = max(0, min(100, session_score_int))
+        
+        # Get score from DB (which now contains the session_score)
+        db_score = progress_data.get('score') if progress_data else None
         
         return jsonify({
             'success': True,
             'message': 'Custom level completed',
             'session_score': session_score_int,  # Score from this session (for evaluation page)
-            'score': progress_data.get('score') if progress_data else None,  # Progress-based score (for level cards)
+            'score': db_score,  # Score from DB (same as session_score, for level cards)
             'status': progress_data.get('status') if progress_data else 'in_progress',
             'fam_counts': progress_data.get('fam_counts', {}) if progress_data else {},
             'total_words': progress_data.get('total_words', 0) if progress_data else 0,
@@ -5422,6 +5505,79 @@ def api_words_count_learned():
         print(f"Error counting learned words: {e}")
         return jsonify({'count': 0})
 
+@words_bp.post('/api/admin/cleanup-duplicates')
+@require_auth()
+def api_admin_cleanup_duplicates():
+    """
+    Admin endpoint to trigger word duplicate cleanup.
+    Only accessible to user ID 2 (admin).
+    """
+    try:
+        user_context = get_user_context()
+        user_id = user_context.get('user_id')
+        
+        # Check if user is admin (user_id == 2)
+        if user_id != 2:
+            return jsonify({
+                'success': False,
+                'error': 'Admin access required'
+            }), 403
+        
+        # Get cleanup service URL from environment
+        # Railway private domain format: <service_name>.railway.internal
+        import requests
+        cleanup_service_url = os.getenv('CLEANUP_SERVICE_URL')
+        
+        if not cleanup_service_url:
+            # Try to construct from Railway private domain
+            railway_private_domain = os.getenv('RAILWAY_PRIVATE_DOMAIN')
+            if railway_private_domain:
+                # Use private domain (works within Railway network)
+                cleanup_service_url = f'http://{railway_private_domain}'
+            else:
+                # Fallback to localhost for local development
+                cleanup_service_url = 'http://localhost:5001'
+        
+        print(f"🔗 Cleanup service URL: {cleanup_service_url}")
+        
+        # Get dry_run parameter from request
+        payload = request.get_json(force=True) or {}
+        dry_run = payload.get('dry_run', False)
+        
+        print(f"🔄 Admin user {user_id} triggered cleanup (dry_run={dry_run})")
+        
+        # Call cleanup service
+        try:
+            response = requests.post(
+                f'{cleanup_service_url}/cleanup',
+                json={'dry_run': dry_run},
+                timeout=300  # 5 minute timeout for cleanup
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Cleanup completed',
+                'stats': result.get('stats', {})
+            })
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Error calling cleanup service: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to connect to cleanup service: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Error in admin cleanup endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @words_bp.post('/api/words/delete')
 def api_words_delete():
     payload = request.get_json(force=True) or {}
@@ -5953,7 +6109,7 @@ def api_words_get_many():
 @words_bp.post('/api/word/upsert')
 def api_word_upsert():
     payload = request.get_json(force=True) or {}
-    word = (payload.get('word') or '').strip()
+    word = normalize_word(payload.get('word') or '')
     if not word:
         return jsonify({'success': False, 'error': 'word required'}), 400
     
@@ -6430,7 +6586,113 @@ def api_word_enrich_batch():
                 if word in enriched_results and enriched_results[word]:
                     enriched_results[word]['audio_url'] = audio_url
         
-        enriched_count = len([w for w, data in enriched_results.items() if data and data.get('translation')])
+        # CRITICAL: Store enriched words in database (same as custom-levels enrich_batch)
+        enriched_count = 0
+        if enriched_results:
+            from server.db_config import get_database_config, get_db_connection, execute_query
+            import json
+            config = get_database_config()
+            conn = get_db_connection()
+            try:
+                for word, enriched_data in enriched_results.items():
+                    if not enriched_data or not enriched_data.get('translation'):
+                        continue
+                    
+                    # Normalize word before inserting
+                    normalized_word = normalize_word(word)
+                    if not normalized_word:
+                        continue
+                    
+                    insert_data = {
+                        'word': normalized_word,
+                        'language': language,
+                        'native_language': native_language,
+                        'translation': enriched_data.get('translation', ''),
+                        'example': enriched_data.get('example', ''),
+                        'example_native': enriched_data.get('example_native', ''),
+                        'lemma': enriched_data.get('lemma', ''),
+                        'pos': enriched_data.get('pos', ''),
+                        'ipa': enriched_data.get('ipa', ''),
+                        'audio_url': enriched_data.get('audio_url', ''),
+                        'gender': enriched_data.get('gender', 'none'),
+                        'plural': enriched_data.get('plural', ''),
+                        'conj': json.dumps(enriched_data.get('conj', {})) if enriched_data.get('conj') else None,
+                        'comp': json.dumps(enriched_data.get('comp', {})) if enriched_data.get('comp') else None,
+                        'synonyms': json.dumps(enriched_data.get('synonyms', [])) if enriched_data.get('synonyms') else None,
+                        'collocations': json.dumps(enriched_data.get('collocations', [])) if enriched_data.get('collocations') else None,
+                        'cefr': enriched_data.get('cefr', ''),
+                        'freq_rank': enriched_data.get('freq_rank'),
+                        'tags': json.dumps(enriched_data.get('tags', [])) if enriched_data.get('tags') else None,
+                        'note': enriched_data.get('note', ''),
+                        'info': json.dumps(enriched_data.get('info', {})) if enriched_data.get('info') else None
+                    }
+                    
+                    if config['type'] == 'postgresql':
+                        execute_query(conn, '''
+                            INSERT INTO words (
+                                word, language, native_language, translation, example, example_native,
+                                lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                                collocations, cefr, freq_rank, tags, note, info
+                            ) VALUES (
+                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s, %s, %s
+                            )
+                            ON CONFLICT (word, language, native_language) 
+                            DO UPDATE SET
+                                translation = COALESCE(NULLIF(EXCLUDED.translation, ''), words.translation),
+                                example = COALESCE(NULLIF(EXCLUDED.example, ''), words.example),
+                                example_native = COALESCE(NULLIF(EXCLUDED.example_native, ''), words.example_native),
+                                lemma = COALESCE(NULLIF(EXCLUDED.lemma, ''), words.lemma),
+                                pos = COALESCE(NULLIF(EXCLUDED.pos, ''), words.pos),
+                                ipa = COALESCE(NULLIF(EXCLUDED.ipa, ''), words.ipa),
+                                audio_url = COALESCE(NULLIF(EXCLUDED.audio_url, ''), words.audio_url),
+                                gender = COALESCE(NULLIF(EXCLUDED.gender, 'none'), words.gender),
+                                plural = COALESCE(NULLIF(EXCLUDED.plural, ''), words.plural),
+                                conj = COALESCE(EXCLUDED.conj, words.conj),
+                                comp = COALESCE(EXCLUDED.comp, words.comp),
+                                synonyms = COALESCE(EXCLUDED.synonyms, words.synonyms),
+                                collocations = COALESCE(EXCLUDED.collocations, words.collocations),
+                                cefr = COALESCE(NULLIF(EXCLUDED.cefr, ''), words.cefr),
+                                freq_rank = COALESCE(EXCLUDED.freq_rank, words.freq_rank),
+                                tags = COALESCE(EXCLUDED.tags, words.tags),
+                                note = COALESCE(NULLIF(EXCLUDED.note, ''), words.note),
+                                info = COALESCE(EXCLUDED.info, words.info),
+                                updated_at = CURRENT_TIMESTAMP
+                        ''', (
+                            insert_data['word'], insert_data['language'], insert_data['native_language'],
+                            insert_data['translation'], insert_data['example'], insert_data['example_native'],
+                            insert_data['lemma'], insert_data['pos'], insert_data['ipa'], insert_data['audio_url'],
+                            insert_data['gender'], insert_data['plural'], insert_data['conj'], insert_data['comp'],
+                            insert_data['synonyms'], insert_data['collocations'], insert_data['cefr'],
+                            insert_data['freq_rank'], insert_data['tags'], insert_data['note'], insert_data['info']
+                        ))
+                    else:
+                        # SQLite syntax
+                        cur = conn.cursor()
+                        cur.execute('''
+                            INSERT OR REPLACE INTO words (
+                                word, language, native_language, translation, example, example_native,
+                                lemma, pos, ipa, audio_url, gender, plural, conj, comp, synonyms,
+                                collocations, cefr, freq_rank, tags, note, info, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ''', (
+                            insert_data['word'], insert_data['language'], insert_data['native_language'],
+                            insert_data['translation'], insert_data['example'], insert_data['example_native'],
+                            insert_data['lemma'], insert_data['pos'], insert_data['ipa'], insert_data['audio_url'],
+                            insert_data['gender'], insert_data['plural'], insert_data['conj'], insert_data['comp'],
+                            insert_data['synonyms'], insert_data['collocations'], insert_data['cefr'],
+                            insert_data['freq_rank'], insert_data['tags'], insert_data['note'], insert_data['info']
+                        ))
+                    
+                    enriched_count += 1
+                
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"⚠️ Error storing enriched words in database: {e}")
+                # Continue even if database save fails - return enriched results anyway
+            finally:
+                conn.close()
         
         return jsonify({
             'success': True,
@@ -7052,7 +7314,7 @@ If the language is not valid, set is_valid to false and provide a reason."""
         response = _http_json(
             f"{OPENAI_BASE}/chat/completions",
             {
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.1-nano",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
                 "max_tokens": 200

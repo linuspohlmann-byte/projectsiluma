@@ -27,10 +27,21 @@ function cachePut(row){
 }
 function cacheGet(word, lang){ return WORDS_CACHE.get(ck(word, lang||RUN.target||'en')); }
 
+// Helper function to sync word data to tooltip cache
+function syncWordToTooltipCache(word, lang, nativeLang) {
+  if (typeof window !== 'undefined' && window.setCachedWordData) {
+    const cached = cacheGet(word, lang);
+    if (cached) {
+      window.setCachedWordData(word, lang, nativeLang, cached);
+    }
+  }
+}
+
 // Expose cache functions globally for tooltip access
 if (typeof window !== 'undefined') {
   window.cacheGet = cacheGet;
   window.cachePut = cachePut;
+  window.syncWordToTooltipCache = syncWordToTooltipCache;
 }
 
 function normalizeScoreForLesson(raw) {
@@ -291,6 +302,16 @@ async function preloadWordsBatch(words, lang, nativeLang) {
     if (js && js.success && js.words) {
       // Cache all words
       Object.values(js.words).forEach(cachePut);
+      
+      // CRITICAL: Sync all loaded words to tooltip cache for instant access
+      if (typeof window !== 'undefined' && window.setCachedWordData) {
+        Object.values(js.words).forEach(wordData => {
+          if (wordData && wordData.word) {
+            window.setCachedWordData(wordData.word, lang, nativeLang, wordData);
+          }
+        });
+      }
+      
       // Merge with cached words
       return { ...cached, ...js.words };
     }
@@ -337,9 +358,30 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
     return;
   }
   
-  console.log(`🚀 Preloading task ${taskIndex}: ${words.length} words`);
+  // OPTIMIZATION: Filter out words that have already been processed
+  const wordsToProcess = words.filter(word => {
+    const key = `${word}:${lang}`;
+    return !window._processedWords || !window._processedWords.has(key);
+  });
   
-  if (progressCallback) progressCallback(`Loading ${words.length} words...`);
+  const wordsAlreadyProcessed = words.length - wordsToProcess.length;
+  if (wordsAlreadyProcessed > 0) {
+    console.log(`⏭️ Task ${taskIndex}: Skipping ${wordsAlreadyProcessed} already processed words`);
+  }
+  
+  if (wordsToProcess.length === 0) {
+    console.log(`✅ Task ${taskIndex}: All words already processed, skipping`);
+    // Still preload sentence audio
+    const sentenceText = String(task.text_target || '').trim();
+    if (sentenceText) {
+      prewarmSentenceTTS(sentenceText).catch(() => {});
+    }
+    return;
+  }
+  
+  console.log(`🚀 Preloading task ${taskIndex}: ${wordsToProcess.length} words (${wordsAlreadyProcessed} skipped)`);
+  
+  if (progressCallback) progressCallback(`Loading ${wordsToProcess.length} words...`);
   
   // Sequential loading for optimal performance:
   // 1. Load word data (needed for enrichment check)
@@ -348,18 +390,30 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
   // 4. Preload sentence audio (can happen in parallel)
   
   try {
-    // Step 1: Load word data + tooltip data (batch API)
+    // Step 1: Load word data + tooltip data (batch API) - only for words not yet processed
     if (progressCallback) progressCallback('Loading word data...');
-    await preloadWordsBatch(words, lang, nativeLang);
+    await preloadWordsBatch(wordsToProcess, lang, nativeLang);
+    
+    // Mark words as processed (loaded)
+    wordsToProcess.forEach(word => {
+      if (window._processedWords) window._processedWords.add(`${word}:${lang}`);
+    });
+    
     console.log(`✅ Task ${taskIndex}: Word data loaded`);
     
     // Step 2: Check which words need enrichment and enrich only those
     const sentenceContext = String(task.text_target || '');
     const sentenceNative = String(task.text_native_ref || '');
     
-    // Check which words need enrichment
+    // Check which words need enrichment (only check words we just loaded)
     const wordsNeedingEnrichment = [];
-    for (const w of words) {
+    for (const w of wordsToProcess) {
+      const enrichedKey = `${w}:${lang}:enriched`;
+      // Skip if already enriched
+      if (window._processedWords && window._processedWords.has(enrichedKey)) {
+        continue;
+      }
+      
       const cached = cacheGet(w, lang);
       const hasTranslation = !!(cached && (cached.translation || '').trim());
       const hasBasicInfo = !!(cached && ((cached.lemma || '').trim() || (cached.pos || '').trim()));
@@ -379,15 +433,37 @@ async function preloadTaskData(taskIndex, progressCallback = null) {
     if (wordsNeedingEnrichment.length > 0) {
       if (progressCallback) progressCallback(`Enriching ${wordsNeedingEnrichment.length} words...`);
       await batchEnrichWords(wordsNeedingEnrichment, lang, nativeLang, sentenceContext, sentenceNative);
+      
+      // Mark enriched words as processed
+      wordsNeedingEnrichment.forEach(word => {
+        if (window._processedWords) window._processedWords.add(`${word}:${lang}:enriched`);
+      });
+      
       console.log(`✅ Task ${taskIndex}: Enriched ${wordsNeedingEnrichment.length} words`);
     } else {
       console.log(`✅ Task ${taskIndex}: All words already enriched`);
     }
     
     // Step 3: Preload word audio (now audio_urls should be in cache)
-    if (progressCallback) progressCallback('Preloading audio...');
-    await preloadWordsAudio(words, lang);
-    console.log(`✅ Task ${taskIndex}: Word audio ready`);
+    // Only preload audio for words that don't have it yet
+    const wordsNeedingAudio = words.filter(word => {
+      const audioKey = `${word}:${lang}:audio`;
+      return !window._processedWordsAudio || !window._processedWordsAudio.has(audioKey);
+    });
+    
+    if (wordsNeedingAudio.length > 0) {
+      if (progressCallback) progressCallback('Preloading audio...');
+      await preloadWordsAudio(wordsNeedingAudio, lang);
+      
+      // Mark words with audio as processed
+      wordsNeedingAudio.forEach(word => {
+        if (window._processedWordsAudio) window._processedWordsAudio.add(`${word}:${lang}:audio`);
+      });
+      
+      console.log(`✅ Task ${taskIndex}: Word audio ready`);
+    } else {
+      console.log(`✅ Task ${taskIndex}: All words already have audio`);
+    }
     
     // Step 4: Preload sentence audio (can happen in parallel with word audio)
     const sentenceText = String(task.text_target || '').trim();
@@ -416,6 +492,10 @@ async function preloadAllLevelWords(progressCallback = null) {
   
   const lang = RUN.target || (document.getElementById('target-lang')?.value || 'en');
   const nativeLang = RUN.native || localStorage.getItem('siluma_native') || 'de';
+  
+  // Reset tracking sets for new level
+  if (window._processedWords) window._processedWords.clear();
+  if (window._processedWordsAudio) window._processedWordsAudio.clear();
   
   // Collect all unique words from all items
   const allWords = new Set();
@@ -447,49 +527,53 @@ async function preloadAllLevelWords(progressCallback = null) {
     // Step 1: Load all word data
     if (progressCallback) progressCallback(`Loading ${wordsArray.length} words...`);
     await preloadWordsBatch(wordsArray, lang, nativeLang);
+    
+    // Mark all words as processed (loaded)
+    wordsArray.forEach(word => {
+      if (window._processedWords) window._processedWords.add(`${word}:${lang}`);
+    });
+    
     console.log(`✅ All level words: Word data loaded`);
     
     // Step 2: Check which words need enrichment
+    // Enrich if missing translation, basic info (lemma/pos), OR context data (example, synonyms, collocations)
     const wordsNeedingEnrichment = [];
     for (const w of wordsArray) {
       const cached = cacheGet(w, lang);
       const hasTranslation = !!(cached && (cached.translation || '').trim());
       const hasBasicInfo = !!(cached && ((cached.lemma || '').trim() || (cached.pos || '').trim()));
-      const hasAdvancedInfo = !!(cached && (
-        (cached.ipa || '').trim() || 
+      const hasContextData = !!(cached && (
         (cached.example || '').trim() || 
         (cached.synonyms || []).length > 0 ||
         (cached.collocations || []).length > 0
       ));
       
-      // Only enrich if missing basic translation OR missing both lemma/pos AND advanced info
-      if (!hasTranslation || (!hasBasicInfo && !hasAdvancedInfo)) {
+      // Enrich if:
+      // 1. Missing translation (critical)
+      // 2. Missing both basic info (lemma/pos) AND context data (example/synonyms/collocations)
+      // This ensures words with empty context are re-enriched
+      if (!hasTranslation || (!hasBasicInfo && !hasContextData)) {
         wordsNeedingEnrichment.push(w);
       }
     }
     
-    // Step 3: Enrich words that need enrichment (batch by context)
+    // Step 3: Enrich words that need enrichment in ONE LARGE BATCH
+    // OPTIMIZATION: Process all words in a single batch instead of multiple small batches
+    // This reduces API calls from N (one per context group) to 1
     if (wordsNeedingEnrichment.length > 0) {
       if (progressCallback) progressCallback(`Enriching ${wordsNeedingEnrichment.length} words...`);
       
-      // Group words by context for batch enrichment
-      const contextGroups = new Map();
-      for (const word of wordsNeedingEnrichment) {
-        const context = wordContexts.get(word) || { sentence_context: '', sentence_native: '' };
-        const contextKey = `${context.sentence_context}|${context.sentence_native}`;
-        if (!contextGroups.has(contextKey)) {
-          contextGroups.set(contextKey, { words: [], context });
-        }
-        contextGroups.get(contextKey).words.push(word);
-      }
+      // Use the first context (or empty) for batch enrichment
+      // The backend will handle context-aware enrichment internally
+      const firstContext = wordContexts.get(wordsNeedingEnrichment[0]) || { sentence_context: '', sentence_native: '' };
+      await batchEnrichWords(wordsNeedingEnrichment, lang, nativeLang, firstContext.sentence_context, firstContext.sentence_native);
       
-      // Enrich each group
-      for (const [contextKey, group] of contextGroups) {
-        const { words, context } = group;
-        await batchEnrichWords(words, lang, nativeLang, context.sentence_context, context.sentence_native);
-      }
+      // Mark all enriched words as processed
+      wordsNeedingEnrichment.forEach(word => {
+        if (window._processedWords) window._processedWords.add(`${word}:${lang}:enriched`);
+      });
       
-      console.log(`✅ All level words: Enriched ${wordsNeedingEnrichment.length} words`);
+      console.log(`✅ All level words: Enriched ${wordsNeedingEnrichment.length} words in ONE batch`);
     } else {
       console.log(`✅ All level words: All words already enriched`);
     }
@@ -516,7 +600,7 @@ function bindReplayFor(text){
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
-let RUN = { id:null, items:[], idx:0, target:'en', native:'de', answered:false, queue:[], selectedOption:null, mcCorrect:0, mcTotal:0, sbCorrect:0, sbTotal:0, _reuse:true, _overrideTopic:'' };if(typeof window!=='undefined'){ window.RUN = RUN; }
+let RUN = { id:null, items:[], idx:0, target:'en', native:'de', answered:false, queue:[], selectedOption:null, mcCorrect:0, mcTotal:0, sbCorrect:0, sbTotal:0, trCorrect:0, trTotal:0, _reuse:true, _overrideTopic:'' };if(typeof window!=='undefined'){ window.RUN = RUN; }
 let AUTOPLAY_UNLOCKED = false;
 function unlockAudio(){
   if(AUTOPLAY_UNLOCKED) return;
@@ -1256,6 +1340,25 @@ async function batchEnrichWords(words, lang, nat, sentence_context, sentence_nat
     // This ensures the enriched data is available instantly when tooltip opens
     console.log(`🔄 Refreshing cache for ${words.length} enriched words`);
     await batchGetWords(words, lang);
+    
+    // CRITICAL: Sync enriched words to tooltip cache for instant access
+    if (typeof window !== 'undefined' && window.setCachedWordData) {
+      for (const word of words) {
+        const cached = cacheGet(word, lang);
+        if (cached) {
+          window.setCachedWordData(word, lang, nat, cached);
+        }
+      }
+      console.log(`✅ Synced ${words.length} enriched words to tooltip cache`);
+    }
+    
+    // OPTIMIZATION: Mark words as processed to avoid duplicate enrichment
+    words.forEach(word => {
+      if (window._processedWords) {
+        window._processedWords.add(`${word}:${lang}:enriched`);
+      }
+    });
+    
     console.log(`✅ Cache refreshed for enriched words`);
   } catch (err) {
     console.log('Batch enrichment error:', err);
@@ -1266,6 +1369,13 @@ async function batchEnrichWords(words, lang, nat, sentence_context, sentence_nat
 if (typeof window !== 'undefined') {
   if (!window.audioPreloadCache) {
     window.audioPreloadCache = new Map();
+  }
+  // Global tracking for processed words to avoid duplicate processing
+  if (!window._processedWords) {
+    window._processedWords = new Set(); // Words that have been loaded/enriched
+  }
+  if (!window._processedWordsAudio) {
+    window._processedWordsAudio = new Set(); // Words that have audio URLs
   }
 }
 const audioPreloadCache = window.audioPreloadCache || new Map();
@@ -1322,7 +1432,7 @@ async function preloadWordsAudio(words, lang) {
     }
   }
   
-  // Fetch audio URLs for words that don't have them yet (batch)
+  // OPTIMIZATION: Use batch TTS API instead of individual requests
   if (wordsNeedingAudio.length > 0) {
     try {
       const headers = { 'Content-Type': 'application/json' };
@@ -1331,37 +1441,52 @@ async function preloadWordsAudio(words, lang) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
       }
       
-      // Fetch audio URLs for all words at once
-      const audioPromises = wordsNeedingAudio.map(async (word) => {
-        try {
-          const r = await fetch('/api/word/tts', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ word, language: lang })
-          });
-          const js = await r.json();
-          if (js?.success && js.audio_url) {
-            // Update cache with audio URL
-            const cached = cacheGet(word, lang);
-            if (cached) {
-              cached.audio_url = js.audio_url;
-              cachePut(cached); // Re-save to sync caches
-            }
-            audioUrls.push({ word, url: js.audio_url });
-          }
-        } catch (e) {
-          console.log(`Failed to fetch audio for ${word}:`, e);
+      // Build sentence contexts if available (for better pronunciation)
+      const sentenceContexts = {};
+      for (const word of wordsNeedingAudio) {
+        const cached = cacheGet(word, lang);
+        if (cached && cached.example && cached.example.trim()) {
+          sentenceContexts[word] = cached.example;
         }
+      }
+      
+      // Fetch audio URLs for all words at once using batch API
+      const r = await fetch('/api/words/tts/batch', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ 
+          words: wordsNeedingAudio, 
+          language: lang,
+          sentence_contexts: Object.keys(sentenceContexts).length > 0 ? sentenceContexts : undefined
+        })
       });
       
-      await Promise.allSettled(audioPromises);
+      if (r.ok) {
+        const js = await r.json();
+        if (js?.success && js.audio_urls) {
+          // Update cache with audio URLs
+          for (const [word, audioUrl] of Object.entries(js.audio_urls)) {
+            if (audioUrl) {
+              const cached = cacheGet(word, lang);
+              if (cached) {
+                cached.audio_url = audioUrl;
+                cachePut(cached); // Re-save to sync caches
+              }
+              audioUrls.push({ word, url: audioUrl });
+            }
+          }
+          console.log(`✅ Batch TTS: Generated ${Object.keys(js.audio_urls).filter(w => js.audio_urls[w]).length} audio URLs`);
+        }
+      } else {
+        console.log(`⚠️ Batch TTS API failed: ${r.status} ${r.statusText}`);
+      }
     } catch (e) {
       console.log('Batch audio URL fetch failed:', e);
     }
   }
   
-  // Preload all audio files in parallel (up to 10 at a time)
-  const batchSize = 10;
+  // OPTIMIZATION: Increased batch size for parallel audio downloads (10 -> 25)
+  const batchSize = 25;
   for (let i = 0; i < audioUrls.length; i += batchSize) {
     const batch = audioUrls.slice(i, i + batchSize);
     await Promise.allSettled(batch.map(({ url }) => preloadAudio(url)));
@@ -2488,6 +2613,12 @@ async function submitAnswer(){
   setProgress(RUN.idx+1, RUN.queue?.length||RUN.items.length);
   RUN.answered=true;
   
+  // Track translation result for scoring (only for custom levels)
+  RUN.trTotal = (RUN.trTotal || 0) + 1;
+  if (passed) {
+    RUN.trCorrect = (RUN.trCorrect || 0) + 1;
+  }
+  
   // Update button immediately
   const btn=$('#check'); 
   if(btn){ 
@@ -2649,7 +2780,24 @@ async function finishLevel(){
   try {
     if (isCustomLevel) {
       console.log('🔧 Using custom level finish API:', finishedGroupId, finishedLevelNumber);
-      const score = (RUN.mcTotal > 0) ? (RUN.mcCorrect / RUN.mcTotal) : 0.0;
+      
+      // Calculate combined score from all task types (MC + SB + Translation)
+      const totalCorrect = (RUN.mcCorrect || 0) + (RUN.sbCorrect || 0) + (RUN.trCorrect || 0);
+      const totalTasks = (RUN.mcTotal || 0) + (RUN.sbTotal || 0) + (RUN.trTotal || 0);
+      const score = totalTasks > 0 ? (totalCorrect / totalTasks) : 0.0;
+      
+      console.log('📊 Combined score calculation:', {
+        mcCorrect: RUN.mcCorrect || 0,
+        mcTotal: RUN.mcTotal || 0,
+        sbCorrect: RUN.sbCorrect || 0,
+        sbTotal: RUN.sbTotal || 0,
+        trCorrect: RUN.trCorrect || 0,
+        trTotal: RUN.trTotal || 0,
+        totalCorrect: totalCorrect,
+        totalTasks: totalTasks,
+        score: score
+      });
+      
       const res = await fetch(`/api/custom-levels/${finishedGroupId}/${finishedLevelNumber}/finish`, {
         method: 'POST',
         headers,
@@ -2762,6 +2910,11 @@ function nextItem(){
 
 async function startLevel(lvl){
   window._customEvalProgress = null;
+  
+  // OPTIMIZATION: Reset tracking sets for new level
+  if (window._processedWords) window._processedWords.clear();
+  if (window._processedWordsAudio) window._processedWordsAudio.clear();
+  
   // Check if this is a custom level with pre-loaded data
   if (RUN._customLevelData) {
     console.log('🎯 Starting custom level with pre-loaded data');
@@ -2772,6 +2925,10 @@ async function startLevel(lvl){
     RUN.level = Number(lvl) || 1;
     RUN.mcCorrect = 0; 
     RUN.mcTotal = 0;
+    RUN.sbCorrect = 0;
+    RUN.sbTotal = 0;
+    RUN.trCorrect = 0;
+    RUN.trTotal = 0;
     RUN.id = null; // Custom levels don't have run_id initially
     RUN.items = RUN._customLevelData;
     RUN.idx = 0;
@@ -2861,6 +3018,10 @@ async function startLevel(lvl){
     RUN.level = Number(lvl) || 1;
     RUN.mcCorrect = 0; 
     RUN.mcTotal = 0;
+    RUN.sbCorrect = 0;
+    RUN.sbTotal = 0;
+    RUN.trCorrect = 0;
+    RUN.trTotal = 0;
     
     showTab('lesson');
     unlockAudio();
@@ -2983,44 +3144,56 @@ async function startLevel(lvl){
   }
   
   // Standard level logic (existing code)
-  // Check if level is locked (unified unlock logic: previous level must have >50% Familiarity 5)
+  // Check if level is locked (ready check: previous level must have score >= 60)
   if (lvl > 1) {
     const prevLevel = lvl - 1;
     const prevLevelElement = document.querySelector(`[data-level="${prevLevel}"]`);
     
-    if (prevLevelElement && prevLevelElement.dataset.bulkData) {
-      try {
-        const prevLevelData = JSON.parse(prevLevelElement.dataset.bulkData);
-        // Calculate Familiarity 5 percentage for previous level
-        const prevFamCounts = prevLevelData?.fam_counts || {};
-        const prevTotalWords = prevLevelData?.total_words || 0;
-        const prevFam5Words = prevFamCounts[5] || 0;
-        const prevFam5Percent = prevTotalWords > 0 ? (prevFam5Words / prevTotalWords * 100) : 0;
-        const prevHasFam5Above50 = prevFam5Percent > 50;
-        
-        if (!prevHasFam5Above50) {
-          // Show elegant locked message instead of starting level
-          if (typeof window.showLevelLockedMessage === 'function') {
-            window.showLevelLockedMessage(lvl, prevLevel, prevFam5Percent);
-          } else {
-            const lockedMsg = tt('lesson.level_locked', 'Level {level} is locked. Complete level {requiredLevel} with at least 50% words learned.')
-              .replace('{level}', lvl)
-              .replace('{requiredLevel}', prevLevel);
-            alert(lockedMsg);
+    if (prevLevelElement) {
+      // Use the same data source as the display: bulkData
+      // Get score using the same function as the display
+      let prevScorePercent = 0;
+      if (typeof window.getLevelScoreFromBulkData === 'function') {
+        prevScorePercent = window.getLevelScoreFromBulkData(prevLevelElement);
+      } else if (prevLevelElement.dataset.bulkData) {
+        try {
+          const prevLevelData = JSON.parse(prevLevelElement.dataset.bulkData);
+          const score = prevLevelData.last_score;
+          if (score !== null && score !== undefined) {
+            prevScorePercent = Math.round(Number(score) * 100);
           }
-          return; // Don't start the level
+        } catch (error) {
+          console.log('Error parsing bulkData for score:', error);
         }
-      } catch (error) {
-        console.log('Error checking previous level data:', error);
-        // If we can't check, allow the level to start (fallback)
+      }
+      
+      const prevHasScoreAbove60 = prevScorePercent >= 60;
+      
+      if (!prevHasScoreAbove60) {
+        // Show elegant locked message instead of starting level
+        if (typeof window.showLevelLockedMessage === 'function') {
+          window.showLevelLockedMessage(lvl, prevLevel, prevScorePercent);
+        } else {
+          const lockedMsg = tt('lesson.level_locked', 'Level {level} is locked. Complete level {requiredLevel} with at least 60% score.')
+            .replace('{level}', lvl)
+            .replace('{requiredLevel}', prevLevel);
+          alert(lockedMsg);
+        }
+        return; // Don't start the level
       }
     }
   }
+  
+  // OPTIMIZATION: Reset tracking sets for new level
+  if (window._processedWords) window._processedWords.clear();
+  if (window._processedWordsAudio) window._processedWordsAudio.clear();
   
   RUN.target=$('#target-lang')?.value||'en';
   RUN.native=localStorage.getItem('siluma_native')||'de';
   RUN.level=Number(lvl)||1;
   RUN.mcCorrect = 0; RUN.mcTotal = 0;
+  RUN.sbCorrect = 0; RUN.sbTotal = 0;
+  RUN.trCorrect = 0; RUN.trTotal = 0;
   showTab('lesson');
   unlockAudio();
   primeSentenceAudio();
@@ -3150,6 +3323,8 @@ function resetLevelUI(){
     mcTotal: 0,
     sbCorrect: 0,
     sbTotal: 0,
+    trCorrect: 0,
+    trTotal: 0,
     _customGroupId: null,
     _customLevelNumber: null,
     _customLevelData: null

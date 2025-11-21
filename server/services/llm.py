@@ -133,7 +133,7 @@ def llm_generate_sentences(target_lang, native_lang, n=15, topic='daily life', c
             "Do not include any words from '{nl}'. Output JSON array only."
         ).format(n=n, tl=tl, nl=nl, topic=topic, level_context=level_context, cefr=cefr, cefr_instructions=cefr_instructions)
     }
-    payload = {'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-4o-mini'), 'messages':[sys_msg,user_msg], 'temperature':0.7}
+    payload = {'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-5.1-nano'), 'messages':[sys_msg,user_msg], 'temperature':0.7}
     headers = {'Content-Type':'application/json','Authorization': f'Bearer {OPENAI_KEY}'}
     data = _http_json(f'{OPENAI_BASE}/chat/completions', payload, headers)
     try:
@@ -179,7 +179,7 @@ def llm_generate_sentences(target_lang, native_lang, n=15, topic='daily life', c
                 "No other language words allowed. JSON array only."
             ).format(n=n, tl=tl, topic=topic, level_context_retry=level_context_retry, cefr=cefr, cefr_instructions_retry=cefr_instructions_retry)
         }
-        payload2 = {'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-4o-mini'), 'messages':[sys_msg2,user_msg2], 'temperature':0.6}
+        payload2 = {'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-5.1-nano'), 'messages':[sys_msg2,user_msg2], 'temperature':0.6}
         data2 = _http_json(f'{OPENAI_BASE}/chat/completions', payload2, headers)
         try:
             text2 = data2['choices'][0]['message']['content']
@@ -251,7 +251,7 @@ def llm_translate_batch(sentences, native_lang, source_lang=None):
     }
     
     payload = {
-        'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-4o-mini'),
+        'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-5.1-nano'),
         'messages': [sys_msg, user_msg],
         'temperature': 0.1  # Lower temperature for more consistent translations
     }
@@ -369,7 +369,7 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
                 f"Keep comparable to: {examples}. Output only the title."
             )}
             payload_llm = {
-                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
                 'messages': [sys_msg, user_msg],
                 'temperature': 0.8  # Slightly lower for more coherent story progression
             }
@@ -504,7 +504,7 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
                             f"Output only the translated topic title."
                         )}
                         payload_llm = {
-                            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+                            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
                             'messages': [sys_msg, user_msg],
                             'temperature': 0.3
                         }
@@ -545,7 +545,7 @@ def suggest_topic(target_lang: str, native_lang: str, cefr: str, base_topic: str
             f"Keep comparable to: {examples}. Output only the title."
         )}
         payload_llm = {
-            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
             'messages': [sys_msg, user_msg],
             'temperature': 0.9
         }
@@ -634,7 +634,7 @@ def enrich_story_context(group_name: str, context_description: str, target_lang:
         }
         
         payload = {
-            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
             'messages': [sys_msg, user_msg],
             'temperature': 0.7
         }
@@ -752,7 +752,7 @@ def suggest_level_title(target_lang: str, native_lang: str, topic: str, level: i
         temperature = temperature_map.get(cefr, 0.7)
         
         payload_llm = {
-            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
             'messages': [sys_msg, user_msg],
             'temperature': temperature
         }
@@ -843,7 +843,7 @@ def suggest_level_title_from_sentences(target_lang: str, native_lang: str, sente
         temperature = temperature_map.get(cefr, 0.7)
         
         payload_llm = {
-            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
             'messages': [sys_msg, user_msg],
             'temperature': temperature
         }
@@ -914,7 +914,7 @@ def _force_pos_via_llm(word, target_lang, native_lang):
     try:
         sys2 = {'role':'system','content': 'Return ONLY one token, no quotes, exactly one of: NOUN, VERB, ADJ, ADV, PRON, DET, PREP, CONJ, NUM, PART, INTJ.'}
         usr2 = {'role':'user','content': json.dumps({'task':'pos_classify','word':word,'target_lang':target_lang,'native_lang':native_lang}, ensure_ascii=False)}
-        payload2 = {'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-4o-mini'), 'messages':[sys2,usr2], 'temperature':0}
+        payload2 = {'model': os.environ.get('OPENAI_CHAT_MODEL','gpt-5.1-nano'), 'messages':[sys2,usr2], 'temperature':0}
         headers = {'Content-Type':'application/json','Authorization': f'Bearer {OPENAI_KEY}'}
         data2 = _http_json(f'{OPENAI_BASE}/chat/completions', payload2, headers)
         out = ((data2 or {}).get('choices',[{}])[0].get('message',{}) or {}).get('content','').strip().upper()
@@ -950,7 +950,7 @@ def _extract_word_translation_from_context(word: str, sentence_context: str, sen
         }
         
         payload = {
-            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+            'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
             'messages': [sys_msg, user_msg],
             'temperature': 0.1
         }
@@ -1056,7 +1056,7 @@ def llm_enrich_word(word: str, language: str, native_language: str, sentence_con
     if llm_available:
         try:
             payload_llm = {
-                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
                 'messages': [sys_msg, user_msg],
                 'temperature': 0.2
             }
@@ -1315,7 +1315,7 @@ def llm_enrich_words_batch(words: List[str], language: str, native_language: str
             }
             
             payload = {
-                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
+                'model': os.environ.get('OPENAI_CHAT_MODEL', 'gpt-5.1-nano'),
                 'messages': [system_msg, user_msg],
                 'temperature': 0.1,
                 'max_tokens': 4000

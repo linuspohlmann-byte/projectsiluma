@@ -60,6 +60,14 @@ class SettingsManager {
                 localStorage.setItem('siluma_native', e.target.value);
             }
         });
+
+        // Admin cleanup buttons
+        document.getElementById('admin-cleanup-dry-run')?.addEventListener('click', () => {
+            this.runCleanup(true);
+        });
+        document.getElementById('admin-cleanup-run')?.addEventListener('click', () => {
+            this.runCleanup(false);
+        });
     }
 
     showSettingsModal() {
@@ -74,6 +82,8 @@ class SettingsManager {
             this.loadUserStats();
             // Ensure native language dropdown is properly populated and localized
             this.ensureNativeLanguageDropdown();
+            // Check if user is admin and show admin section
+            this.checkAdminAccess();
         });
     }
     
@@ -913,6 +923,115 @@ class SettingsManager {
         
         if (errorElement) errorElement.style.display = 'none';
         if (successElement) successElement.style.display = 'none';
+    }
+
+    checkAdminAccess() {
+        // Check if user is admin (user_id == 2)
+        const adminSection = document.getElementById('admin-section');
+        if (!adminSection) return;
+
+        if (window.authManager && window.authManager.isAuthenticated()) {
+            // Get user ID from auth manager
+            const user = window.authManager.currentUser;
+            if (user && user.id === 2) {
+                adminSection.style.display = 'block';
+            } else {
+                adminSection.style.display = 'none';
+            }
+        } else {
+            adminSection.style.display = 'none';
+        }
+    }
+
+    async runCleanup(dryRun) {
+        if (!window.authManager || !window.authManager.isAuthenticated()) {
+            this.showError('Authentication required');
+            return;
+        }
+
+        const statusElement = document.getElementById('admin-cleanup-status');
+        const dryRunBtn = document.getElementById('admin-cleanup-dry-run');
+        const runBtn = document.getElementById('admin-cleanup-run');
+
+        // Disable buttons during cleanup
+        if (dryRunBtn) dryRunBtn.disabled = true;
+        if (runBtn) runBtn.disabled = true;
+
+        if (statusElement) {
+            statusElement.style.display = 'block';
+            statusElement.innerHTML = dryRun 
+                ? '🔍 Running dry run...<br><small>This may take a few minutes</small>' 
+                : '🧹 Running cleanup...<br><small>This may take a few minutes</small>';
+            statusElement.style.color = 'var(--text-secondary)';
+        }
+
+        const startTime = Date.now();
+
+        try {
+            const response = await fetch('/api/admin/cleanup-duplicates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...window.authManager.getAuthHeaders()
+                },
+                body: JSON.stringify({ dry_run: dryRun }),
+                // Längeres Timeout für Cleanup-Operationen
+                signal: AbortSignal.timeout(300000) // 5 Minuten
+            });
+
+            const data = await response.json();
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+            if (response.ok && data.success) {
+                const stats = data.stats || {};
+                let message = '';
+                
+                if (dryRun) {
+                    message = `🔍 Dry run completed in ${duration}s<br>`;
+                    message += `Found: <strong>${stats.duplicates_found || 0}</strong> duplicate groups<br>`;
+                    message += `Total duplicates: <strong>${stats.total_duplicate_entries || 0}</strong> entries`;
+                } else {
+                    message = `✅ Cleanup completed in ${duration}s<br>`;
+                    message += `Removed: <strong>${stats.deleted_entries || 0}</strong> duplicates<br>`;
+                    message += `Updated: <strong>${stats.updated_references || 0}</strong> references<br>`;
+                    message += `Merged: <strong>${stats.merged_entries || 0}</strong> entries`;
+                    
+                    if (stats.errors > 0) {
+                        message += `<br>⚠️ Errors: <strong>${stats.errors}</strong>`;
+                    }
+                }
+
+                if (statusElement) {
+                    statusElement.innerHTML = message;
+                    statusElement.style.color = 'var(--success)';
+                }
+                
+                // Zeige auch in der allgemeinen Success-Message
+                this.showSuccess(dryRun ? 'Dry run completed successfully' : 'Cleanup completed successfully');
+            } else {
+                const errorMsg = data.error || 'Cleanup failed';
+                if (statusElement) {
+                    statusElement.innerHTML = `❌ Error: ${errorMsg}`;
+                    statusElement.style.color = 'var(--warn)';
+                }
+                this.showError(errorMsg);
+            }
+        } catch (error) {
+            console.error('Error running cleanup:', error);
+            const errorMsg = error.name === 'TimeoutError' 
+                ? 'Cleanup timed out (took longer than 5 minutes)' 
+                : error.message;
+            
+            if (statusElement) {
+                statusElement.innerHTML = `❌ Error: ${errorMsg}`;
+                statusElement.style.color = 'var(--warn)';
+            }
+            this.showError(`Failed to run cleanup: ${errorMsg}`);
+        } finally {
+            // Re-enable buttons
+            if (dryRunBtn) dryRunBtn.disabled = false;
+            if (runBtn) runBtn.disabled = false;
+        }
     }
 }
 

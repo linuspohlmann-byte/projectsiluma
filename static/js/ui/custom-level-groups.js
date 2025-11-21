@@ -125,11 +125,12 @@ function applyCustomLevelProgressData(levelElement, progressData) {
     if (learnedText) learnedText.textContent = normalized.completed_words;
 
     const progressFill = levelElement.querySelector('.level-progress-fill');
+    // Progress bar: Familiarity 5 / Total words
     if (progressFill) progressFill.style.width = `${normalized.progress_percent}%`;
     
-    // Use progress_percent for completion circle (actual learning progress)
-    // NOT score_percent (which is for evaluation page only)
-    updateCustomLevelCompletionCircle(levelElement, normalized.progress_percent);
+    // Score circle: Score from custom_level_progress.score (0-100)
+    // This is the session score stored in the database
+    updateCustomLevelCompletionCircle(levelElement, normalized.score_percent);
     
     // Only update familiarity UI if card is flipped (backside visible)
     // This prevents overwriting correct values before user flips the card
@@ -3717,12 +3718,17 @@ function determineUnlockedLevels(userProgress, totalLevels) {
             // Level 1 is always unlocked
             unlockedLevels.push(levelNum);
         } else {
-            // Check if previous level has >50% Familiarity 5 (unified unlock logic)
+            // Check if previous level has score >= 60 (ready check based on score)
             const prevLevelData = userProgress[levelNum - 1];
             if (prevLevelData && prevLevelData.success) {
-                const prevHasFam5Above50 = hasFamiliarity5Above50(prevLevelData);
+                // Get score from previous level (0-1 or 0-100)
+                const prevScore = prevLevelData.user_progress?.score || prevLevelData.last_score || 0;
+                // Normalize score to 0-100
+                const prevScoreNormalized = normalizeScoreValue(prevScore);
+                const prevScorePercent = prevScoreNormalized * 100;
+                const prevHasScoreAbove60 = prevScorePercent >= 60;
                 
-                if (prevHasFam5Above50) {
+                if (prevHasScoreAbove60) {
                     unlockedLevels.push(levelNum);
                 } else {
                     // Stop at first locked level
@@ -4239,22 +4245,26 @@ async function applyCustomLevelProgression(levelElement, levelNumber, groupId) {
                         levelElement.classList.remove('locked', 'done');
                         console.log(`Custom level ${levelNumber} marked as unlocked (Level 1)`);
                     } else if (levelNumber > 1) {
-                        // Check if previous level has >50% Familiarity 5 (unified unlock logic)
+                        // Check if previous level has score >= 60 (ready check based on score)
                         const prevLevel = levelNumber - 1;
                         const prevLevelData = data.levels[prevLevel];
                         if (prevLevelData && prevLevelData.success) {
-                            // Check if previous level has >50% Familiarity 5
-                            const prevHasFam5Above50 = hasFamiliarity5Above50(prevLevelData);
+                            // Get score from previous level (0-1 or 0-100)
+                            const prevScore = prevLevelData.user_progress?.score || prevLevelData.last_score || 0;
+                            // Normalize score to 0-100
+                            const prevScoreNormalized = normalizeScoreValue(prevScore);
+                            const prevScorePercent = prevScoreNormalized * 100;
+                            const prevHasScoreAbove60 = prevScorePercent >= 60;
                             
-                            if (prevHasFam5Above50) {
+                            if (prevHasScoreAbove60) {
                                 isUnlocked = true;
                                 levelElement.classList.add('unlocked');
                                 levelElement.classList.remove('locked', 'done');
-                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} has >50% Familiarity 5)`);
+                                console.log(`Custom level ${levelNumber} unlocked (previous level ${prevLevel} has Score >= 60)`);
                             } else {
                                 levelElement.classList.add('locked');
                                 levelElement.classList.remove('unlocked', 'done');
-                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} has <50% Familiarity 5)`);
+                                console.log(`Custom level ${levelNumber} locked (previous level ${prevLevel} has Score < 60)`);
                             }
                         } else {
                             levelElement.classList.add('locked');
@@ -4493,8 +4503,32 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
             const fam5Percent = getFamiliarity5Percent(levelData);
             const prevFam5Percent = getFamiliarity5Percent(prevLevelData);
             
-            // Check if previous level has >50% Familiarity 5 (for unlocking)
-            const prevHasFam5Above50 = hasFamiliarity5Above50(prevLevelData);
+            // Check if previous level has score >= 60 (ready check based on score)
+            let prevHasScoreAbove60 = false;
+            if (prevLevelData) {
+                // Get score from previous level
+                // If prevLevelData comes from familiarityData, it has score/score_percent directly
+                // If prevLevelData comes from progressMap, it has user_progress.score or last_score
+                let prevScore = 0;
+                if (prevLevelData.score !== undefined) {
+                    // Already normalized (from familiarityData)
+                    prevScore = prevLevelData.score;
+                } else if (prevLevelData.score_percent !== undefined) {
+                    // Convert percent to normalized (0-1)
+                    prevScore = prevLevelData.score_percent / 100;
+                } else if (prevLevelData.user_progress?.score !== undefined) {
+                    // From progressMap with user_progress
+                    prevScore = prevLevelData.user_progress.score;
+                } else if (prevLevelData.last_score !== undefined) {
+                    // From progressMap with last_score
+                    prevScore = prevLevelData.last_score;
+                }
+                
+                // Normalize score to 0-100
+                const prevScoreNormalized = normalizeScoreValue(prevScore);
+                const prevScorePercent = prevScoreNormalized * 100;
+                prevHasScoreAbove60 = prevScorePercent >= 60;
+            }
             
             // Debug logging
             if (levelNumber > 1) {
@@ -4502,18 +4536,18 @@ async function applyCustomLevelProgressionBulk(levelsContainer, groupId) {
                     prevLevel: levelNumber - 1,
                     prevLevelData: prevLevelData,
                     prevFam5Percent: prevFam5Percent,
-                    prevHasFam5Above50: prevHasFam5Above50,
+                    prevHasScoreAbove60: prevHasScoreAbove60,
                     currentFam5Percent: fam5Percent,
                     familiarityDataExists: !!familiarityData,
                     familiarityDataForPrevLevel: familiarityData && familiarityData[levelNumber - 1]
                 });
             }
 
-            // Unified unlock logic: Level 1 OR previous level has >50% Familiarity 5
+            // Unified unlock logic: Level 1 OR previous level has score >= 60
             let allowStart = false;
             if (levelNumber === 1) {
                 allowStart = true;
-            } else if (prevHasFam5Above50) {
+            } else if (prevHasScoreAbove60) {
                 allowStart = true;
             } else if (!prevLevelData) {
                 // If no data for previous level, check if it exists in familiarity data

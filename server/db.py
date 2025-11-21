@@ -3,6 +3,7 @@
 import os, sqlite3, json, threading
 import random
 import re
+import unicodedata
 from datetime import datetime, UTC
 from collections import defaultdict
 from typing import Dict, Any
@@ -195,6 +196,37 @@ def normalize_language_identifier(identifier: str | None) -> str | None:
     return LANGUAGE_ALIASES.get(lang, lang if 1 < len(lang) <= 5 else None)
 
 
+def normalize_word(word: str) -> str:
+    """
+    Normalize word for consistent database storage.
+    Removes leading/trailing punctuation, whitespace, and normalizes Unicode.
+    
+    This function ensures that words like "ávexti" and "ávexti." are treated as the same word.
+    """
+    if not word or not isinstance(word, str):
+        return ''
+    
+    # Strip whitespace
+    normalized = word.strip()
+    
+    # Remove leading punctuation
+    normalized = re.sub(r'^[.!?,;:—–\-]+', '', normalized)
+    
+    # Remove trailing punctuation
+    normalized = re.sub(r'[.!?,;:—–\-]+$', '', normalized)
+    
+    # Normalize Unicode (NFC) - ensures consistent representation
+    normalized = unicodedata.normalize('NFC', normalized)
+    
+    # Normalize whitespace (replace multiple spaces/tabs with single space)
+    normalized = re.sub(r'\s+', ' ', normalized)
+    
+    # Final strip
+    normalized = normalized.strip()
+    
+    return normalized
+
+
 def language_code_to_field(code: str) -> str:
     """Map language code back to UI field name"""
     if not code:
@@ -313,11 +345,11 @@ def ensure_words_exist(words: list[str], target_lang: str, native_lang: str) -> 
     try:
         now = datetime.now(UTC).isoformat()
         
-        # Normalize words first
+        # Normalize words first using centralized normalization function
         normalized_words = []
         for w in words:
             if isinstance(w, str):
-                w = re.sub(r'[.!?,;:—–-]+$', '', w.strip())
+                w = normalize_word(w)
             else:
                 continue
             if w:
@@ -519,6 +551,7 @@ def create_custom_levels_table():
                     topic TEXT NOT NULL,
                     content TEXT NOT NULL,  -- JSON content
                     word_count INTEGER DEFAULT 0,
+                    word_ids TEXT DEFAULT NULL,  -- JSON array of word IDs
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
@@ -619,6 +652,54 @@ def migrate_custom_levels_add_word_count():
                 
     except Exception as e:
         print(f"Error adding word_count column: {e}")
+    finally:
+        conn.close()
+
+def migrate_custom_levels_add_word_ids():
+    """Add word_ids column to existing custom_levels table for performance optimization"""
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        if config['type'] == 'postgresql':
+            # PostgreSQL syntax - check if column exists first
+            result = execute_query(conn, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'custom_levels' AND column_name = 'word_ids'
+            ''')
+            
+            if not result.fetchone():
+                print("Adding word_ids column to custom_levels table...")
+                execute_query(conn, '''
+                    ALTER TABLE custom_levels 
+                    ADD COLUMN word_ids INTEGER[] DEFAULT NULL
+                ''')
+                conn.commit()
+                print("✅ Added word_ids column to custom_levels table")
+            else:
+                print("word_ids column already exists in custom_levels table")
+        else:
+            # SQLite syntax - check if column exists first
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(custom_levels)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'word_ids' not in columns:
+                print("Adding word_ids column to custom_levels table...")
+                cursor.execute('''
+                    ALTER TABLE custom_levels 
+                    ADD COLUMN word_ids TEXT DEFAULT NULL
+                ''')
+                conn.commit()
+                print("✅ Added word_ids column to custom_levels table (SQLite: stored as JSON)")
+            else:
+                print("word_ids column already exists in custom_levels table")
+                
+    except Exception as e:
+        print(f"Error adding word_ids column: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         conn.close()
 
@@ -1408,6 +1489,7 @@ def init_db():
                 title VARCHAR(255) NOT NULL,
                 topic VARCHAR(255) NOT NULL,
                 content TEXT NOT NULL,
+                word_ids INTEGER[] DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (group_id) REFERENCES custom_level_groups (id) ON DELETE CASCADE,
@@ -1606,6 +1688,15 @@ def init_db():
         
         conn.commit()
     
+    # Run migrations for custom_levels table
+    try:
+        migrate_custom_levels_add_word_count()
+        migrate_custom_levels_add_word_ids()
+        print("init_db: custom_levels migrations completed", flush=True)
+    except Exception as e:
+        print(f"init_db: Warning - custom_levels migrations failed: {e}", flush=True)
+        # Continue anyway - migrations are idempotent
+    
     conn.close()
     print("init_db: done", flush=True)
 
@@ -1784,7 +1875,7 @@ def batch_upsert_word_rows(payloads: list[dict]) -> None:
             # PostgreSQL batch upsert using VALUES and ON CONFLICT
             values_list = []
             for payload in payloads:
-                word = (payload.get('word') or '').strip()
+                word = normalize_word(payload.get('word') or '')
                 language = (payload.get('language') or '').strip()
                 native_language = (payload.get('native_language') or '').strip()
                 translation = (payload.get('translation') or '').strip()
@@ -1906,7 +1997,7 @@ def batch_upsert_word_rows(payloads: list[dict]) -> None:
         conn.close()
 
 def upsert_word_row(payload: dict) -> None:
-    word = (payload.get('word') or '').strip()
+    word = normalize_word(payload.get('word') or '')
     language = (payload.get('language') or '').strip()
     native_language = (payload.get('native_language') or '').strip()
     translation = (payload.get('translation') or '').strip()
@@ -3101,6 +3192,125 @@ def get_user_word_familiarity_by_word(user_id: int, word: str, language: str, na
             row = _coerce_row_to_dict(row, getattr(cur, 'description', None))
         
         return row
+    finally:
+        conn.close()
+
+def ensure_words_exist_by_ids(word_ids: list[int]) -> bool:
+    """Prüft nur, ob die word_ids noch existieren (Referenz-Integrität)
+    Optimiert für Performance: Keine Wort-Extraktion nötig, nur ID-Check
+    """
+    if not word_ids:
+        return True
+    
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        if config['type'] == 'postgresql':
+            placeholders = ','.join(['%s'] * len(word_ids))
+            result = execute_query(conn, f"""
+                SELECT id FROM words 
+                WHERE id IN ({placeholders})
+            """, word_ids)
+            
+            existing_ids = {row['id'] if isinstance(row, dict) else row[0] for row in result.fetchall()}
+            missing_ids = set(word_ids) - existing_ids
+            
+            if missing_ids:
+                print(f"⚠️ Warning: {len(missing_ids)} word_ids are missing from words table: {list(missing_ids)[:10]}")
+                return False
+            return True
+        else:
+            # SQLite
+            placeholders = ','.join(['?'] * len(word_ids))
+            cursor = conn.cursor()
+            cursor.execute(f'SELECT id FROM words WHERE id IN ({placeholders})', word_ids)
+            existing_ids = {row[0] for row in cursor.fetchall()}
+            missing_ids = set(word_ids) - existing_ids
+            
+            if missing_ids:
+                print(f"⚠️ Warning: {len(missing_ids)} word_ids are missing from words table: {list(missing_ids)[:10]}")
+                return False
+            return True
+    except Exception as e:
+        print(f"❌ Error checking word_ids: {e}")
+        return False
+    finally:
+        conn.close()
+
+def batch_ensure_user_word_familiarity_by_ids(
+    user_id: int, 
+    word_ids: list[int], 
+    default_familiarity: int = 0
+):
+    """Batch ensure words exist in user's familiarity database using word_ids directly.
+    Optimiert für Performance: Keine Wort-Extraktion oder -Normalisierung nötig.
+    """
+    if not word_ids or not user_id:
+        return
+    
+    from server.db_config import get_database_config, get_db_connection, execute_query
+    from datetime import datetime, UTC
+    
+    config = get_database_config()
+    conn = get_db_connection()
+    
+    try:
+        now = datetime.now(UTC).isoformat()
+        
+        if config['type'] == 'postgresql':
+            # Prüfe, welche Einträge bereits existieren
+            placeholders = ','.join(['%s'] * len(word_ids))
+            existing_result = execute_query(conn, f'''
+                SELECT word_id FROM user_word_familiarity 
+                WHERE user_id = %s AND word_id IN ({placeholders})
+            ''', [user_id] + word_ids)
+            
+            existing_word_ids = {row['word_id'] if isinstance(row, dict) else row[0] for row in existing_result.fetchall()}
+            
+            # Insert nur neue Einträge
+            new_word_ids = [wid for wid in word_ids if wid not in existing_word_ids]
+            
+            if new_word_ids:
+                # Batch insert
+                insert_values = ','.join([f'(%s, %s, %s, %s, %s, %s)' for _ in new_word_ids])
+                insert_params = []
+                for word_id in new_word_ids:
+                    insert_params.extend([user_id, word_id, default_familiarity, 0, 0, ''])
+                
+                execute_query(conn, f'''
+                    INSERT INTO user_word_familiarity 
+                    (user_id, word_id, familiarity, seen_count, correct_count, user_comment)
+                    VALUES {insert_values}
+                    ON CONFLICT (user_id, word_id) DO NOTHING
+                ''', insert_params)
+                conn.commit()
+                print(f"✅ Batch inserted {len(new_word_ids)} familiarity records by IDs")
+        else:
+            # SQLite batch insert
+            cursor = conn.cursor()
+            placeholders = ','.join(['?'] * len(word_ids))
+            existing = cursor.execute(f'''
+                SELECT word_id FROM user_word_familiarity 
+                WHERE user_id = ? AND word_id IN ({placeholders})
+            ''', [user_id] + word_ids).fetchall()
+            
+            existing_word_ids = {row[0] for row in existing}
+            new_word_ids = [wid for wid in word_ids if wid not in existing_word_ids]
+            
+            if new_word_ids:
+                cursor.executemany('''
+                    INSERT OR IGNORE INTO user_word_familiarity 
+                    (user_id, word_id, familiarity, seen_count, correct_count, user_comment)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', [(user_id, wid, default_familiarity, 0, 0, '') for wid in new_word_ids])
+                conn.commit()
+                print(f"✅ Batch inserted {len(new_word_ids)} familiarity records by IDs (SQLite)")
+    except Exception as e:
+        print(f"❌ Error in batch_ensure_user_word_familiarity_by_ids: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         conn.close()
 

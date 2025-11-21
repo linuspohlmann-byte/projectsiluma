@@ -411,7 +411,7 @@ def calculate_word_count_from_content(content: Dict[str, Any]) -> int:
 
 def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, content: Dict[str, Any], language: str, native_language: str) -> bool:
     """Sync words from custom level to PostgreSQL words and user_word_familiarity tables"""
-    import re
+    from server.db import normalize_word
     
     try:
         if not content or not content.get('items'):
@@ -424,9 +424,9 @@ def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, cont
             words = item.get('words', [])
             for word in words:
                 if word and word.strip():
-                    # Remove trailing punctuation before adding to set
-                    clean_word = re.sub(r'[.!?,;:—–-]+$', '', word.strip().lower())
-                    if clean_word:  # Only add if there's still content after removing punctuation
+                    # Normalize word using centralized function
+                    clean_word = normalize_word(word)
+                    if clean_word:  # Only add if there's still content after normalization
                         all_words.add(clean_word)
         
         if not all_words:
@@ -512,6 +512,34 @@ def sync_custom_level_words_to_postgresql(group_id: int, level_number: int, cont
                     user_words_added = len(new_user_words)
             else:
                 user_words_added = 0
+            
+            # Step 3: Store word_ids in custom_levels table for performance optimization
+            # This allows future loads to skip word extraction and use IDs directly
+            if word_ids:
+                try:
+                    if config['type'] == 'postgresql':
+                        # PostgreSQL: Store as INTEGER[] array
+                        execute_query(conn, """
+                            UPDATE custom_levels 
+                            SET word_ids = %s, updated_at = CURRENT_TIMESTAMP
+                            WHERE group_id = %s AND level_number = %s
+                        """, (word_ids, group_id, level_number))
+                    else:
+                        # SQLite: Store as JSON string
+                        import json
+                        word_ids_json = json.dumps(word_ids)
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            UPDATE custom_levels 
+                            SET word_ids = ?, updated_at = ?
+                            WHERE group_id = ? AND level_number = ?
+                        """, (word_ids_json, datetime.now(UTC).isoformat(), group_id, level_number))
+                    print(f"💾 Stored {len(word_ids)} word_ids in custom_levels for level {group_id}/{level_number}")
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not store word_ids in custom_levels: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue anyway - not critical
             
             conn.commit()
             print(f"✅ Word sync complete: {words_synced} new words, {user_words_added} user words added")
@@ -696,6 +724,21 @@ def get_custom_level(group_id: int, level_number: int, user_id: int = None) -> O
         if level_data:
             level_data['content'] = json.loads(level_data['content'])
             
+            # Parse word_ids: PostgreSQL returns array, SQLite returns JSON string
+            word_ids = level_data.get('word_ids')
+            if word_ids:
+                if isinstance(word_ids, str):
+                    # SQLite: Parse JSON string
+                    try:
+                        level_data['word_ids'] = json.loads(word_ids)
+                    except (json.JSONDecodeError, TypeError):
+                        level_data['word_ids'] = None
+                elif isinstance(word_ids, list):
+                    # PostgreSQL: Already an array
+                    level_data['word_ids'] = word_ids
+                else:
+                    level_data['word_ids'] = None
+            
             # Ensure word hashes exist for Multi-User-DB compatibility
             group_info = get_custom_level_group(group_id, user_id) if user_id else None
             if group_info:
@@ -740,6 +783,21 @@ def get_custom_levels_for_group(group_id: int, group_info: Optional[Dict[str, An
             if not level_data:
                 continue
             level_data['content'] = json.loads(level_data['content'])
+            
+            # Parse word_ids: PostgreSQL returns array, SQLite returns JSON string
+            word_ids = level_data.get('word_ids')
+            if word_ids:
+                if isinstance(word_ids, str):
+                    # SQLite: Parse JSON string
+                    try:
+                        level_data['word_ids'] = json.loads(word_ids)
+                    except (json.JSONDecodeError, TypeError):
+                        level_data['word_ids'] = None
+                elif isinstance(word_ids, list):
+                    # PostgreSQL: Already an array
+                    level_data['word_ids'] = word_ids
+                else:
+                    level_data['word_ids'] = None
             
             # Ensure word hashes exist for Multi-User-DB compatibility
             if group_info:

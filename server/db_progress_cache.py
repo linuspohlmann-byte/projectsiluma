@@ -683,8 +683,8 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, sessio
     Mark a custom level as completed.
     
     Args:
-        session_score: Score from the session (0.0-1.0) - used for evaluation display only,
-                      NOT for determining level completion status
+        session_score: Score from the session (0.0-1.0 or 0-100) - stored in custom_level_progress.score (0-100)
+                      Status determination is based on familiarity counts (≥80% learned words), not score
     """
     try:
         config = get_database_config()
@@ -705,20 +705,6 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, sessio
         fam_counts = progress_data.get('fam_counts', {})
         total_words = progress_data.get('total_words', 0)
         
-        # Calculate progress-based score (weighted familiarity distribution)
-        # This represents actual learning progress, not session performance
-        progress_score = None
-        if total_words > 0 and sum(fam_counts.values()) > 0:
-            # Weight: Level 5 = 100%, Level 4 = 80%, Level 3 = 60%, Level 2 = 40%, Level 1 = 20%
-            weighted_score = (
-                fam_counts.get(5, 0) * 1.0 +
-                fam_counts.get(4, 0) * 0.8 +
-                fam_counts.get(3, 0) * 0.6 +
-                fam_counts.get(2, 0) * 0.4 +
-                fam_counts.get(1, 0) * 0.2
-            ) / total_words
-            progress_score = weighted_score
-        
         # Determine status based on PROGRESS (familiarity counts), not session score
         # Level is "completed" if ≥80% of words are at familiarity ≥3 (familiar or better)
         learned_words = (
@@ -735,8 +721,8 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, sessio
         else:
             status = 'not_started'
         
-        # Store session_score for evaluation display (0-100 integer)
-        # This is the score from the current session, shown on evaluation page
+        # Store session_score directly in custom_level_progress.score (0-100 integer)
+        # This is the score from the current session, stored in DB for level cards
         session_score_int = 0
         if session_score is not None:
             try:
@@ -748,11 +734,6 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, sessio
                 session_score_int = max(0, min(100, session_score_int))
             except (ValueError, TypeError):
                 session_score_int = 0
-        
-        # Use progress_score for the main score field (0-100 integer)
-        # This represents actual learning progress
-        progress_score_int = int(round(progress_score * 100)) if progress_score is not None else 0
-        progress_score_int = max(0, min(100, progress_score_int))
         
         try:
             if config['type'] == 'postgresql':
@@ -766,7 +747,7 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, sessio
                         status = EXCLUDED.status,
                         completed_at = CASE WHEN EXCLUDED.status = 'completed' THEN EXCLUDED.completed_at ELSE custom_level_progress.completed_at END,
                         last_updated = EXCLUDED.last_updated
-                """, (user_id, group_id, level_number, progress_score_int, status, now if status == 'completed' else None, now, now))
+                """, (user_id, group_id, level_number, session_score_int, status, now if status == 'completed' else None, now, now))
                 conn.commit()
             else:
                 cursor = conn.cursor()
@@ -781,21 +762,20 @@ def complete_custom_level(user_id: int, group_id: int, level_number: int, sessio
                         UPDATE custom_level_progress 
                         SET score = ?, status = ?, completed_at = CASE WHEN ? = 'completed' THEN ? ELSE completed_at END, last_updated = ?
                         WHERE user_id = ? AND group_id = ? AND level_number = ?
-                    """, (progress_score_int, status, status, now, now, user_id, group_id, level_number))
+                    """, (session_score_int, status, status, now, now, user_id, group_id, level_number))
                 else:
                     # Insert new row
                     cursor.execute("""
                         INSERT INTO custom_level_progress 
                         (user_id, group_id, level_number, score, status, completed_at, last_updated, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (user_id, group_id, level_number, progress_score_int, status, now if status == 'completed' else None, now, now))
+                    """, (user_id, group_id, level_number, session_score_int, status, now if status == 'completed' else None, now, now))
                 
                 conn.commit()
             
             print(f"✅ Level completion updated: user={user_id}, group={group_id}, level={level_number}")
             print(f"   Progress: {progress_percent:.1f}% ({learned_words}/{total_words} words learned)")
-            print(f"   Progress Score: {progress_score_int}% (based on familiarity distribution)")
-            print(f"   Session Score: {session_score_int}% (for evaluation display only)")
+            print(f"   Session Score: {session_score_int}% (stored in DB for level cards)")
             print(f"   Status: {status}")
             
             return True

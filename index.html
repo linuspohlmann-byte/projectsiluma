@@ -3692,7 +3692,6 @@
     
     /* Special spacing for milestone levels (alphabet, 10, 20, 30, 40, 50) - only these specific levels */
     .level-card[data-level="alphabet"],
-    .level-card[data-level="10"],
     .level-card[data-level="20"],
     .level-card[data-level="30"],
     .level-card[data-level="40"],
@@ -3705,8 +3704,8 @@
       box-sizing: border-box;
     }
     
-    /* All other levels (1-9, 11-19, 21-29, 31-39, 41-49) use normal grid layout */
-    .level-card:not([data-level="alphabet"]):not([data-level="10"]):not([data-level="20"]):not([data-level="30"]):not([data-level="40"]):not([data-level="50"]) {
+    /* All other levels (1-19, 21-29, 31-39, 41-49) use normal grid layout */
+    .level-card:not([data-level="alphabet"]):not([data-level="20"]):not([data-level="30"]):not([data-level="40"]):not([data-level="50"]) {
       grid-column: auto;
       width: auto;
       min-width: auto;
@@ -3908,7 +3907,6 @@
       
       /* Milestone levels on mobile - full width */
       .level-card[data-level="alphabet"],
-      .level-card[data-level="10"],
       .level-card[data-level="20"],
       .level-card[data-level="30"],
       .level-card[data-level="40"],
@@ -3919,7 +3917,7 @@
       }
       
       /* All other levels on mobile use normal single column */
-      .level-card:not([data-level="alphabet"]):not([data-level="10"]):not([data-level="20"]):not([data-level="30"]):not([data-level="40"]):not([data-level="50"]) {
+      .level-card:not([data-level="alphabet"]):not([data-level="20"]):not([data-level="30"]):not([data-level="40"]):not([data-level="50"]) {
         grid-column: span 1;
         width: auto;
         min-width: auto;
@@ -3930,7 +3928,6 @@
     /* Medium screens - milestone levels still span full width */
     @media (max-width: 1200px) and (min-width: 769px) {
       .level-card[data-level="alphabet"],
-      .level-card[data-level="10"],
       .level-card[data-level="20"],
       .level-card[data-level="30"],
       .level-card[data-level="40"],
@@ -3942,7 +3939,7 @@
       }
       
       /* All other levels on medium screens use normal grid layout */
-      .level-card:not([data-level="alphabet"]):not([data-level="10"]):not([data-level="20"]):not([data-level="30"]):not([data-level="40"]):not([data-level="50"]) {
+      .level-card:not([data-level="alphabet"]):not([data-level="20"]):not([data-level="30"]):not([data-level="40"]):not([data-level="50"]) {
         grid-column: auto;
         width: auto;
         min-width: auto;
@@ -7347,6 +7344,26 @@
           <div class="settings-actions">
             <button id="save-settings" class="primary" style="width: 100%; padding: 12px; margin-bottom: 8px;" data-i18n="settings.save">Save Settings</button>
             <button id="reset-progress" class="secondary" style="width: 100%; padding: 12px;" data-i18n="settings.reset_progress">Reset Progress</button>
+          </div>
+          
+          <!-- Admin Section (only visible for user ID 2) -->
+          <div id="admin-section" class="settings-section" style="display: none; margin-top: 24px; padding-top: 24px; border-top: 2px solid var(--border);">
+            <h3 class="settings-section-title" style="color: var(--warn);">🔧 Admin Tools</h3>
+            <div class="settings-item">
+              <label class="settings-label">Word Duplicate Cleanup</label>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                Clean up duplicate word entries in the database. This will merge duplicates and update all references.
+              </p>
+              <div style="display: flex; gap: 8px;">
+                <button id="admin-cleanup-dry-run" class="secondary" style="flex: 1; padding: 10px;">
+                  🔍 Dry Run
+                </button>
+                <button id="admin-cleanup-run" class="primary" style="flex: 1; padding: 10px; background: var(--warn);">
+                  🧹 Run Cleanup
+                </button>
+              </div>
+              <div id="admin-cleanup-status" style="margin-top: 12px; font-size: 12px; display: none;"></div>
+            </div>
           </div>
           
           <div id="settings-error" class="error-message" style="display: none; color: var(--warn); font-size: 14px; margin-top: 12px;"></div>

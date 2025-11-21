@@ -29,6 +29,29 @@ let GROUPS_LOADING_LOCK = false; // Prevent race conditions in groups loading
 // Configuration: Disable standard level groups (they won't be loaded in library)
 const DISABLE_STANDARD_LEVEL_GROUPS = true; // Set to false to re-enable standard groups
 
+// Central function to get level score from bulkData (same source as display)
+// This ensures unlock logic uses the exact same data source as the UI display
+function getLevelScoreFromBulkData(levelElement) {
+  if (!levelElement || !levelElement.dataset.bulkData) {
+    return 0;
+  }
+  
+  try {
+    const data = JSON.parse(levelElement.dataset.bulkData);
+    // Use the same logic as the display: prefer user_progress.score, then last_score
+    // This ensures we use the same source as the display
+    const score = data.user_progress?.score || data.last_score;
+    if (score !== null && score !== undefined) {
+      // Score is already in 0-1 format, convert to 0-100
+      return Math.round(Number(score) * 100);
+    }
+  } catch (error) {
+    console.log('Error parsing bulkData for score:', error);
+  }
+  
+  return 0;
+}
+
 // Function to show elegant level locked message
 function showLevelLockedMessage(level, prevLevel, prevScore) {
   // Remove any existing message
@@ -44,7 +67,8 @@ function showLevelLockedMessage(level, prevLevel, prevScore) {
   message.className = 'level-locked-message';
   message.id = 'level-locked-message';
   
-  const progressPercent = Math.round((prevScore || 0) * 100);
+  // prevScore is already in percent (0-100), no need to multiply
+  const progressPercent = Math.round(prevScore || 0);
   const neededPercent = 60;
   
   message.innerHTML = `
@@ -100,6 +124,9 @@ function hideLevelLockedMessage() {
   if (overlay) overlay.remove();
   if (message) message.remove();
 }
+
+// Export getLevelScoreFromBulkData globally for use in other files
+window.getLevelScoreFromBulkData = getLevelScoreFromBulkData;
 
 // Function to go to previous level
 function goToPreviousLevel(level) {
@@ -296,23 +323,32 @@ function applyImmediateLevelStates() {
 // Apply level state from cached data
 function applyLevelStateFromCache(node, levelNum, data) {
   const status = data.status || 'not_started';
-  const score = data.last_score || 0;
+  const score = data.user_progress?.score || data.last_score || 0;
+  const scorePercent = Math.round(Number(score) * 100);
   
   // Remove all state classes
   node.classList.remove('locked', 'unlocked', 'done', 'active');
   
-  if (status === 'completed' && Number(score) > 0.6) {
+  if (status === 'completed' && scorePercent >= 60) {
     node.classList.add('done');
     node.dataset.allowStart = 'true';
   } else if (levelNum === 1) {
     node.classList.add('unlocked');
     node.dataset.allowStart = 'true';
   } else {
-    // For other levels, check if previous level is completed
+    // For other levels, check if previous level has score >= 60 (ready check based on score)
     const prevNode = document.querySelector(`.level-card[data-level="${levelNum - 1}"]`);
-    if (prevNode && prevNode.classList.contains('done')) {
-      node.classList.add('unlocked');
-      node.dataset.allowStart = 'true';
+    if (prevNode) {
+      // Use the same data source as the display: bulkData
+      const prevScorePercent = getLevelScoreFromBulkData(prevNode);
+      const prevHasScoreAbove60 = prevScorePercent >= 60;
+      
+      if (prevHasScoreAbove60) {
+        node.classList.add('unlocked');
+        node.dataset.allowStart = 'true';
+      } else {
+        node.classList.add('locked');
+      }
     } else {
       node.classList.add('locked');
     }
@@ -512,12 +548,15 @@ async function applyLevelStates(){
           }
           
           // Cache the bulk data in the level element for later use
+          // Use user-specific score if available, otherwise use global score
+          const scoreForBulkData = js?.user_progress?.score || js?.last_score || 0;
           nd.dataset.bulkData = JSON.stringify({
             fam_counts: js.fam_counts,
             status: js.status,
-            last_score: js.last_score,
+            last_score: scoreForBulkData,  // Use user-specific score if available
             total_words: js.total_words,
-            title: js.title || `Level ${lvl}`
+            title: js.title || `Level ${lvl}`,
+            user_progress: js.user_progress || null  // Include user_progress for consistency
           });
           
           // Update level title if available (for custom levels)
@@ -536,12 +575,20 @@ async function applyLevelStates(){
           
       nd.classList.remove('locked','unlocked','done');
       
+      // Use user-specific data if available, otherwise fall back to global data
+      const userProgress = js?.user_progress;
+      const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
+      
+      // Determine status and score based on user data or global data
+      const status = userProgress?.status || js?.status;
+      const score = userProgress?.score || js?.last_score;
+      
       // Debug-Ausgabe
       console.log(`Level ${lvl}:`, { 
-        status: js?.status,
-        score: js?.last_score,
-            total_words: js?.total_words,
-            fam_counts: js?.fam_counts
+        status: status,
+        score: score,
+        total_words: js?.total_words,
+        fam_counts: js?.fam_counts
       });
       
       // Update level card elements
@@ -551,14 +598,6 @@ async function applyLevelStates(){
       
       let statusText = window.t ? window.t('status.locked', 'Locked') : 'Locked';
       let progressPercent = 0;
-      
-      // Use user-specific data if available, otherwise fall back to global data
-      const userProgress = js?.user_progress;
-          const isUserAuthenticated = window.authManager && window.authManager.isAuthenticated();
-      
-      // Determine status and score based on user data or global data
-      const status = userProgress?.status || js?.status;
-      const score = userProgress?.score || js?.last_score;
       
           // Determine if level is unlocked based on completion status
           let isUnlocked = false;
@@ -579,32 +618,39 @@ async function applyLevelStates(){
         statusText = window.t ? window.t('status.available', 'Available') : 'Available';
         console.log(`Level ${lvl} als 'unlocked' markiert (Level 1 - erste Lektion) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
       } else if(lvl > 1) {
-            // Check if previous level has >50% Familiarity 5 (unified unlock logic)
+            // Check if previous level has score >= 60 (ready check based on score)
         const prevLevel = lvl - 1;
-        const prevLevelData = data.levels[prevLevel] || data.levels[String(prevLevel)];
-            if (prevLevelData && prevLevelData.success) {
-              // Calculate Familiarity 5 percentage for previous level
-              const prevFamCounts = prevLevelData.fam_counts || {};
-              const prevTotalWords = prevLevelData.total_words || 0;
-              const prevFam5Words = prevFamCounts[5] || 0;
-              const prevFam5Percent = prevTotalWords > 0 ? (prevFam5Words / prevTotalWords * 100) : 0;
-              const prevHasFam5Above50 = prevFam5Percent > 50;
-              
-              console.log(`Level ${lvl} unlock check - Prev Level ${prevLevel}: Fam5Percent=${prevFam5Percent.toFixed(1)}%, hasFam5Above50=${prevHasFam5Above50}`);
-          
-          if(prevHasFam5Above50) {
-                isUnlocked = true;
-            statusText = window.t ? window.t('status.available', 'Available') : 'Available';
-            console.log(`Level ${lvl} als 'unlocked' markiert (vorheriges Level ${prevLevel} hat >50% Familiarity 5) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
-          } else {
-                isUnlocked = false;
-                statusText = window.t ? window.t('status.locked', 'Locked') : 'Locked';
-            console.log(`Level ${lvl} als 'locked' markiert (vorheriges Level ${prevLevel} hat <50% Familiarity 5) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
+        // First try to get score from API data (already processed in this loop)
+        const prevJs = data.levels[prevLevel] || data.levels[String(prevLevel)];
+        let prevScorePercent = 0;
+        
+        if (prevJs && prevJs.success) {
+          // Use the same logic as for current level: user_progress.score or last_score
+          const prevUserProgress = prevJs?.user_progress;
+          const prevScore = prevUserProgress?.score || prevJs?.last_score;
+          if (prevScore !== null && prevScore !== undefined) {
+            prevScorePercent = Math.round(Number(prevScore) * 100);
           }
+        } else {
+          // Fallback: try to get score from bulkData (if already set)
+          const prevLevelElement = document.querySelector(`[data-level="${prevLevel}"]`);
+          if (prevLevelElement) {
+            prevScorePercent = getLevelScoreFromBulkData(prevLevelElement);
+          }
+        }
+        
+        const prevHasScoreAbove60 = prevScorePercent >= 60;
+        
+        console.log(`Level ${lvl} unlock check - Prev Level ${prevLevel}: Score=${prevScorePercent}% (from API data or bulkData), hasScoreAbove60=${prevHasScoreAbove60}`);
+    
+        if(prevHasScoreAbove60) {
+              isUnlocked = true;
+          statusText = window.t ? window.t('status.available', 'Available') : 'Available';
+          console.log(`Level ${lvl} als 'unlocked' markiert (vorheriges Level ${prevLevel} hat Score >= 60) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
         } else {
               isUnlocked = false;
               statusText = window.t ? window.t('status.locked', 'Locked') : 'Locked';
-              console.log(`Level ${lvl} als 'locked' markiert (vorheriges Level ${prevLevel} Daten nicht verfügbar) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
+          console.log(`Level ${lvl} als 'locked' markiert (vorheriges Level ${prevLevel} hat Score < 60) - User: ${isUserAuthenticated ? 'Yes' : 'No'}`);
         }
       } else {
         // Fallback: Level verriegelt
@@ -616,26 +662,29 @@ async function applyLevelStates(){
           // Set basic unlock status
           if (isUnlocked) {
             nd.classList.add('unlocked');
+            nd.dataset.allowStart = 'true';  // Allow starting unlocked levels
           } else {
             nd.classList.add('locked');
+            nd.dataset.allowStart = 'false';  // Prevent starting locked levels
           }
           
           // Store completion status for color logic
           nd.dataset.isCompleted = (status === 'completed') ? 'true' : 'false';
           console.log(`Level ${lvl} dataset.isCompleted set to: "${nd.dataset.isCompleted}" (status: ${status})`);
           
-          // Cache bulk data for this level element
+          // Cache bulk data for this level element (include user_progress if available)
           nd.dataset.bulkData = JSON.stringify({
             fam_counts: js.fam_counts,
             status: status,
             last_score: score,
-            total_words: js.total_words
+            total_words: js.total_words,
+            user_progress: userProgress || null  // Include user_progress for score lookup
           });
           
           // Set color based on learned words percentage (for all levels, not just completed ones)
           // This must be called AFTER dataset.isCompleted is set
           await _setLevelColorBasedOnLearnedWords(nd, lvl);
-          
+      
       // Mark this level as having its color set to prevent interference
       nd.dataset.colorSet = 'true';
   
@@ -652,11 +701,6 @@ async function applyLevelStates(){
       
       // Update rating display
       updateLevelRatingDisplay(lvl, nd, js);
-      
-      // Level 1 immer startbar
-      if(lvl === 1){
-        nd.dataset.allowStart = 'true';
-      }
       
       // Update practice button state
       const practiceBtn = nd.querySelector('.level-btn:not(.primary)');
@@ -958,21 +1002,8 @@ async function _setLevelColorBasedOnLearnedWords(levelElement, lvl) {
     }
     
     // Get level score for completion circle (USER-SPECIFIC - only for authenticated users)
-    let levelScorePercent = 0;
-    
-    // Use cached data from bulk API instead of making API call
-    const cachedScoreData = levelElement.dataset.bulkData;
-    if (cachedScoreData) {
-      try {
-        const data = JSON.parse(cachedScoreData);
-        const score = data.last_score;
-        if (score !== null && score !== undefined) {
-          levelScorePercent = Math.round(Number(score) * 100);
-        }
-      } catch (error) {
-        console.log('Error parsing cached bulk data for level score:', error);
-      }
-    }
+    // Use the same function as unlock logic to ensure consistency
+    const levelScorePercent = getLevelScoreFromBulkData(levelElement);
     
     // Update word statistics on front of card
     const wordsText = levelElement.querySelector('.words-text');
@@ -3280,8 +3311,13 @@ async function updateLevelTipContent(lvl, isDone){
       }
     }
     
-      const isPrevCompleted = prevLevelData?.status === 'completed' && 
-        (prevLevelData.score || prevLevelData.last_score || 0) > 0.6;
+      // Check if previous level has score >= 60 (ready check based on score)
+      // Use the same data source as the display: bulkData from the level element
+      let prevScorePercent = 0;
+      if (prevLevelElement) {
+        prevScorePercent = getLevelScoreFromBulkData(prevLevelElement);
+      }
+      const isPrevCompleted = prevScorePercent >= 60;
       
       if(isPrevCompleted) {
         status = window.t ? window.t('status.available', 'Available') : 'Available';
@@ -4026,25 +4062,9 @@ export async function renderLevels(){
     node.dataset.allowStart = 'false';
 
     const levelData = byLevel.get(levelNumber);
-    let progressPercent = 0;
-    let isDone = false;
-
-    if(levelData){
-      if(levelData.last_score !== undefined){
-        progressPercent = Math.round((levelData.last_score || 0) * 100);
-        isDone = progressPercent >= 60;
-      }
-
-      if(isDone){
-        node.classList.remove('locked');
-        node.classList.add('completed');
-        node.dataset.allowStart = 'true';
-      }else if(progressPercent > 0){
-        node.classList.remove('locked');
-        node.classList.add('unlocked');
-        node.dataset.allowStart = 'true';
-      }
-    }
+    // Don't set unlock status here - let applyLevelStates() handle it
+    // This ensures consistent unlock logic based on score >= 60
+    // Initial state is locked, applyLevelStates() will update it correctly
 
     host.appendChild(node);
     
