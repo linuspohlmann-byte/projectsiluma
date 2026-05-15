@@ -1,6 +1,7 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { LegacyLink } from '@/components/LegacyLink';
 import { useTranslation } from '@/lib/i18n';
 
 export function LessonPage() {
@@ -17,15 +18,16 @@ export function LessonPage() {
           Level {levelId}
           {groupId ? ` · Gruppe ${groupId}` : ''}
         </p>
-        <p className="text-sm">{t('lesson.placeholder', 'Lektions-UI wird in Phase 4 portiert.')}</p>
-        <div className="flex gap-2">
-          <Link to={`/evaluation/${levelId}${groupId ? `?group=${groupId}` : ''}`}>
-            <Button variant="secondary">{t('lesson.finish', 'Abschließen')}</Button>
-          </Link>
-          <Link to="/library">
-            <Button variant="ghost">{t('buttons.back', 'Zurück')}</Button>
-          </Link>
-        </div>
+        <p className="text-sm">
+          {t(
+            'lesson.spa_hint',
+            'Interaktive Lektionen (Hören, Sprechen, Bewertung) laufen aktuell in der klassischen UI.',
+          )}
+        </p>
+        <LegacyLink tab="library" label={t('lesson.open_legacy', 'Lektion in klassischer UI')} />
+        <Link to="/library">
+          <Button variant="ghost">{t('buttons.back', 'Zurück')}</Button>
+        </Link>
       </Card>
     </div>
   );

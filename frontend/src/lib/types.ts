@@ -46,6 +46,7 @@ export interface GroupsSummaryResponse {
 
 export interface WordItem {
   id?: number;
+  word_id?: number;
   word: string;
   translation?: string;
   familiarity?: number;
@@ -60,10 +61,14 @@ export interface WordsLearningResponse {
 
 export interface MarketplaceGroup {
   id: number;
-  name: string;
+  name?: string;
+  group_name?: string;
   description?: string;
+  context_description?: string;
   language?: string;
   level_count?: number;
+  num_levels?: number;
+  author_name?: string;
 }
 
 export interface MarketplaceResponse {

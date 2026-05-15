@@ -15,7 +15,7 @@ export function WordsPage() {
     queryKey: ['words-learning', target, native],
     queryFn: () =>
       apiFetch<WordsLearningResponse>(
-        `/api/words/learning?language=${encodeURIComponent(target)}&native_language=${encodeURIComponent(native)}&limit=50`,
+        `/api/words/learning?language=${encodeURIComponent(target)}&min_familiarity=0&max_familiarity=4&limit=50`,
       ),
   });
 
@@ -37,7 +37,7 @@ export function WordsPage() {
       )}
       <ul className="space-y-2">
         {data?.words?.map((w, i) => (
-          <li key={w.id ?? `${w.word}-${i}`}>
+          <li key={w.id ?? w.word_id ?? `${w.word}-${i}`}>
             <Card className="flex items-center justify-between py-3">
               <span className="font-medium">{w.word}</span>
               <span className="text-sm text-[var(--muted)]">{w.translation ?? '—'}</span>

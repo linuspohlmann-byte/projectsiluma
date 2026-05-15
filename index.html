@@ -9475,3 +9475,14 @@
   <script src="/static/js/ui/custom-level-groups.js"></script>
   <script type="module" src="/static/js/login-screen.js"></script>
   <script type="module" src="/static/js/main.js"></script>
+  <script>
+    (function () {
+      var tab = new URLSearchParams(window.location.search).get('tab');
+      if (!tab) return;
+      function openTab() {
+        if (typeof window.showTab === 'function') window.showTab(tab);
+      }
+      if (document.readyState === 'complete') setTimeout(openTab, 300);
+      else window.addEventListener('load', function () { setTimeout(openTab, 300); });
+    })();
+  </script>

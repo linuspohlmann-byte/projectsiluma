@@ -6,6 +6,10 @@ import { apiFetch, getNativeLang, getTargetLang } from '@/lib/api';
 import type { MarketplaceResponse } from '@/lib/types';
 import { useTranslation } from '@/lib/i18n';
 
+function groupTitle(g: { name?: string; group_name?: string }) {
+  return g.name || g.group_name || '—';
+}
+
 export function BrowsePage() {
   const { t } = useTranslation();
   const target = getTargetLang();
@@ -15,7 +19,7 @@ export function BrowsePage() {
     queryKey: ['marketplace', target, native],
     queryFn: () =>
       apiFetch<MarketplaceResponse>(
-        `/api/marketplace/groups?language=${encodeURIComponent(target)}&native_language=${encodeURIComponent(native)}&page=1&per_page=20`,
+        `/api/marketplace/custom-level-groups?language=${encodeURIComponent(target)}&native_language=${encodeURIComponent(native)}&limit=20&offset=0`,
       ),
   });
 
@@ -39,10 +43,15 @@ export function BrowsePage() {
         {data?.groups?.map((g) => (
           <li key={g.id}>
             <Card>
-              <h3 className="font-semibold">{g.name}</h3>
-              {g.description && <p className="mt-1 text-sm text-[var(--muted)]">{g.description}</p>}
+              <h3 className="font-semibold">{groupTitle(g)}</h3>
+              {(g.description || g.context_description) && (
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {g.description || g.context_description}
+                </p>
+              )}
               <p className="mt-2 text-xs text-[var(--muted)]">
-                {g.level_count ?? 0} {t('levels.label', 'Levels')}
+                {g.level_count ?? g.num_levels ?? 0} {t('levels.label', 'Levels')}
+                {g.author_name ? ` · ${g.author_name}` : ''}
               </p>
             </Card>
           </li>
