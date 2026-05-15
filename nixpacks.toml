@@ -1,5 +1,5 @@
-# Python API + Vite React SPA (see scripts/build_production.sh)
+# Python: default Nixpacks install (pip). Node: build SPA in build phase.
 providers = ["python", "node"]
 
-[phases.install]
-cmds = ["chmod +x scripts/build_production.sh", "bash scripts/build_production.sh"]
+[phases.build]
+cmds = ["chmod +x scripts/build_frontend.sh", "bash scripts/build_frontend.sh"]
