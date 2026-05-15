@@ -18,6 +18,9 @@ import {
   submitLessonTranslation,
 } from '@/lib/learningApi';
 import { useTranslation } from '@/lib/i18n';
+import { ClickableSentence } from '@/components/words/ClickableSentence';
+import { WordDetailsPanel } from '@/components/words/WordDetailsPanel';
+import { getTargetLang } from '@/lib/api';
 
 const PASS = 0.75;
 
@@ -40,6 +43,7 @@ export function LessonRunner() {
   const [feedback, setFeedback] = useState('');
   const [sbPicked, setSbPicked] = useState<string[]>([]);
   const [finishing, setFinishing] = useState(false);
+  const [tooltipWord, setTooltipWord] = useState<string | null>(null);
 
   useEffect(() => {
     if (!groupId || !levelNum) {
@@ -189,7 +193,14 @@ export function LessonRunner() {
         {feedback && <p className="text-center font-semibold text-[var(--accent)]">{feedback}</p>}
         {task && item && task.type === 'tr' && (
           <div className="space-y-4">
-            <p className="text-lg font-medium">{item.text_target}</p>
+            {item.text_target ? (
+              <ClickableSentence
+                text={item.text_target}
+                onWordClick={(w) => setTooltipWord(w)}
+              />
+            ) : (
+              <p className="text-lg font-medium">—</p>
+            )}
             <input
               className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
               value={translation}
@@ -204,7 +215,11 @@ export function LessonRunner() {
         )}
         {task && task.type === 'mc' && (
           <div className="space-y-4">
-            <p className="text-lg">{task.cloze}</p>
+            {task.cloze ? (
+              <ClickableSentence text={task.cloze} onWordClick={(w) => setTooltipWord(w)} />
+            ) : (
+              <p className="text-lg">—</p>
+            )}
             <div className="grid gap-2">
               {task.options.map((opt, i) => (
                 <Button key={opt} variant="secondary" fullWidth onClick={() => void submitMc(i)}>
@@ -238,6 +253,13 @@ export function LessonRunner() {
           </div>
         )}
       </Card>
+
+      <WordDetailsPanel
+        word={tooltipWord}
+        open={Boolean(tooltipWord)}
+        onClose={() => setTooltipWord(null)}
+        language={getTargetLang()}
+      />
     </div>
   );
 }

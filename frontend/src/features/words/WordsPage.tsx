@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { apiFetch, getNativeLang, getTargetLang } from '@/lib/api';
 import type { WordsLearningResponse } from '@/lib/types';
 import { useTranslation } from '@/lib/i18n';
+import { WordDetailsPanel } from '@/components/words/WordDetailsPanel';
 
 const SEGMENTS = {
   all: { min: 0, max: 4 },
@@ -20,6 +21,7 @@ export function WordsPage() {
   const native = getNativeLang();
   const [segment, setSegment] = useState<keyof typeof SEGMENTS>('all');
   const [search, setSearch] = useState('');
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
 
   const range = SEGMENTS[segment];
 
@@ -76,7 +78,10 @@ export function WordsPage() {
       <ul className="space-y-2">
         {data?.words?.map((w, i) => (
           <li key={w.id ?? w.word_id ?? `${w.word}-${i}`}>
-            <Card className="flex items-center justify-between py-3">
+            <Card
+              className="flex cursor-pointer items-center justify-between py-3 hover:border-[var(--accent)]"
+              onClick={() => setSelectedWord(w.word)}
+            >
               <span className="font-medium">{w.word}</span>
               <span className="text-sm text-[var(--muted)]">
                 {w.translation ?? '—'}
@@ -86,6 +91,13 @@ export function WordsPage() {
           </li>
         ))}
       </ul>
+
+      <WordDetailsPanel
+        word={selectedWord}
+        open={Boolean(selectedWord)}
+        onClose={() => setSelectedWord(null)}
+        language={target}
+      />
     </div>
   );
 }

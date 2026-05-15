@@ -25,6 +25,22 @@ export function setNativeLang(code: string) {
   localStorage.setItem('siluma_native', code);
 }
 
+export function getAutoPlayAudio(): boolean {
+  return localStorage.getItem('user_auto_play') === '1';
+}
+
+export function setAutoPlayAudio(on: boolean) {
+  localStorage.setItem('user_auto_play', on ? '1' : '0');
+}
+
+export function getSoundEffects(): boolean {
+  return localStorage.getItem('user_sound_effects') !== '0';
+}
+
+export function setSoundEffects(on: boolean) {
+  localStorage.setItem('user_sound_effects', on ? '1' : '0');
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},

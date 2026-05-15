@@ -1,5 +1,6 @@
 import { apiFetch } from '@/lib/api';
 import type { LessonItem } from '@/lib/learning';
+import type { WordDetail } from '@/lib/types';
 
 export interface LessonStartResponse {
   success: boolean;
@@ -197,4 +198,128 @@ export function saveUserSettings(settings: Record<string, unknown>) {
 
 export function fetchUserSettings() {
   return apiFetch<{ success: boolean; settings?: Record<string, unknown> }>('/api/user/settings');
+}
+
+export interface GenerationStatus {
+  success: boolean;
+  status?: string;
+  step?: string;
+  progress?: number;
+  message?: string;
+  error?: string;
+}
+
+export function createCustomGroup(body: {
+  group_name: string;
+  context_description: string;
+  motivation?: string;
+  language: string;
+  native_language: string;
+  cefr_level?: string;
+  num_levels?: number;
+}) {
+  return apiFetch<{ success: boolean; group_id?: number; error?: string }>(
+    '/api/custom-level-groups/create',
+    { method: 'POST', body: JSON.stringify({ num_levels: 10, cefr_level: 'A1', ...body }) },
+  );
+}
+
+export function fetchCustomGroup(groupId: number) {
+  return apiFetch<{
+    success: boolean;
+    group?: {
+      id: number;
+      group_name?: string;
+      context_description?: string;
+      cefr_level?: string;
+      status?: string;
+      language?: string;
+    };
+    error?: string;
+  }>(`/api/custom-level-groups/${groupId}`);
+}
+
+export function updateCustomGroup(
+  groupId: number,
+  data: { group_name?: string; context_description?: string; cefr_level?: string },
+) {
+  return apiFetch<{ success: boolean; error?: string }>(`/api/custom-level-groups/${groupId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteCustomGroup(groupId: number) {
+  return apiFetch<{ success: boolean; error?: string }>(`/api/custom-level-groups/${groupId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function publishCustomGroup(groupId: number) {
+  return apiFetch<{ success: boolean; error?: string }>(
+    `/api/custom-level-groups/${groupId}/publish`,
+    { method: 'POST', body: '{}' },
+  );
+}
+
+export function unpublishCustomGroup(groupId: number) {
+  return apiFetch<{ success: boolean; error?: string }>(
+    `/api/custom-level-groups/${groupId}/unpublish`,
+    { method: 'POST', body: '{}' },
+  );
+}
+
+export function fetchGenerationStatus(groupId: number) {
+  return apiFetch<GenerationStatus>(`/api/custom-level-groups/${groupId}/generation-status`);
+}
+
+export function fetchUserStats() {
+  return apiFetch<{
+    success: boolean;
+    stats?: {
+      levels_completed?: number;
+      words_learned?: number;
+      streak_days?: number;
+      current_streak?: number;
+    };
+  }>('/api/user/stats');
+}
+
+export function resetUserProgress() {
+  return apiFetch<{ success: boolean; error?: string }>('/api/user/reset-progress', {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function fetchWord(word: string, language: string, nativeLanguage: string) {
+  const q = new URLSearchParams({ word, language, native_language: nativeLanguage });
+  return apiFetch<WordDetail>(`/api/word?${q}`);
+}
+
+export function upsertWord(payload: {
+  word: string;
+  language: string;
+  native_language: string;
+  familiarity: number;
+  user_comment?: string;
+}) {
+  return apiFetch<{ success: boolean }>('/api/word/upsert', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function enrichWord(word: string, language: string, nativeLanguage: string) {
+  return apiFetch<WordDetail>('/api/word/enrich', {
+    method: 'POST',
+    body: JSON.stringify({ word, language, native_language: nativeLanguage }),
+  });
+}
+
+export function wordTts(word: string, language: string) {
+  return apiFetch<{ success: boolean; audio_url?: string }>('/api/word/tts', {
+    method: 'POST',
+    body: JSON.stringify({ word, language }),
+  });
 }

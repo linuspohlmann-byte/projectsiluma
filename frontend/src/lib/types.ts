@@ -34,9 +34,42 @@ export interface CustomGroupSummary {
   id: number;
   name: string;
   language?: string;
+  native_language?: string;
+  context_description?: string;
+  cefr_level?: string;
   level_count?: number;
   completed_levels?: number;
+  total_words?: number;
+  status?: string;
   topic?: string;
+}
+
+export interface CustomGroupDetail {
+  id: number;
+  group_name?: string;
+  name?: string;
+  context_description?: string;
+  cefr_level?: string;
+  language?: string;
+  native_language?: string;
+  status?: string;
+  motivation?: string;
+}
+
+export interface WordDetail {
+  success?: boolean;
+  word: string;
+  language?: string;
+  translation?: string;
+  example?: string;
+  example_native?: string;
+  ipa?: string;
+  gender?: string;
+  pos?: string;
+  synonyms?: string[];
+  audio_url?: string;
+  familiarity?: number;
+  user_comment?: string;
 }
 
 export interface GroupsSummaryResponse {
