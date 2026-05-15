@@ -19,6 +19,7 @@ export const router = createBrowserRouter([
   {
     element: <ProtectedRoute />,
     children: [
+      { path: 'onboarding', element: <OnboardingPage /> },
       {
         element: <AppLayout />,
         children: [
@@ -31,7 +32,6 @@ export const router = createBrowserRouter([
           { path: 'practice', element: <PracticePage /> },
           { path: 'alphabet', element: <AlphabetPage /> },
           { path: 'settings', element: <SettingsPage /> },
-          { path: 'onboarding', element: <OnboardingPage /> },
         ],
       },
       { path: 'lesson/:levelId', element: <LessonPage /> },

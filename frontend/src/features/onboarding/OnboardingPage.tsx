@@ -30,7 +30,7 @@ export function OnboardingPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto min-h-dvh max-w-lg space-y-6 p-4">
       <div>
         <h1 className="text-2xl font-bold">{t('onboarding.title', 'Willkommen bei Polo')}</h1>
         <p className="text-sm text-[var(--muted)]">
@@ -76,7 +76,7 @@ export function OnboardingPage() {
               {t('buttons.next', 'Weiter')}
             </Button>
           ) : (
-            <Button fullWidth onClick={finish}>
+            <Button fullWidth onClick={() => void finish()}>
               {t('onboarding.finish', 'Los geht\'s')}
             </Button>
           )}
