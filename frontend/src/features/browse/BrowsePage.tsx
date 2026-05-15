@@ -72,7 +72,13 @@ export function BrowsePage() {
       {error && <p className="text-[var(--danger)]">{String(error)}</p>}
       {importError && <p className="text-[var(--danger)]">{importError}</p>}
       {!isLoading && !error && (!data?.groups || data.groups.length === 0) && (
-        <EmptyState title={t('browse.empty', 'Keine Stories gefunden')} />
+        <EmptyState
+          title={t('browse.empty', 'Noch keine Community-Stories')}
+          description={t(
+            'browse.empty_hint',
+            'Erstelle deine eigene Level-Gruppe unter Bibliothek → Neu, oder veröffentliche später eine Story.',
+          )}
+        />
       )}
       <ul className="space-y-3">
         {data?.groups?.map((g) => (

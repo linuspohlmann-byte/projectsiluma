@@ -24,9 +24,14 @@ export function LoginPage() {
     setError('');
     setSubmitting(true);
     try {
-      if (mode === 'login') await login(username, password);
-      else await register(username, email, password);
-      navigate('/library');
+      if (mode === 'login') {
+        await login(username, password);
+        navigate('/library');
+      } else {
+        await register(username, email, password);
+        localStorage.removeItem('siluma_onboarding_done');
+        navigate('/onboarding');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     } finally {

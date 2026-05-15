@@ -7,30 +7,53 @@ import { fetchUserSettings } from '@/lib/learningApi';
 export function ProtectedRoute() {
   const { user, loading } = useAuth();
   const location = useLocation();
-  const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [onboardingResolved, setOnboardingResolved] = useState(false);
 
   useEffect(() => {
     if (!user) {
-      setOnboardingChecked(true);
+      setNeedsOnboarding(false);
+      setOnboardingResolved(true);
       return;
     }
     if (localStorage.getItem('siluma_onboarding_done') === '1') {
       setNeedsOnboarding(false);
-      setOnboardingChecked(true);
+      setOnboardingResolved(true);
       return;
     }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!cancelled) {
+        setNeedsOnboarding(true);
+        setOnboardingResolved(true);
+      }
+    }, 8000);
+
     fetchUserSettings()
       .then((res) => {
+        if (cancelled) return;
         const done = Boolean(res.settings?.onboarding_completed);
         if (done) localStorage.setItem('siluma_onboarding_done', '1');
         setNeedsOnboarding(!done);
       })
-      .catch(() => setNeedsOnboarding(false))
-      .finally(() => setOnboardingChecked(true));
+      .catch(() => {
+        if (!cancelled) setNeedsOnboarding(false);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          window.clearTimeout(timer);
+          setOnboardingResolved(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [user]);
 
-  if (loading || (user && !onboardingChecked)) {
+  if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center">
         <Spinner />
@@ -41,6 +64,7 @@ export function ProtectedRoute() {
   if (!user) return <Navigate to="/login" replace />;
 
   if (
+    onboardingResolved &&
     needsOnboarding &&
     location.pathname !== '/onboarding' &&
     !location.pathname.startsWith('/lesson') &&

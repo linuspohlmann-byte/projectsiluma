@@ -31,7 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       return;
     }
-    const data = await apiFetch<MeResponse>('/api/auth/me');
+    const timeout = new Promise<never>((_, reject) => {
+      window.setTimeout(() => reject(new Error('auth timeout')), 12_000);
+    });
+    const data = await Promise.race([apiFetch<MeResponse>('/api/auth/me'), timeout]);
     setUser(data.user ?? null);
   }, []);
 
