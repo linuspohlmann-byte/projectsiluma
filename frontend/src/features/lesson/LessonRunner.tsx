@@ -13,7 +13,7 @@ import {
 } from '@/lib/learning';
 import {
   finishLesson,
-  startLesson,
+  startLessonPrepared,
   submitLessonMc,
   submitLessonTranslation,
 } from '@/lib/learningApi';
@@ -51,10 +51,11 @@ export function LessonRunner() {
       setLoading(false);
       return;
     }
-    startLesson(groupId, levelNum)
+    startLessonPrepared(groupId, levelNum)
       .then((data) => {
         if (!data.success || !data.run_id) throw new Error(data.error || 'Start failed');
         const list = data.items || [];
+        if (!list.length) throw new Error(t('lesson.empty', 'Level-Inhalt noch nicht bereit'));
         setRunId(data.run_id);
         setItems(list);
         setTasks(buildLessonTaskQueue(list));

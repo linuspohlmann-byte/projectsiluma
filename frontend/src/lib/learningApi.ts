@@ -56,6 +56,26 @@ export function startLesson(groupId: number, levelNum: number) {
   );
 }
 
+export function generateLevelContent(groupId: number, levelNum: number) {
+  return apiFetch<{ success: boolean; message?: string; error?: string }>(
+    `/api/custom-levels/${groupId}/${levelNum}/generate-content`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+/** Ensure ultra-lazy level content exists before starting (matches legacy flow). */
+export async function startLessonPrepared(groupId: number, levelNum: number) {
+  let res = await startLesson(groupId, levelNum);
+  if (res.success && !(res.items && res.items.length > 0)) {
+    await generateLevelContent(groupId, levelNum).catch(() => {});
+    res = await startLesson(groupId, levelNum);
+  }
+  if (!res.success || !(res.items && res.items.length > 0)) {
+    throw new Error(res.error || 'Level-Inhalt noch nicht bereit. Bitte kurz warten und erneut versuchen.');
+  }
+  return res;
+}
+
 export function submitLessonTranslation(
   groupId: number,
   levelNum: number,
