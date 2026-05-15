@@ -58,10 +58,11 @@
     .login-screen-content {
       width: 100%;
       max-width: 400px;
-      padding: 40px 24px;
+      padding: 40px 28px;
       background: var(--card, #ffffff);
-      border-radius: 16px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      border-radius: 20px;
+      border: 1px solid var(--border, #e2e8f0);
+      box-shadow: 0 12px 40px var(--shadow, rgba(15, 23, 42, 0.08));
       margin: 20px;
     }
     
@@ -5985,7 +5986,7 @@
       transform: translate(-50%, -50%);
       background: var(--card);
       border: 2px solid var(--warn);
-      border-radius: 16px;
+      border-radius: 20px;
       padding: 32px;
       max-width: 500px;
       width: 90%;
@@ -8888,11 +8889,20 @@
           if (statCard) {
             const action = statCard.getAttribute('data-action');
             if (action === 'show-all-words') {
-              // TODO: Implement show all words functionality
-              console.log('Show all words clicked');
+              if (typeof window.loadWords === 'function') {
+                window.loadWords(true);
+              } else {
+                const wordsTab = document.querySelector('.nav-tab[data-tab="words"]');
+                if (wordsTab) wordsTab.click();
+              }
             } else if (action === 'show-learned-words') {
-              // TODO: Implement show learned words functionality
-              console.log('Show learned words clicked');
+              window.__wordsFilterLearned = true;
+              if (typeof window.loadWords === 'function') {
+                window.loadWords(true);
+              } else {
+                const wordsTab = document.querySelector('.nav-tab[data-tab="words"]');
+                if (wordsTab) wordsTab.click();
+              }
             }
           }
         });

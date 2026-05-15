@@ -5516,13 +5516,13 @@ def api_admin_cleanup_duplicates():
         user_context = get_user_context()
         user_id = user_context.get('user_id')
         
-        # Admin check temporarily removed - allow all authenticated users
-        # TODO: Re-enable admin check (user_id == 2) after testing
-        # if user_id != 2:
-        #     return jsonify({
-        #         'success': False,
-        #         'error': 'Admin access required'
-        #     }), 403
+        if not user_id:
+            return jsonify({'success': False, 'error': 'Authentication required'}), 401
+        if os.environ.get('FLASK_ENV') != 'development' and user_id != 2:
+            return jsonify({
+                'success': False,
+                'error': 'Admin access required'
+            }), 403
         
         # Get cleanup service URL from environment
         # Railway private domain format: <service_name>.railway.internal

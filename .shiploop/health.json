@@ -1,0 +1,14 @@
+{
+  "current_score": 72,
+  "history": [
+    {"cycle": 0, "score": 35, "note": "baseline from explore"},
+    {"cycle": 1, "score": 72, "note": "sqlite i18n fix, UX polish, dev bootstrap"}
+  ],
+  "total_checks": 0,
+  "critical": 2,
+  "high": 3,
+  "medium": 2,
+  "low": 1,
+  "cycle": 0,
+  "start_score": 35
+}

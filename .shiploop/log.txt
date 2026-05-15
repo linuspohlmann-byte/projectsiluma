@@ -1,0 +1,6 @@
+========================================
+ShipLoop Run: 2026-05-15
+Project Type: Flask web app (language learning)
+Tasks Planned: 9
+========================================
+[cycle 1] Task 1: Local dev bootstrap — started

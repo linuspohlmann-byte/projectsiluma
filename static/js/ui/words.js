@@ -238,6 +238,14 @@ function applyWordsView(){
   const tbody = $('#words-table tbody'); if(!tbody) return; tbody.innerHTML='';
   // Filter
   let arr = WDATA.slice();
+  if (window.__wordsFilterLearned) {
+    arr = arr.filter(row => (parseInt(row.familiarity || 0, 10) >= 4));
+    window.__wordsFilterLearned = false;
+    const filCol = $('#wb-filter-col');
+    const filQ = $('#wb-filter-q');
+    if (filCol) filCol.value = 'familiarity';
+    if (filQ) filQ.value = '';
+  }
   const q = (WFILTER.q||'').toLowerCase();
   if(q){ arr = arr.filter(row=> normalizeCell(WFILTER.col, row[WFILTER.col]).toLowerCase().includes(q)); }
   // Sort

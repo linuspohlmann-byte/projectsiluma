@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>ShipLoop — ProjectSiluma</title>
+  <style>
+    body { font-family: ui-monospace, monospace; background: #0a0a0a; color: #e2e8f0; margin: 0; padding: 32px; }
+    h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 8px; }
+    p { color: #94a3b8; margin: 0 0 24px; }
+    svg { max-width: 640px; width: 100%; }
+    .line-ship { stroke: #334155; stroke-dasharray: 4 4; }
+    .line-curve { fill: none; stroke: #3b82f6; stroke-width: 2; }
+    .dot { fill: #3b82f6; }
+    .label { fill: #94a3b8; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>ShipLoop run complete</h1>
+  <p>ProjectSiluma — 1 cycle focused run, 6 issues fixed, health 35 → 72. Full report: <code>.shiploop/report.md</code></p>
+  <svg viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+    <line class="line-ship" x1="40" y1="48" x2="380" y2="48" />
+    <text class="label" x="40" y="42">ship threshold (98)</text>
+    <polyline class="line-curve" points="40,155 380,108" />
+    <circle class="dot" cx="40" cy="155" r="5" />
+    <circle class="dot" cx="380" cy="108" r="5" />
+    <text class="label" x="28" y="162">35</text>
+    <text class="label" x="368" y="115">72</text>
+    <text class="label" x="40" y="185">start</text>
+    <text class="label" x="350" y="185">end</text>
+  </svg>
+</body>
+</html>

@@ -2199,6 +2199,42 @@ CORE_LOCALIZATION_ENTRIES: list[Dict[str, Any]] = [
         'de': 'Level {level} ist gesperrt. Du musst Level {requiredLevel} mit mindestens 60% abschließen.'
     },
     {
+        'reference_key': 'levels.locked_title',
+        'description': 'Title on level locked overlay',
+        'en': 'Level {level} is locked',
+        'de': 'Level {level} ist gesperrt'
+    },
+    {
+        'reference_key': 'levels.locked_body',
+        'description': 'Body text on level locked overlay',
+        'en': 'Complete level {prevLevel} with at least {percent}% to unlock level {level}.',
+        'de': 'Du musst Level {prevLevel} mit mindestens {percent}% abschließen, um Level {level} freizuschalten.'
+    },
+    {
+        'reference_key': 'levels.locked_progress',
+        'description': 'Progress label on level locked overlay',
+        'en': 'Level {prevLevel} progress: {percent}%',
+        'de': 'Level {prevLevel} Fortschritt: {percent}%'
+    },
+    {
+        'reference_key': 'levels.locked_required',
+        'description': 'Required score label on level locked overlay',
+        'en': 'Required: {percent}%',
+        'de': 'Benötigt: {percent}%'
+    },
+    {
+        'reference_key': 'levels.continue_previous',
+        'description': 'Button to continue previous level from locked overlay',
+        'en': 'Continue level {level}',
+        'de': 'Level {level} fortsetzen'
+    },
+    {
+        'reference_key': 'buttons.close',
+        'description': 'Generic close button',
+        'en': 'Close',
+        'de': 'Schließen'
+    },
+    {
         'reference_key': 'onboarding.preferences_saved',
         'description': 'Onboarding success message after saving preferences',
         'en': 'Welcome to Siluma! Your preferences have been saved.',
@@ -2672,28 +2708,62 @@ def get_all_localization_entries():
         conn.close()
 
 def get_localization_for_language(language_code: str):
-    """Get all localization entries for a specific language - PostgreSQL only"""
+    """Get all localization entries for a specific language as key -> text map."""
     config = get_database_config()
     lang_code = normalize_language_identifier(language_code)
     if not lang_code:
         return {}
-    
-    # Use PostgreSQL directly - no CSV fallback
-    conn = get_db_connection()
+
+    translations: Dict[str, str] = {}
+
+    if config['type'] == 'postgresql':
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                'SELECT key, value FROM localization WHERE language = %s ORDER BY key',
+                (lang_code,)
+            )
+            rows = cur.fetchall()
+            for row in rows:
+                if isinstance(row, dict):
+                    key = row.get('key')
+                    value = row.get('value')
+                else:
+                    key, value = row
+                if not key or value is None:
+                    continue
+                text_value = str(value).strip()
+                if text_value in LOCALIZATION_INVALID_VALUES:
+                    continue
+                translations[key] = text_value
+            return translations
+        finally:
+            conn.close()
+
+    # SQLite: wide table (reference_key + language columns)
+    sqlite_columns = {
+        'de': 'german', 'en': 'english', 'fr': 'french', 'it': 'italian',
+        'es': 'spanish', 'pt': 'portuguese', 'ru': 'russian', 'tr': 'turkish', 'ka': 'georgian',
+    }
+    column = sqlite_columns.get(lang_code) or language_code_to_field(lang_code)
+    if column not in sqlite_columns.values():
+        column = 'english'
+
+    conn = get_db()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            'SELECT key, value FROM localization WHERE language = %s ORDER BY key',
-            (lang_code,)
-        )
-        rows = cur.fetchall()
-        translations = {}
+        rows = conn.execute(
+            f'''
+            SELECT reference_key, {column} AS value
+            FROM localization
+            WHERE {column} IS NOT NULL AND TRIM({column}) != ''
+            ORDER BY reference_key
+            '''
+        ).fetchall()
         for row in rows:
-            if isinstance(row, dict):
-                key = row.get('key')
-                value = row.get('value')
-            else:
-                key, value = row
+            row_dict = dict(row) if not isinstance(row, dict) else row
+            key = row_dict.get('reference_key')
+            value = row_dict.get('value')
             if not key or value is None:
                 continue
             text_value = str(value).strip()

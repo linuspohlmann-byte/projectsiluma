@@ -42,7 +42,7 @@ python3 app.py
 
 - **Port**: Der Server läuft standardmäßig auf Port 5001
 - **Debug Mode**: Automatisch aktiviert (Code-Reload bei Änderungen)
-- **Datenbank**: Verwendet lokale SQLite-Datenbank (falls keine PostgreSQL-Konfiguration vorhanden)
+- **Datenbank**: `run_local.py` setzt `FORCE_SQLITE=1` — lokale SQLite (`polo.db`). Leere `DATABASE_URL` in `.env` für lokalen Betrieb.
 - **Environment Variables**: Stelle sicher, dass benötigte Variablen gesetzt sind (z.B. `OPENAI_API_KEY`)
 
 ## Troubleshooting
