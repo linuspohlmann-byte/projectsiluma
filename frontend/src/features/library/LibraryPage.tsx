@@ -64,10 +64,10 @@ export function LibraryPage() {
                 {g.completed_levels ?? 0} / {g.level_count ?? 0} Levels
               </p>
               <Link
-                to={`/lesson/1?group=${g.id}`}
+                to={`/library/${g.id}`}
                 className="mt-3 inline-block text-sm font-medium text-[var(--accent)]"
               >
-                Level starten
+                {t('library.open_group', 'Levels anzeigen')}
               </Link>
             </Card>
           </li>

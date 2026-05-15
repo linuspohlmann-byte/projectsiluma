@@ -1,4 +1,5 @@
-import { Bell, GraduationCap, Settings } from 'lucide-react';
+import { GraduationCap, Settings } from 'lucide-react';
+import { NotificationsBell } from '@/components/NotificationsPanel';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
 import { useTranslation } from '@/lib/i18n';
@@ -24,13 +25,7 @@ export function AppHeader({ onCourseClick }: { onCourseClick: () => void }) {
           >
             {target}
           </button>
-          <button
-            type="button"
-            className="rounded-xl p-2 hover:bg-[var(--surface)]"
-            aria-label={t('navigation.notifications', 'Notifications')}
-          >
-            <Bell className="h-5 w-5" />
-          </button>
+          <NotificationsBell />
           <Link
             to="/settings"
             className="rounded-xl p-2 hover:bg-[var(--surface)]"

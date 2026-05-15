@@ -3,6 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { LibraryPage } from '@/features/library/LibraryPage';
+import { GroupDetailPage } from '@/features/library/GroupDetailPage';
 import { BrowsePage } from '@/features/browse/BrowsePage';
 import { CoursesPage } from '@/features/courses/CoursesPage';
 import { WordsPage } from '@/features/words/WordsPage';
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/library" replace /> },
           { path: 'library', element: <LibraryPage /> },
+          { path: 'library/:groupId', element: <GroupDetailPage /> },
           { path: 'browse', element: <BrowsePage /> },
           { path: 'courses', element: <CoursesPage /> },
           { path: 'words', element: <WordsPage /> },

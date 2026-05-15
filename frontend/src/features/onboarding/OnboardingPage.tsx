@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { setNativeLang, setTargetLang } from '@/lib/api';
+import { saveUserSettings } from '@/lib/learningApi';
 import { useTranslation } from '@/lib/i18n';
 
 export function OnboardingPage() {
@@ -12,10 +13,19 @@ export function OnboardingPage() {
   const [native, setNative] = useState('de');
   const [target, setTarget] = useState('en');
 
-  const finish = () => {
+  const finish = async () => {
     setNativeLang(native);
     setTargetLang(target);
     localStorage.setItem('siluma_onboarding_done', '1');
+    try {
+      await saveUserSettings({
+        native_language: native,
+        target_language: target,
+        onboarding_completed: true,
+      });
+    } catch {
+      /* local prefs still applied */
+    }
     navigate('/library');
   };
 
