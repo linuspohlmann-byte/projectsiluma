@@ -1606,6 +1606,8 @@ def init_db():
         # Create custom level tables
         create_custom_level_groups_table()
         create_custom_levels_table()
+        from server.db_progress_cache import create_custom_level_progress_table
+        create_custom_level_progress_table()
 
         # Marketplace group ratings table (SQLite)
         cur.execute("""

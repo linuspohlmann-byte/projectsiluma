@@ -230,9 +230,24 @@ function ensureTargetLangOptions(){
 }
 
 function fallbackToHardcodedLanguages(){
-  console.log('⚠️ fallbackToHardcodedLanguages: This function is deprecated - using API-based language loading');
-  // This function is no longer needed as we use API-based language loading
-  // Keep as empty function to prevent errors from existing calls
+  const sel = document.getElementById('target-lang');
+  if (!sel) return;
+  const native = localStorage.getItem('siluma_native') || 'de';
+  fetch(`/api/available-courses?native_lang=${encodeURIComponent(native)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success || !data.languages?.length) return;
+      sel.innerHTML = '';
+      data.languages.forEach(lang => {
+        const o = document.createElement('option');
+        o.value = lang.code;
+        o.textContent = `${lang.native_name || lang.name} (${lang.code.toUpperCase()})`;
+        sel.appendChild(o);
+      });
+      const saved = localStorage.getItem('siluma_target');
+      if (saved && data.languages.some(l => l.code === saved)) sel.value = saved;
+    })
+    .catch(() => {});
 }
 
 function loadLanguagesWithFallback(){

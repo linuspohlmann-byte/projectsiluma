@@ -9074,7 +9074,7 @@
           coursesLoading.style.display = 'block';
           
           // Get current native language
-          const currentNativeLang = window.currentLocale || 'en';
+          const currentNativeLang = localStorage.getItem('siluma_native') || window.currentLocale || 'de';
           
           // Load available courses using the same logic as the dropdown
           console.log('📡 Fetching courses for native lang:', currentNativeLang);
@@ -9128,7 +9128,7 @@
             <div class="course-card-header">
               <div class="course-flag">${flag}</div>
               <div class="course-info">
-                <h3 class="course-name">${lang.name}</h3>
+                <h3 class="course-name">${lang.native_name || lang.name || lang.code}</h3>
                 <p class="course-code">${lang.code.toUpperCase()}</p>
               </div>
             </div>

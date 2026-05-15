@@ -2585,7 +2585,6 @@ def api_custom_levels_groups_summary():
                         clg.id,
                         clg.group_name,
                         clg.context_description,
-                        clg.motivation,
                         clg.cefr_level,
                         clg.language,
                         clg.native_language,
@@ -2599,7 +2598,7 @@ def api_custom_levels_groups_summary():
                         clp.level_number = cl.level_number AND
                         clp.user_id = %s
                     WHERE clg.user_id = %s
-                    GROUP BY clg.id, clg.group_name, clg.context_description, clg.motivation, clg.cefr_level, clg.language, clg.native_language
+                    GROUP BY clg.id, clg.group_name, clg.context_description, clg.cefr_level, clg.language, clg.native_language
                     ORDER BY clg.created_at DESC
                 ''', (user_id, user_id))
             else:
@@ -2610,7 +2609,6 @@ def api_custom_levels_groups_summary():
                         clg.id,
                         clg.group_name,
                         clg.context_description,
-                        clg.motivation,
                         clg.cefr_level,
                         clg.language,
                         clg.native_language,
@@ -2624,7 +2622,7 @@ def api_custom_levels_groups_summary():
                         clp.level_number = cl.level_number AND
                         clp.user_id = ?
                     WHERE clg.user_id = ?
-                    GROUP BY clg.id, clg.group_name, clg.context_description, clg.motivation, clg.cefr_level, clg.language, clg.native_language
+                    GROUP BY clg.id, clg.group_name, clg.context_description, clg.cefr_level, clg.language, clg.native_language
                     ORDER BY clg.created_at DESC
                 ''', (user_id, user_id))
                 result = cur
@@ -2636,7 +2634,7 @@ def api_custom_levels_groups_summary():
                         'id': row.get('id'),
                         'name': row.get('group_name'),
                         'context_description': row.get('context_description') or '',
-                        'motivation': row.get('motivation') or '',
+                        'motivation': '',
                         'cefr_level': row.get('cefr_level') or 'A1',
                         'language': row.get('language'),
                         'native_language': row.get('native_language'),
@@ -2648,15 +2646,15 @@ def api_custom_levels_groups_summary():
                     # Handle tuple/list results
                     groups.append({
                         'id': row[0],
-                        'name': row[1],  # group_name is at index 1
-                        'context_description': row[2] or '',  # context_description is at index 2
-                        'motivation': row[3] or '',  # motivation is at index 3
-                        'cefr_level': row[4] or 'A1',  # cefr_level is at index 4
-                        'language': row[5],
-                        'native_language': row[6],
-                        'level_count': row[7] or 0,
-                        'total_words': row[8] or 0,
-                        'completed_levels': row[9] or 0
+                        'name': row[1],
+                        'context_description': row[2] or '',
+                        'motivation': '',
+                        'cefr_level': row[3] or 'A1',
+                        'language': row[4],
+                        'native_language': row[5],
+                        'level_count': row[6] or 0,
+                        'total_words': row[7] or 0,
+                        'completed_levels': row[8] or 0
                     })
             
             return jsonify({'success': True, 'groups': groups})
@@ -5207,10 +5205,11 @@ def api_words_learning():
                 """, params + [limit, offset])
                 rows = data_cursor.fetchall()
             else:
+                # SQLite schema: native_language lives on words, not user_word_familiarity
                 filters = [
                     "uwf.user_id = ?",
                     "w.language = ?",
-                    "(uwf.native_language = ? OR uwf.native_language IS NULL)",
+                    "(w.native_language = ? OR w.native_language IS NULL OR w.native_language = '')",
                     "COALESCE(uwf.familiarity, 0) BETWEEN ? AND ?"
                 ]
                 params = [user_id, language, native_language, min_fam, max_fam]
