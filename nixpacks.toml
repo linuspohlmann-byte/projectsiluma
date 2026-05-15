@@ -1,8 +1,5 @@
-[phases.setup]
-nixPkgs = ["nodejs_20"]
+# Python API + Vite React SPA (see scripts/build_production.sh)
+providers = ["python", "node"]
 
 [phases.install]
-cmds = [
-  "npm ci --prefix frontend",
-  "npm run build --prefix frontend",
-]
+cmds = ["chmod +x scripts/build_production.sh", "bash scripts/build_production.sh"]
