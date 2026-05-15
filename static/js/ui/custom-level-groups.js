@@ -4615,27 +4615,41 @@ function showCustomLevelLockedMessage(level, prevLevel, prevScore) {
     // prevScore is already in percent (0-100), no need to multiply
     const progressPercent = Math.round(prevScore || 0);
     const neededPercent = 60;
-    
+    const tt = (key, fallback, vars = {}) => {
+        let text = (typeof window.t === 'function') ? window.t(key, fallback) : fallback;
+        Object.entries(vars).forEach(([k, v]) => {
+            text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+        });
+        return text;
+    };
+    const title = tt('levels.locked_title', `Level ${level} is locked`, { level });
+    const body = tt('levels.locked_body', `Complete level ${prevLevel} with at least ${neededPercent}% to unlock level ${level}.`, {
+        level, prevLevel, percent: neededPercent
+    });
+    const progressLabel = tt('levels.locked_progress', `Level ${prevLevel} progress: ${progressPercent}%`, {
+        prevLevel, percent: progressPercent
+    });
+    const requiredLabel = tt('levels.locked_required', `Required: ${neededPercent}%`, { percent: neededPercent });
+    const continueLabel = tt('levels.continue_previous', `Continue level ${prevLevel}`, { level: prevLevel });
+    const closeLabel = tt('buttons.close', 'Close');
+
     message.innerHTML = `
         <div class="icon">🔒</div>
-        <div class="title">Level ${level} ist gesperrt</div>
-        <div class="message">
-            Du musst Level ${prevLevel} mit mindestens ${neededPercent}% abschließen, 
-            um Level ${level} freizuschalten.
-                        </div>
+        <div class="title">${title}</div>
+        <div class="message">${body}</div>
         <div class="progress-info">
-            <div class="progress-text">Level ${prevLevel} Fortschritt: ${progressPercent}%</div>
-                        <div class="progress-bar">
+            <div class="progress-text">${progressLabel}</div>
+            <div class="progress-bar">
                 <div class="progress-fill" style="width: ${Math.min(progressPercent, 100)}%"></div>
-                        </div>
-            <div class="progress-text">Benötigt: ${neededPercent}%</div>
-                        </div>
+            </div>
+            <div class="progress-text">${requiredLabel}</div>
+        </div>
         <div class="actions">
             <button class="btn btn-primary" onclick="goToPreviousCustomLevel(${prevLevel})">
-                Level ${prevLevel} fortsetzen
+                ${continueLabel}
             </button>
             <button class="btn btn-secondary" onclick="hideCustomLevelLockedMessage()">
-                Schließen
+                ${closeLabel}
             </button>
         </div>
     `;

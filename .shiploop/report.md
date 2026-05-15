@@ -6,11 +6,11 @@ First ShipLoop run on **ProjectSiluma**. Focus: make the app runnable locally, f
 
 ## Health Score
 
-| Metric | Value |
-|--------|-------|
-| Start | 35 |
-| End | 72 |
-| Tasks completed | 9 / 9 |
+| Metric | Cycle 1 | Cycle 2 |
+|--------|---------|---------|
+| Start | 35 | 72 |
+| End | 72 | 85 |
+| Tasks completed | 9/9 | 6/9 (cycle 2 ongoing) |
 
 ## Completed
 
@@ -21,9 +21,19 @@ First ShipLoop run on **ProjectSiluma**. Focus: make the app runnable locally, f
 5. **Unfinished UI** — “All words” / “Learned words” stats open Words tab (learned → familiarity ≥ 4 filter)
 6. **Security** — Admin cleanup endpoint requires login; production requires `user_id == 2`
 
+## Cycle 2 (test + fix)
+
+- **Tested:** Login, localization, words, levels, browser UI
+- **Fixed:** Library API 500 (`custom_level_progress` table, `motivation` column)
+- **Fixed:** Words-learning API 500 (SQLite `native_language` on wrong table)
+- **Seeded:** 108 UI strings → **146 DE keys** (no more `[library.title]` on main tabs)
+- **Courses:** German subtitle; API returns 36 languages
+
 ## Deferred
 
 - Full-app visual redesign / splitting `index.html` (9k lines)
+- Onboarding flow still partly English
+- Lesson/practice hardcoded DE strings in JS
 - Automated test suite (pytest)
 - bcrypt password migration
 - Mass removal of `console.log` in `levels.js`

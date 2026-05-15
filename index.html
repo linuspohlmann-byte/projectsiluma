@@ -9058,51 +9058,51 @@
         
         // Course cards functionality
         window.loadCourseCards = function() {
-          console.log('🌍 loadCourseCards called');
           const coursesGrid = document.getElementById('courses-grid');
           const coursesLoading = document.getElementById('courses-loading');
           const coursesError = document.getElementById('courses-error');
-          
-          if (!coursesGrid || !coursesLoading || !coursesError) {
-            console.error('❌ Courses tab elements not found!', {coursesGrid, coursesLoading, coursesError});
-            return;
-          }
-          
-          // Show loading state
+          if (!coursesGrid || !coursesLoading || !coursesError) return;
+
+          if (window._coursesLoadInFlight) return;
+          window._coursesLoadInFlight = true;
+
           coursesGrid.style.display = 'none';
           coursesError.style.display = 'none';
+          coursesError.setAttribute('hidden', '');
           coursesLoading.style.display = 'block';
-          
-          // Get current native language
+          coursesLoading.removeAttribute('hidden');
+
           const currentNativeLang = localStorage.getItem('siluma_native') || window.currentLocale || 'de';
-          
-          // Load available courses using the same logic as the dropdown
-          console.log('📡 Fetching courses for native lang:', currentNativeLang);
-          fetch(`/api/available-courses?native_lang=${currentNativeLang}`)
-            .then(response => response.json())
-            .then(data => {
-              console.log('📡 Courses API response:', data);
-              if (data.success && data.languages) {
-                // Store course data globally
-                window.courseData = {};
-                data.languages.forEach(lang => {
-                  window.courseData[lang.code] = lang;
-                });
-                
-                console.log(`✅ Rendering ${data.languages.length} course cards`);
-                renderCourseCards(data.languages);
-                coursesLoading.style.display = 'none';
-                coursesGrid.style.display = 'grid';
-              } else {
-                throw new Error(data.error || 'Failed to load courses');
+          const url = `/api/available-courses?native_lang=${encodeURIComponent(currentNativeLang)}`;
+
+          fetch(url)
+            .then(async (response) => {
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok || !data.success || !Array.isArray(data.languages)) {
+                throw new Error(data.error || `HTTP ${response.status}`);
               }
+              return data;
             })
-            .catch(error => {
+            .then((data) => {
+              window.courseData = {};
+              data.languages.forEach((lang) => { window.courseData[lang.code] = lang; });
+              renderCourseCards(data.languages);
+              coursesLoading.style.display = 'none';
+              coursesLoading.setAttribute('hidden', '');
+              coursesError.style.display = 'none';
+              coursesError.setAttribute('hidden', '');
+              coursesGrid.style.display = 'grid';
+              coursesGrid.removeAttribute('hidden');
+            })
+            .catch((error) => {
               console.error('Error loading courses:', error);
               coursesLoading.style.display = 'none';
+              coursesLoading.setAttribute('hidden', '');
               coursesError.style.display = 'block';
-            });
-        }
+              coursesError.removeAttribute('hidden');
+            })
+            .finally(() => { window._coursesLoadInFlight = false; });
+        };
         
         function renderCourseCards(languages) {
           const coursesGrid = document.getElementById('courses-grid');
@@ -9133,7 +9133,7 @@
               </div>
             </div>
             <div class="course-actions">
-              <button class="course-btn primary" onclick="selectCourse('${lang.code}')">
+              <button class="course-btn primary" onclick="selectCourse(${JSON.stringify(lang.code)})">
                 Kurs auswählen
               </button>
             </div>

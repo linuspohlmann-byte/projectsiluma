@@ -2879,7 +2879,10 @@ export function showTab(tab){
         
         // Hide all tab contents
         const tabContents = document.querySelectorAll('.tab-content');
-        tabContents.forEach(content => content.classList.remove('active'));
+        tabContents.forEach((content) => {
+          content.classList.remove('active');
+          content.setAttribute('aria-hidden', 'true');
+        });
         
         // Remove active class from all tabs
         const tabs = document.querySelectorAll('.nav-tab');
@@ -2889,7 +2892,7 @@ export function showTab(tab){
         const selectedContent = document.getElementById(`${tab}-tab`);
         if (selectedContent) {
             selectedContent.classList.add('active');
-            console.log(`✅ Activated tab content: #${tab}-tab`);
+            selectedContent.setAttribute('aria-hidden', 'false');
         } else {
             console.warn(`⚠️ Tab content not found: #${tab}-tab`);
         }
@@ -2903,12 +2906,6 @@ export function showTab(tab){
             console.warn(`⚠️ Tab button not found: [data-tab="${tab}"]`);
         }
         
-        // Special handling for courses tab - load course cards
-        if (tab === 'courses') {
-            if (typeof window.loadCourseCards === 'function') {
-                window.loadCourseCards();
-            }
-        }
         if (tab === 'words') {
             console.log('📝 Calling words tab callback...');
             if (window.wordsTabManager && typeof window.wordsTabManager.activate === 'function') {

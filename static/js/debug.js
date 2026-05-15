@@ -1,6 +1,7 @@
 // Debug utility - disable console logs in production
 // Set window.DEBUG = true in console to enable debug logs
-const DEBUG_ENABLED = window.DEBUG === true || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// Quiet by default — set window.DEBUG = true in the console for verbose logs
+const DEBUG_ENABLED = window.DEBUG === true;
 
 // Override console methods in production
 if (!DEBUG_ENABLED) {

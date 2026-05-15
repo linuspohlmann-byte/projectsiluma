@@ -76,7 +76,7 @@ function restoreSettings(){
     if(n) {
       localStorage.setItem('siluma_native', n);
     } else {
-      localStorage.setItem('siluma_native', 'en'); // Default to English
+      localStorage.setItem('siluma_native', 'de'); // Default UI locale
     }
     
     // Set target language with fallback

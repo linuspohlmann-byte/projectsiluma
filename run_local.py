@@ -9,6 +9,7 @@ import sys
 os.environ.setdefault('FLASK_ENV', 'development')
 os.environ.setdefault('PORT', '5001')
 os.environ.setdefault('FORCE_SQLITE', '1')
+os.environ.setdefault('SILUMA_QUIET', '1')
 
 # Add the project directory to Python path
 project_dir = os.path.dirname(os.path.abspath(__file__))

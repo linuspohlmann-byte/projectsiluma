@@ -207,7 +207,7 @@ function performLocaleChange(locale) {
   }
   
   localeSettingInProgress = true;
-  currentLocale = locale || 'en';
+  currentLocale = locale || localStorage.getItem('siluma_native') || 'de';
   missingTranslationsLogged.clear();
   translationsLoaded = false;
   window.translationsLoaded = false;
@@ -388,9 +388,12 @@ export function applyI18n() {
             return;
           }
 
-          if (el.children.length === 1 && el.children[0].tagName === 'SPAN') {
+          const labelChild = el.querySelector(':scope > .btn-label');
+          if (labelChild) {
+            labelChild.textContent = value;
+          } else if (el.children.length === 1 && el.children[0].tagName === 'SPAN') {
             el.children[0].textContent = value;
-          } else {
+          } else if (el.childElementCount === 0) {
             el.textContent = value;
           }
         } catch (err) {

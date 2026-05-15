@@ -1,0 +1,60 @@
+{
+  "archive_date": "20251117_143018",
+  "archive_path": "archive_one_time_files/archive_20251117_143018",
+  "files_archived": {
+    "migrations": [
+      "migrate_progress_cache.py",
+      "migrate_topic_localizations.py",
+      "add_topic_localizations.py",
+      "add_topic_localizations_api.py"
+    ],
+    "imports": [
+      "import_excel_localization.py",
+      "import_words_from_json.py"
+    ],
+    "analysis_docs": [
+      "A0_CEFR_FIX_COMPLETE.md",
+      "A0_PERSISTENCE_FINAL_SOLUTION.md",
+      "DEBUGGING_A0_PERSISTENCE.md",
+      "DEPLOYMENT_FIXES.md",
+      "EVALUATION_FIXES_FINAL.md",
+      "EVALUATION_MIGRATION_SUMMARY.md",
+      "LEVEL_LOADING_REDESIGN.md",
+      "LEVEL_START_ANALYSIS.md",
+      "LOG_ANALYSIS_ISSUES.md",
+      "ONBOARDING_AUTO_IMPORT_FEATURE.md",
+      "ONBOARDING_CRITICAL_FIX.md",
+      "ONBOARDING_FIXES.md",
+      "ONBOARDING_FIXES_V2.md",
+      "ONBOARDING_FIXES_V3_FINAL.md",
+      "PERFORMANCE_ANALYSIS.md",
+      "PERFORMANCE_IMPLEMENTATION_SUMMARY.md",
+      "PERFORMANCE_OPTIMIZATION_PLAN.md",
+      "PERFORMANCE_OPTIMIZATION.md",
+      "PRACTICE_ANALYSIS.md",
+      "RAILWAY_MIGRATION_PLAN.md",
+      "MIGRATE_TOPIC_LOCALIZATIONS.md"
+    ],
+    "setup_scripts": [
+      "create_performance_indexes.py",
+      "railway_create_indexes.py",
+      "test_railway_migration.sh",
+      "cleanup_redundant_files.py"
+    ],
+    "sql_files": [
+      "create_test_user.sql",
+      "create_user_word_familiarity_table.sql"
+    ],
+    "data_files": [
+      "localization_complete.csv"
+    ],
+    "analysis_scripts": [
+      "analyze_data_folder.py"
+    ]
+  },
+  "total_files": 35,
+  "warnings": [
+    "\u2139\ufe0f  Running in local environment - migrations should be verified in production"
+  ],
+  "restore_instructions": "See restore_archive.sh for restore instructions"
+}
