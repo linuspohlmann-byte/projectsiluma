@@ -7,7 +7,7 @@
 pip install -r requirements.txt
 
 # 2. Erstelle einen Test-Benutzer (falls noch nicht vorhanden)
-python3 create_local_user.py
+python3 scripts/dev/create_local_user.py
 
 # 3. Starte den lokalen Server
 python3 run_local.py
@@ -26,10 +26,10 @@ Standard-Test-Benutzer:
 
 ```bash
 # Mit Standard-Credentials
-python3 create_local_user.py
+python3 scripts/dev/create_local_user.py
 
 # Mit eigenen Credentials
-python3 create_local_user.py --username meinuser --email mein@email.com --password meinpasswort
+python3 scripts/dev/create_local_user.py --username meinuser --email mein@email.com --password meinpasswort
 ```
 
 ## Alternative: Direkt mit app.py

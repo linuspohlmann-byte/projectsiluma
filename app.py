@@ -7518,7 +7518,7 @@ def api_import_excel():
         
         try:
             # Import the file using our import function
-            from import_excel_localization import import_excel_to_database
+            from server.services.localization_import import import_excel_to_database
             success = import_excel_to_database(temp_file_path)
             
             if success:

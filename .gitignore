@@ -39,6 +39,8 @@ media/
 *.db
 *.sqlite
 *.sqlite3
+databases/
+polo.db
 
 # Environment variables
 .env
