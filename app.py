@@ -179,6 +179,12 @@ from server.services.llm import (
 from server.services.tts import ensure_tts_for_alphabet_letter, ensure_tts_for_word, ensure_tts_for_sentence, ensure_tts_for_word_with_context
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIST = os.path.join(APP_ROOT, 'frontend', 'dist')
+LEGACY_INDEX = 'index.html'
+
+
+def _spa_enabled() -> bool:
+    return os.path.isfile(os.path.join(FRONTEND_DIST, 'index.html'))
 
 app = Flask(__name__)
 
@@ -255,7 +261,15 @@ except Exception as e:
 
 @app.get('/')
 def index():
-    return send_from_directory(APP_ROOT, 'index.html')
+    if _spa_enabled():
+        return send_from_directory(FRONTEND_DIST, 'index.html')
+    return send_from_directory(APP_ROOT, LEGACY_INDEX)
+
+
+@app.get('/legacy')
+@app.get('/legacy/')
+def legacy_ui():
+    return send_from_directory(APP_ROOT, LEGACY_INDEX)
 
 @app.get('/health')
 def health():
@@ -2005,14 +2019,30 @@ def api_user_migrate():
 def serve_static(filename):
     return send_from_directory(os.path.join(APP_ROOT, 'static'), filename)
 
+@app.get('/assets/<path:filename>')
+def spa_assets(filename):
+    if not _spa_enabled():
+        return jsonify({'error': 'Not found'}), 404
+    assets_dir = os.path.join(FRONTEND_DIST, 'assets')
+    path = os.path.join(assets_dir, filename)
+    if os.path.isfile(path):
+        return send_from_directory(assets_dir, filename)
+    return jsonify({'error': 'Not found'}), 404
+
+
 # Serve favicon or other root files if requested directly
 @app.get('/<path:fname>')
 def static_passthrough(fname):
+    if _spa_enabled():
+        spa_path = os.path.join(FRONTEND_DIST, fname)
+        if os.path.isfile(spa_path):
+            return send_from_directory(FRONTEND_DIST, fname)
     p = os.path.join(APP_ROOT, fname)
     if os.path.isfile(p):
         return send_from_directory(APP_ROOT, fname)
-    # fallback to index for SPA routes
-    return send_from_directory(APP_ROOT, 'index.html')
+    if _spa_enabled():
+        return send_from_directory(FRONTEND_DIST, 'index.html')
+    return send_from_directory(APP_ROOT, LEGACY_INDEX)
 
 ############################
 # Optional OpenAI helpers (fallback to static if no key)

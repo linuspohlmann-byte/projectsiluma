@@ -1,0 +1,14 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply min-h-dvh bg-[var(--bg)] text-[var(--fg)] font-sans;
+  }
+  #root {
+    @apply min-h-dvh;
+  }
+}
