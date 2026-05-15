@@ -6554,7 +6554,7 @@
                   <div class="levels-group-subtitle" id="levels-group-subtitle"></div>
                 </div>
                 <button id="levels-group-back" type="button" class="levels-group-back">
-                  ← <span data-i18n="buttons.back_to_overview">Back to Overview</span>
+                  ← <span data-i18n="buttons.back_to_overview">Zurück zur Übersicht</span>
                 </button>
               </div>
               <div id="levels" class="levels" style="display:none"></div>
@@ -6597,20 +6597,20 @@
         <div id="courses-tab" class="tab-content">
           <div class="courses-container">
             <div class="courses-header">
-              <h2 class="courses-title" data-i18n="courses.title">🌍 Languages</h2>
-              <p class="courses-subtitle" data-i18n="courses.subtitle">Choose a language to start learning</p>
+              <h2 class="courses-title" data-i18n="courses.title">🌍 Sprachen</h2>
+              <p class="courses-subtitle" data-i18n="courses.subtitle">Wähle eine Sprache zum Lernen</p>
             </div>
             
             <div class="courses-grid" id="courses-grid">
               <!-- Course cards will be dynamically generated here -->
             </div>
             
-            <div class="courses-loading" id="courses-loading" style="display: none;">
+            <div class="courses-loading" id="courses-loading" style="display: none;" hidden>
               <div class="loading-spinner"></div>
               <p>Lade verfügbare Sprachen...</p>
             </div>
             
-            <div class="courses-error" id="courses-error" style="display: none;">
+            <div class="courses-error" id="courses-error" style="display: none;" hidden aria-live="polite">
               <div class="error-icon">⚠️</div>
               <p>Fehler beim Laden der Sprachen. Bitte versuche es erneut.</p>
               <button id="retry-courses" class="retry-btn">Erneut versuchen</button>
@@ -6821,9 +6821,9 @@
           <textarea id="user-translation" data-i18n-placeholder="labels.translation" placeholder="Ihre Übersetzung hier…"></textarea>
         </div>
         <div class="row actions" style="margin-top:8px">
-          <button id="abort-level" class="secondary" data-i18n="buttons.abort">Cancel</button>
+          <button id="abort-level" class="secondary" data-i18n="buttons.abort">Abbrechen</button>
           <div class="grow"></div>
-          <button id="check" data-i18n="buttons.check_answer">Check Answer</button>
+          <button id="check" data-i18n="buttons.check_answer">Antwort prüfen</button>
         </div>
       </section>
       
@@ -7130,21 +7130,21 @@
   <div id="login-modal" class="modal" style="display: none;">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Login</h3>
+        <h3 data-i18n="auth.login_title">Anmelden</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <form id="login-form">
           <div class="field">
-            <label for="login-username">Username or Email</label>
+            <label for="login-username" data-i18n="auth.username_or_email">Benutzername oder E-Mail</label>
             <input type="text" id="login-username" required>
           </div>
           <div class="field">
-            <label for="login-password">Password</label>
+            <label for="login-password" data-i18n="auth.password">Passwort</label>
             <input type="password" id="login-password" required>
           </div>
           <div class="field">
-            <button type="submit" class="primary" style="width: 100%; padding: 12px;">Login</button>
+            <button type="submit" class="primary" style="width: 100%; padding: 12px;" data-i18n="auth.login_submit">Anmelden</button>
           </div>
         </form>
         <div id="login-error" class="error-message" style="display: none; color: var(--warn); font-size: 14px; margin-top: 12px;"></div>
@@ -7155,25 +7155,25 @@
   <div id="register-modal" class="modal" style="display: none;">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Register</h3>
+        <h3 data-i18n="auth.register_title">Registrieren</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <form id="register-form">
           <div class="field">
-            <label for="register-username">Username</label>
+            <label for="register-username" data-i18n="auth.username">Benutzername</label>
             <input type="text" id="register-username" required minlength="3">
           </div>
           <div class="field">
-            <label for="register-email">Email</label>
+            <label for="register-email" data-i18n="auth.email">E-Mail</label>
             <input type="email" id="register-email" required>
           </div>
           <div class="field">
-            <label for="register-password">Password</label>
+            <label for="register-password" data-i18n="auth.password">Passwort</label>
             <input type="password" id="register-password" required minlength="6">
           </div>
           <div class="field">
-            <button type="submit" class="primary" style="width: 100%; padding: 12px;">Register</button>
+            <button type="submit" class="primary" style="width: 100%; padding: 12px;" data-i18n="auth.register_submit">Registrieren</button>
           </div>
         </form>
         <div id="register-error" class="error-message" style="display: none; color: var(--warn); font-size: 14px; margin-top: 12px;"></div>
@@ -7191,41 +7191,41 @@
           </div>
           <span class="progress-text" id="onboarding-progress-text">1 / 4</span>
         </div>
-        <button class="onboarding-skip" id="onboarding-skip" data-i18n="onboarding.skip">Skip</button>
+        <button class="onboarding-skip" id="onboarding-skip" data-i18n="onboarding.skip">Überspringen</button>
       </div>
       
       <div class="onboarding-content">
         <!-- Step 1: Welcome -->
         <div class="onboarding-step active" id="onboarding-step-1">
           <div class="onboarding-icon">🎯</div>
-          <h2 data-i18n="onboarding.welcome.title">Welcome to Siluma!</h2>
-          <p data-i18n="onboarding.welcome.subtitle">Let's personalize your learning experience in just a few steps.</p>
+          <h2 data-i18n="onboarding.welcome.title">Willkommen bei Siluma!</h2>
+          <p data-i18n="onboarding.welcome.subtitle">Lass uns dein Lernerlebnis in wenigen Schritten personalisieren.</p>
           <div class="onboarding-actions">
-            <button class="primary onboarding-next" data-i18n="onboarding.get_started">Get Started</button>
+            <button class="primary onboarding-next" data-i18n="onboarding.get_started">Los geht's</button>
           </div>
         </div>
 
         <!-- Step 2: Native Language -->
         <div class="onboarding-step" id="onboarding-step-2">
           <div class="onboarding-icon">🌍</div>
-          <h2 data-i18n="onboarding.native_language.title">What's your native language?</h2>
-          <p data-i18n="onboarding.native_language.subtitle">This helps us provide better translations and explanations.</p>
+          <h2 data-i18n="onboarding.native_language.title">Was ist deine Muttersprache?</h2>
+          <p data-i18n="onboarding.native_language.subtitle">Das hilft uns bei besseren Übersetzungen und Erklärungen.</p>
           <div class="onboarding-field">
             <select id="onboarding-native-lang" class="onboarding-select">
               <!-- Options will be populated dynamically from /api/available-languages -->
             </select>
           </div>
           <div class="onboarding-actions">
-            <button class="secondary onboarding-back" data-i18n="onboarding.back">Back</button>
-            <button class="primary onboarding-next" data-i18n="onboarding.next">Next</button>
+            <button class="secondary onboarding-back" data-i18n="onboarding.back">Zurück</button>
+            <button class="primary onboarding-next" data-i18n="onboarding.next">Weiter</button>
           </div>
         </div>
 
         <!-- Step 3: Target Language & Level -->
         <div class="onboarding-step" id="onboarding-step-3">
           <div class="onboarding-icon">🎓</div>
-          <h2 data-i18n="onboarding.target_language.title">What would you like to learn?</h2>
-          <p data-i18n="onboarding.target_language.subtitle">Choose your target language and current proficiency level.</p>
+          <h2 data-i18n="onboarding.target_language.title">Was möchtest du lernen?</h2>
+          <p data-i18n="onboarding.target_language.subtitle">Wähle Zielsprache und aktuelles Sprachniveau.</p>
           <div class="onboarding-fields">
             <div class="onboarding-field">
               <label data-i18n="labels.course">Zielsprache</label>
@@ -7247,16 +7247,16 @@
             </div>
           </div>
           <div class="onboarding-actions">
-            <button class="secondary onboarding-back" data-i18n="onboarding.back">Back</button>
-            <button class="primary onboarding-next" data-i18n="onboarding.next">Next</button>
+            <button class="secondary onboarding-back" data-i18n="onboarding.back">Zurück</button>
+            <button class="primary onboarding-next" data-i18n="onboarding.next">Weiter</button>
           </div>
         </div>
 
         <!-- Step 4: Learning Focus -->
         <div class="onboarding-step" id="onboarding-step-4">
           <div class="onboarding-icon">🎯</div>
-          <h2 data-i18n="onboarding.learning_focus.title">What's your learning focus?</h2>
-          <p data-i18n="onboarding.learning_focus.subtitle">Choose topics that interest you most.</p>
+          <h2 data-i18n="onboarding.learning_focus.title">Worauf liegt dein Lernfokus?</h2>
+          <p data-i18n="onboarding.learning_focus.subtitle">Wähle Themen, die dich am meisten interessieren.</p>
           <div class="onboarding-options">
             <div class="onboarding-option" data-topic="daily life">
               <div class="option-icon">🏠</div>
@@ -7300,23 +7300,23 @@
   <div id="settings-modal" class="modal" style="display: none;">
     <div class="modal-content" style="max-width: 500px;">
       <div class="modal-header">
-        <h3 data-i18n="settings.title">Settings</h3>
+        <h3 data-i18n="settings.title">Einstellungen</h3>
         <button class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="settings-content">
           <div class="settings-section">
-            <h4 data-i18n="settings.display">Display</h4>
+            <h4 data-i18n="settings.display">Anzeige</h4>
             <div class="field">
               <label for="settings-theme" data-i18n="settings.theme">Theme</label>
               <select id="settings-theme">
-                <option value="light" data-i18n="settings.theme_light">Light</option>
-                <option value="dark" data-i18n="settings.theme_dark">Dark</option>
-                <option value="auto" data-i18n="settings.theme_auto">Auto</option>
+                <option value="light" data-i18n="settings.theme_light">Hell</option>
+                <option value="dark" data-i18n="settings.theme_dark">Dunkel</option>
+                <option value="auto" data-i18n="settings.theme_auto">Automatisch</option>
               </select>
             </div>
             <div class="field">
-              <label for="settings-native-lang" data-i18n="settings.native_language">Native Language</label>
+              <label for="settings-native-lang" data-i18n="settings.native_language">Muttersprache</label>
               <select id="settings-native-lang">
                 <option value="de" data-i18n="language_names.de">Deutsch</option>
                 <option value="en" data-i18n="language_names.en">English</option>
@@ -7325,7 +7325,7 @@
           </div>
           
           <div class="settings-section">
-            <h4 data-i18n="settings.progress">Progress</h4>
+            <h4 data-i18n="settings.progress">Fortschritt</h4>
             <div class="progress-stats">
               <div class="stat-item">
                 <span class="stat-label" data-i18n="settings.levels_completed">Total Levels Completed:</span>
@@ -7343,8 +7343,8 @@
           </div>
           
           <div class="settings-actions">
-            <button id="save-settings" class="primary" style="width: 100%; padding: 12px; margin-bottom: 8px;" data-i18n="settings.save">Save Settings</button>
-            <button id="reset-progress" class="secondary" style="width: 100%; padding: 12px;" data-i18n="settings.reset_progress">Reset Progress</button>
+            <button id="save-settings" class="primary" style="width: 100%; padding: 12px; margin-bottom: 8px;" data-i18n="settings.save">Einstellungen speichern</button>
+            <button id="reset-progress" class="secondary" style="width: 100%; padding: 12px;" data-i18n="settings.reset_progress">Fortschritt zurücksetzen</button>
           </div>
           
           <!-- Admin Section (visible for all authenticated users) -->

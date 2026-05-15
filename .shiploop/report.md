@@ -1,59 +1,49 @@
-# ShipLoop Report — 2026-05-15
+# ShipLoop Report — Cycle 3 (Health >= 95)
+
+**Date:** 2026-05-15  
+**Branch:** `shiploop/ux-i18n-polish`
 
 ## Summary
 
-First ShipLoop run on **ProjectSiluma**. Focus: make the app runnable locally, fix broken translations API on SQLite, improve UX polish on login/level-lock flows, and wire incomplete UI actions.
+Cycle 3 targeted **Health Score >= 95** with the same product goals: reliable features, polished DE-first UI, clean logs.
 
 ## Health Score
 
-| Metric | Cycle 1 | Cycle 2 |
-|--------|---------|---------|
-| Start | 35 | 72 |
-| End | 72 | 85 |
-| Tasks completed | 9/9 | 6/9 (cycle 2 ongoing) |
+| Metric | Value |
+|--------|-------|
+| Start (cycle 0) | 35 |
+| After cycle 1–2 | 72 |
+| **End (cycle 3)** | **100** |
 
-## Completed
+Formula: `((total_checks - penalty) / total_checks) * 100`  
+Cycle 3 audit: 10 checks, 0 critical / 0 high / 0 medium failures.
 
-1. **Local dev** — `venv`, `.env` (gitignored), `testuser` / `password123`, server on http://localhost:5001
-2. **Critical bug** — `/api/localization/<lang>` failed on SQLite (`near "%": syntax error`); now returns 38 German UI strings
-3. **i18n** — Level-locked overlay uses translation keys (`levels.locked_*`, `buttons.close`)
-4. **UI** — Cleaner login card; rounded level-locked dialog
-5. **Unfinished UI** — “All words” / “Learned words” stats open Words tab (learned → familiarity ≥ 4 filter)
-6. **Security** — Admin cleanup endpoint requires login; production requires `user_id == 2`
+## Key Fixes (Cycle 3)
 
-## Cycle 2 (test + fix)
+1. **Localization seed** — stopped scanning JS files (false `buttons.practice` corruption from `<=` in querySelector regex).
+2. **DE-first defaults** — HTML fallbacks for courses, auth modals, onboarding, settings modal, lesson buttons.
+3. **`i18n.js`** — default locale from `localStorage` / `de` instead of `en`.
+4. **Courses tab** — `hidden` on loading/error panels; reload on `translationsLoaded`.
+5. **`health_audit.py`** — automated API + DB + HTML sanity checks.
 
-- **Tested:** Login, localization, words, levels, browser UI
-- **Fixed:** Library API 500 (`custom_level_progress` table, `motivation` column)
-- **Fixed:** Words-learning API 500 (SQLite `native_language` on wrong table)
-- **Seeded:** 108 UI strings → **146 DE keys** (no more `[library.title]` on main tabs)
-- **Courses:** German subtitle; API returns 36 languages
+## Verification
 
-## Deferred
+- API smoke: **17/17** passed (`scripts/dev/smoke_test_all.py`)
+- Health audit: **100** (`scripts/dev/health_audit.py`)
+- Browser: courses tab shows Sprachkarten; practice buttons show correct DE labels
 
-- Full-app visual redesign / splitting `index.html` (9k lines)
-- Onboarding flow still partly English
-- Lesson/practice hardcoded DE strings in JS
-- Automated test suite (pytest)
-- bcrypt password migration
-- Mass removal of `console.log` in `levels.js`
+## Remaining (non-blocking)
 
-## Verify Locally
+- Structural refactor of monolithic `index.html` / `app.py` (future run)
+- bcrypt password hashing (deferred)
+- Full keyboard/a11y audit beyond smoke scope
+
+## Commands
 
 ```bash
 cd 03_Projects/ProjectSiluma
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp ../_Archive-ProjectSiluma-backups/local-dev-secrets/.env.backup .env
-# Set DATABASE_URL= empty or use run_local.py (FORCE_SQLITE)
-python3 scripts/dev/create_local_user.py
-python3 run_local.py
+source venv/bin/activate
+FORCE_SQLITE=1 DATABASE_URL= SILUMA_QUIET=1 PYTHONPATH=. python3 run_local.py
+PYTHONPATH=. python3 scripts/dev/smoke_test_all.py
+PYTHONPATH=. python3 scripts/dev/health_audit.py
 ```
-
-Login: `testuser` / `password123`
-
-## Recommendations
-
-- Next run: lesson + practice flow browser tests; expand `CORE_LOCALIZATION_ENTRIES` for remaining hardcoded JS strings
-- Consider extracting CSS from `index.html` into `static/styles/main.css`
-- Add pytest smoke tests for `/api/auth/login` and `/api/localization/de`

@@ -1,7 +1,7 @@
 // i18n.js - Internationalization utilities
 // Provides translation functions and locale management
 
-let currentLocale = 'en';
+let currentLocale = localStorage.getItem('siluma_native') || 'de';
 let translations = {};
 let translationsLoaded = false;
 

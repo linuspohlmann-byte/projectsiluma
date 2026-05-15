@@ -76,6 +76,13 @@ export async function initializeAppContent() {
     const { applyI18n } = await import('./i18n.js');
     applyI18n();
     if (window.DEBUG) console.log('✅ Localization applied');
+    const reloadCourses = () => {
+      if (typeof window.loadCourseCards === 'function') {
+        window.loadCourseCards();
+      }
+    };
+    window.addEventListener('translationsLoaded', reloadCourses, { once: true });
+    setTimeout(reloadCourses, 1500);
   } catch (error) {
     console.warn('⚠️ Could not apply localization:', error);
   }

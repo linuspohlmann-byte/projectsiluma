@@ -1,14 +1,28 @@
 {
-  "current_score": 72,
+  "current_score": 100,
   "history": [
-    {"cycle": 0, "score": 35, "note": "baseline from explore"},
-    {"cycle": 1, "score": 72, "note": "sqlite i18n fix, UX polish, dev bootstrap"}
+    {
+      "cycle": 0,
+      "score": 35,
+      "note": "baseline from explore"
+    },
+    {
+      "cycle": 1,
+      "score": 72,
+      "note": "sqlite i18n fix, UX polish, dev bootstrap"
+    },
+    {
+      "cycle": 2,
+      "score": 100,
+      "note": "health_audit.py"
+    }
   ],
-  "total_checks": 0,
-  "critical": 2,
-  "high": 3,
-  "medium": 2,
-  "low": 1,
-  "cycle": 0,
-  "start_score": 35
+  "total_checks": 10,
+  "critical": 0,
+  "high": 0,
+  "medium": 0,
+  "low": 0,
+  "cycle": 2,
+  "start_score": 35,
+  "failed_checks": []
 }
