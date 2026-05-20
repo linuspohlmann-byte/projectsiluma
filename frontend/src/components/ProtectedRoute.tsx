@@ -63,9 +63,13 @@ export function ProtectedRoute() {
 
   if (!user) return <Navigate to="/login" replace />;
 
+  const onboardingDoneLocal =
+    typeof localStorage !== 'undefined' && localStorage.getItem('siluma_onboarding_done') === '1';
+
   if (
     onboardingResolved &&
     needsOnboarding &&
+    !onboardingDoneLocal &&
     location.pathname !== '/onboarding' &&
     !location.pathname.startsWith('/lesson') &&
     !location.pathname.startsWith('/evaluation')

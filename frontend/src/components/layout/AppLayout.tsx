@@ -8,7 +8,7 @@ export function AppLayout() {
   const [courseOpen, setCourseOpen] = useState(false);
 
   return (
-    <div className="flex min-h-dvh flex-col pb-20 md:pb-0">
+    <div className="flex min-h-dvh flex-col pb-24 md:pb-0">
       <AppHeader onCourseClick={() => setCourseOpen(true)} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-4">
         <Outlet />

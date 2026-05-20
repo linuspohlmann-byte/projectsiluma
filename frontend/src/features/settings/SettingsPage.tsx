@@ -105,7 +105,7 @@ export function SettingsPage() {
   const stats = statsData?.stats;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8 md:pb-0">
       <div>
         <h1 className="text-2xl font-bold">{t('settings.title', 'Einstellungen')}</h1>
         <p className="text-sm text-[var(--muted)]">{user?.username}</p>

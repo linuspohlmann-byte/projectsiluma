@@ -12,8 +12,11 @@ export function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [native, setNative] = useState('de');
   const [target, setTarget] = useState('en');
+  const [finishing, setFinishing] = useState(false);
 
   const finish = async () => {
+    if (finishing) return;
+    setFinishing(true);
     setNativeLang(native);
     setTargetLang(target);
     localStorage.setItem('siluma_onboarding_done', '1');
@@ -25,8 +28,10 @@ export function OnboardingPage() {
       });
     } catch {
       /* local prefs still applied */
+    } finally {
+      setFinishing(false);
     }
-    navigate('/library');
+    navigate('/library', { replace: true });
   };
 
   return (
@@ -76,8 +81,8 @@ export function OnboardingPage() {
               {t('buttons.next', 'Weiter')}
             </Button>
           ) : (
-            <Button fullWidth onClick={() => void finish()}>
-              {t('onboarding.finish', 'Los geht\'s')}
+            <Button fullWidth disabled={finishing} onClick={() => void finish()}>
+              {finishing ? t('buttons.loading', 'Lädt…') : t('onboarding.finish', 'Los geht\'s')}
             </Button>
           )}
         </div>
