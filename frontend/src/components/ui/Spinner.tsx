@@ -1,6 +1,12 @@
 import { cn } from '@/lib/cn';
 
-export function Spinner({ className }: { className?: string }) {
+export function Spinner({
+  className,
+  label = 'Loading',
+}: {
+  className?: string;
+  label?: string;
+}) {
   return (
     <div
       className={cn(
@@ -8,7 +14,7 @@ export function Spinner({ className }: { className?: string }) {
         className,
       )}
       role="status"
-      aria-label="Loading"
+      aria-label={label}
     />
   );
 }

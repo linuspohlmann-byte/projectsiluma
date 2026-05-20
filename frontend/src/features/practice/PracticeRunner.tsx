@@ -2,10 +2,48 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Spinner } from '@/components/ui/Spinner';
-import { apiFetch, getTargetLang } from '@/lib/api';
-import { gradePractice, startPractice } from '@/lib/learningApi';
+import { apiFetch, getNativeLang, getTargetLang } from '@/lib/api';
+import type { GroupsSummaryResponse } from '@/lib/types';
+import {
+  fetchCustomLevelContent,
+  gradePractice,
+  startPractice,
+  wordsFromLevelContent,
+} from '@/lib/learningApi';
 import { useTranslation } from '@/lib/i18n';
+
+async function loadPracticeWords(
+  groupId: string | null,
+  levelNum: string | null,
+  lang: string,
+): Promise<string[]> {
+  if (groupId && levelNum) {
+    const detail = await fetchCustomLevelContent(Number(groupId), Number(levelNum));
+    if (!detail.success) throw new Error(detail.error || 'Level not found');
+    return wordsFromLevelContent(detail.level?.content);
+  }
+
+  const wl = await apiFetch<{ success: boolean; words?: { word: string }[] }>(
+    `/api/words/learning?language=${encodeURIComponent(lang)}&min_familiarity=0&max_familiarity=4&limit=30`,
+  );
+  let words = (wl.words || []).map((w) => w.word).filter(Boolean);
+  if (words.length > 0) return words;
+
+  const native = getNativeLang();
+  const summary = await apiFetch<GroupsSummaryResponse>(
+    `/api/custom-levels/groups/summary?language=${encodeURIComponent(lang)}&native_language=${encodeURIComponent(native)}`,
+  );
+  const first = summary.groups?.[0];
+  if (first?.id) {
+    const detail = await fetchCustomLevelContent(first.id, 1);
+    if (detail.success) {
+      words = wordsFromLevelContent(detail.level?.content);
+    }
+  }
+  return words;
+}
 
 export function PracticeRunner() {
   const [params] = useSearchParams();
@@ -25,22 +63,7 @@ export function PracticeRunner() {
   useEffect(() => {
     async function load() {
       try {
-        let words: string[] = [];
-        if (groupId && levelNum) {
-          const detail = await apiFetch<{
-            success: boolean;
-            level?: { content?: { items?: { words?: string[] }[] } };
-            content?: { items?: { words?: string[] }[] };
-          }>(`/api/custom-level-groups/${groupId}/levels/${levelNum}`);
-          const content = detail.level?.content ?? detail.content;
-          words = (content?.items || []).flatMap((it) => it.words || []).filter(Boolean);
-        }
-        if (words.length === 0) {
-          const wl = await apiFetch<{ success: boolean; words?: { word: string }[] }>(
-            `/api/words/learning?language=${encodeURIComponent(lang)}&min_familiarity=0&max_familiarity=4&limit=30`,
-          );
-          words = (wl.words || []).map((w) => w.word);
-        }
+        const words = await loadPracticeWords(groupId, levelNum, lang);
         if (words.length === 0) {
           setError(t('practice.no_words', 'Keine Wörter zum Üben'));
           setLoading(false);
@@ -88,21 +111,37 @@ export function PracticeRunner() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Spinner />
+      <div
+        className="flex min-h-dvh flex-col items-center justify-center gap-3"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <Spinner label={t('practice.loading', 'Übung wird vorbereitet…')} />
+        <p className="text-sm text-[var(--muted)]">{t('practice.loading', 'Übung wird vorbereitet…')}</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="mx-auto max-w-lg p-4">
-        <Card>
-          <p className="text-[var(--danger)]">{error}</p>
-          <Link to={backTo} className="mt-4 inline-block">
-            <Button variant="ghost">{t('buttons.back', 'Zurück')}</Button>
+      <div className="mx-auto max-w-lg space-y-4 p-4">
+        <EmptyState
+          title={error}
+          description={t(
+            'practice.no_words_hint',
+            'Starte eine Lektion oder erstelle eine Story in der Bibliothek — dann kannst du die Wörter üben.',
+          )}
+        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <Link to="/library">
+            <Button fullWidth>{t('library.title', 'Bibliothek')}</Button>
           </Link>
-        </Card>
+          <Link to={backTo}>
+            <Button variant="secondary" fullWidth>
+              {t('buttons.back', 'Zurück')}
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }

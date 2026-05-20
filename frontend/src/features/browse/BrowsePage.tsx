@@ -65,8 +65,13 @@ export function BrowsePage() {
       </div>
 
       {isLoading && (
-        <div className="flex justify-center py-12">
-          <Spinner />
+        <div
+          className="flex flex-col items-center justify-center gap-3 py-12"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Spinner label={t('browse.loading', 'Stories werden geladen…')} />
+          <p className="text-sm text-[var(--muted)]">{t('browse.loading', 'Stories werden geladen…')}</p>
         </div>
       )}
       {error && <p className="text-[var(--danger)]">{String(error)}</p>}

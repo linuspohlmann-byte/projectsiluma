@@ -110,11 +110,24 @@ export function GroupDetailPage() {
       </div>
 
       {isLoading && (
-        <div className="flex justify-center py-12">
-          <Spinner />
+        <div
+          className="flex flex-col items-center justify-center gap-3 py-12"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Spinner label={t('library.loading_levels', 'Levels werden geladen…')} />
+          <p className="text-sm text-[var(--muted)]">
+            {t('library.loading_levels', 'Levels werden geladen…')}
+          </p>
         </div>
       )}
       {error && <p className="text-[var(--danger)]">{String(error)}</p>}
+
+      {!isLoading && !error && levels.length === 0 && (
+        <p className="text-sm text-[var(--muted)]">
+          {t('library.no_levels', 'Noch keine Levels — Generierung kann noch laufen.')}
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {levels.map(([num, lv]) => {

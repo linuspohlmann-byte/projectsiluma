@@ -110,6 +110,36 @@ export function fetchBulkStats(groupId: number) {
   return apiFetch<BulkStatsResponse>(`/api/custom-levels/${groupId}/bulk-stats`);
 }
 
+export function fetchCustomLevelContent(groupId: number, levelNum: number) {
+  return apiFetch<{
+    success: boolean;
+    level?: { content?: { items?: { words?: string[] }[] } };
+    error?: string;
+  }>(`/api/custom-level-groups/${groupId}/levels/${levelNum}`);
+}
+
+/** Words suitable for flashcard practice from a custom level. */
+export function wordsFromLevelContent(
+  content?: { items?: { words?: string[]; text_target?: string }[] },
+): string[] {
+  const raw = (content?.items || []).flatMap((it) => {
+    const fromWords = it.words || [];
+    if (fromWords.length) return fromWords;
+    const text = String(it.text_target || '').trim();
+    return text ? text.split(/\s+/) : [];
+  });
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of raw) {
+    const t = String(w || '').trim().toLowerCase();
+    if (t.length > 1 && /[a-zà-ž]/i.test(t) && !seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
 export function startPractice(language: string, customWords: string[]) {
   return apiFetch<{
     success: boolean;
