@@ -1697,11 +1697,12 @@ def api_logout():
     """Logout a user"""
     try:
         session_token = request.headers.get('Authorization', '').replace('Bearer ', '')
-        
-        if logout_user(session_token):
-            return jsonify({'success': True, 'message': 'Logged out successfully'})
-        else:
-            return jsonify({'success': False, 'error': 'Invalid session'}), 401
+        try:
+            logout_user(session_token)
+        except Exception as logout_err:
+            # Client clears token regardless; avoid 500 on PG/SQLite session delete quirks
+            print(f"⚠️ logout_user warning: {logout_err}")
+        return jsonify({'success': True, 'message': 'Logged out successfully'})
             
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
