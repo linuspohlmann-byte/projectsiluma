@@ -2971,8 +2971,9 @@ def api_get_custom_level_bulk_stats(group_id):
                 for item in level['content']['items']:
                     words = item.get('words', [])
                     for word in words:
-                        if word and word.strip():
-                            level_words.append(word.strip().lower())
+                        w = (word or '').strip().lower()
+                        if len(w) > 1 and any(c.isalpha() for c in w):
+                            level_words.append(w)
             if level_words:
                 all_level_words[level_num] = level_words
         
@@ -2982,8 +2983,11 @@ def api_get_custom_level_bulk_stats(group_id):
             for words in all_level_words.values():
                 all_unique_words.update(words)
             if all_unique_words:
-                from server.db import ensure_words_exist
-                ensure_words_exist(list(all_unique_words), language, native_language)
+                try:
+                    from server.db import ensure_words_exist
+                    ensure_words_exist(list(all_unique_words), language, native_language)
+                except Exception as word_err:
+                    print(f"⚠️ ensure_words_exist in bulk-stats: {word_err}")
         
                 # Process all levels
         levels_data = {}

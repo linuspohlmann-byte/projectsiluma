@@ -381,6 +381,7 @@ def ensure_words_exist(words: list[str], target_lang: str, native_lang: str) -> 
                         cur.execute('''
                             INSERT INTO words (word, language, native_language, created_at, updated_at) 
                             VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (word, language, native_language) DO NOTHING
                         ''', (words_to_insert[0], target_lang, native_lang, now, now))
                     else:
                         # Build bulk INSERT
@@ -392,6 +393,7 @@ def ensure_words_exist(words: list[str], target_lang: str, native_lang: str) -> 
                         cur.execute(f'''
                             INSERT INTO words (word, language, native_language, created_at, updated_at) 
                             VALUES {values_placeholders}
+                            ON CONFLICT (word, language, native_language) DO NOTHING
                         ''', params)
             finally:
                 cur.close()
