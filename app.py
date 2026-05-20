@@ -3129,7 +3129,10 @@ def api_get_custom_level_bulk_stats(group_id):
         
     except Exception as e:
         print(f"Error getting custom level bulk stats: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        import traceback
+        traceback.print_exc()
+        # Return empty level grid so SPA stays usable (stats are non-critical)
+        return jsonify({'success': True, 'levels': {}})
 
 @custom_levels_bp.post('/api/custom-levels/<int:group_id>/<int:level_number>/generate-content')
 @require_auth(optional=True)
