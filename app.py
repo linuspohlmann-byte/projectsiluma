@@ -3126,6 +3126,29 @@ def api_get_custom_level_bulk_stats(group_id):
                     }
                 }
         
+        # Merge session scores / status from custom_level_progress (set on lesson finish)
+        from server.db_progress_cache import get_custom_level_progress
+        for level_num, data in levels_data.items():
+            progress = get_custom_level_progress(user_id, group_id, int(level_num))
+            if not progress:
+                continue
+            db_score = progress.get('score')
+            if db_score is not None:
+                try:
+                    score_f = float(db_score)
+                    normalized = score_f / 100.0 if score_f > 1.0 else score_f
+                    data['last_score'] = normalized
+                    data['user_progress']['score'] = normalized
+                except (TypeError, ValueError):
+                    pass
+            db_status = progress.get('status')
+            if db_status == 'completed':
+                data['status'] = 'completed'
+                data['user_progress']['status'] = 'completed'
+            elif db_score and float(db_score) > 0 and data.get('status') == 'not_started':
+                data['status'] = 'in_progress'
+                data['user_progress']['status'] = 'in_progress'
+
         return jsonify({
             'success': True,
             'levels': levels_data
