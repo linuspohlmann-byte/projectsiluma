@@ -153,8 +153,11 @@ export function LessonRunner() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Spinner />
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 p-4">
+        <Spinner label={t('lesson.loading', 'Lektion wird vorbereitet…')} />
+        <p className="text-center text-sm text-[var(--muted)]">
+          {t('lesson.loading', 'Lektion wird vorbereitet…')}
+        </p>
       </div>
     );
   }
@@ -174,8 +177,11 @@ export function LessonRunner() {
 
   if (finishing) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Spinner />
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 p-4">
+        <Spinner label={t('lesson.finishing', 'Lektion wird ausgewertet…')} />
+        <p className="text-center text-sm text-[var(--muted)]">
+          {t('lesson.finishing', 'Lektion wird ausgewertet…')}
+        </p>
       </div>
     );
   }
