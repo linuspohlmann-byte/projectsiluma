@@ -273,7 +273,11 @@ def legacy_ui():
 
 @app.get('/health')
 def health():
-    return jsonify({'ok': True})
+    return jsonify({
+        'ok': True,
+        'git_sha': (os.environ.get('RAILWAY_GIT_COMMIT_SHA') or os.environ.get('GIT_COMMIT') or '')[:12] or None,
+        'deployment_id': os.environ.get('RAILWAY_DEPLOYMENT_ID'),
+    })
 
 @app.get('/api/debug/user-status')
 def debug_user_status():
