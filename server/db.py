@@ -3106,9 +3106,15 @@ def get_user_by_session(session_token: str):
 
 def delete_user_session(session_token: str):
     """Delete a user session"""
-    conn = get_db(); cur = conn.cursor()
+    from server.db_config import get_database_config, execute_query
+
+    config = get_database_config()
+    conn = get_db()
     try:
-        cur.execute('DELETE FROM user_sessions WHERE session_token=?', (session_token,))
+        if config['type'] == 'postgresql':
+            execute_query(conn, 'DELETE FROM user_sessions WHERE session_token = %s', (session_token,))
+        else:
+            conn.execute('DELETE FROM user_sessions WHERE session_token=?', (session_token,))
         conn.commit()
     finally:
         conn.close()

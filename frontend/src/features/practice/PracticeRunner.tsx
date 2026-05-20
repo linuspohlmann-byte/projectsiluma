@@ -29,9 +29,11 @@ export function PracticeRunner() {
         if (groupId && levelNum) {
           const detail = await apiFetch<{
             success: boolean;
+            level?: { content?: { items?: { words?: string[] }[] } };
             content?: { items?: { words?: string[] }[] };
           }>(`/api/custom-level-groups/${groupId}/levels/${levelNum}`);
-          words = (detail.content?.items || []).flatMap((it) => it.words || []).filter(Boolean);
+          const content = detail.level?.content ?? detail.content;
+          words = (content?.items || []).flatMap((it) => it.words || []).filter(Boolean);
         }
         if (words.length === 0) {
           const wl = await apiFetch<{ success: boolean; words?: { word: string }[] }>(
